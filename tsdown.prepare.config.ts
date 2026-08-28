@@ -16,5 +16,7 @@ export default defineConfig({
   fixedExtension: false,
   dts: false,
   clean: false,
-  external: ['@deepseek-ai/cordis'],
+  deps: {
+    neverBundle: specifier => specifier === '@deepseek-ai/cordis',
+  },
 })
