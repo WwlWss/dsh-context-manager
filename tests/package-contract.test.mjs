@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict'
 import { access, readFile } from 'node:fs/promises'
 import { test } from 'node:test'
-import { pathToFileURL } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import path from 'node:path'
 
-const root = path.resolve(new URL('..', import.meta.url).pathname)
+const root = fileURLToPath(new URL('../', import.meta.url))
 const packageJsonPath = path.join(root, 'package.json')
 const packageJson = JSON.parse(await readFile(packageJsonPath, 'utf8'))
 
