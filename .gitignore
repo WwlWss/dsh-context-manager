@@ -1,3 +1,7 @@
+# Project build artifacts
+/lib/
+/.artifacts/
+
 # Logs
 logs
 *.log
