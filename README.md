@@ -21,7 +21,7 @@ The plugin is deliberately additive: installing it must not rewrite or replace D
 - Fail in isolation for malformed Context Manager resources while keeping DSH's normal fail-fast behavior for invalid Cordis deployment configuration.
 - Make uninstall/disable restore stock DSH behavior without migration or repair work.
 
-The detailed compatibility and subsystem boundaries are recorded in [docs/architecture.md](docs/architecture.md). They are project constraints, not just implementation suggestions.
+The maintained project constraints live in [docs/architecture.md](docs/architecture.md), and the reviewed/tested DSH baselines live in [docs/compatibility.md](docs/compatibility.md).
 
 ## Important compatibility notes
 
@@ -51,7 +51,7 @@ Requirements follow current DSH development baselines:
 Run:
 
 ```sh
-pnpm install
+pnpm install --frozen-lockfile
 pnpm run check
 ```
 
