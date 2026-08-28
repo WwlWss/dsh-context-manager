@@ -12,6 +12,46 @@ permissions:
 
 jobs:
   verify:
+    name: verify (${{ matrix.os }}, node ${{ matrix.node }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - windows-latest
+        node:
+          - 22.20.0
+          - 24.11.0
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+
+      - name: Enable pinned pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.7.0 --activate
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck, build, and contract tests
+        run: pnpm run check
+
+      - name: Verify git-install prepare path from a clean output tree
+        run: |
+          pnpm run clean
+          pnpm run prepare
+          node --test ./tests/*.test.mjs
+
+  package:
+    name: verify packed bundle
+    needs: verify
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -30,14 +70,8 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Typecheck, build, and contract tests
-        run: pnpm run check
-
-      - name: Verify git-install prepare path from a clean output tree
-        run: |
-          pnpm run clean
-          pnpm run prepare
-          node --test ./tests/*.test.mjs
+      - name: Build
+        run: pnpm run build
 
       - name: Verify packed file surface
         run: |
