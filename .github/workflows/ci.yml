@@ -8,7 +8,7 @@ on:
   pull_request:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   verify:
@@ -30,6 +30,18 @@ jobs:
       - name: Install dependencies
         run: pnpm install --no-frozen-lockfile
 
+      - name: Bootstrap lockfile on this scaffold branch
+        if: github.event_name == 'push'
+        run: |
+          if git ls-files --error-unmatch pnpm-lock.yaml >/dev/null 2>&1; then
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add pnpm-lock.yaml
+          git commit -m 'chore: lock scaffold dependencies'
+          git push origin HEAD:${GITHUB_REF_NAME}
+
       - name: Typecheck, build, and contract tests
         run: pnpm run check
 
@@ -49,10 +61,3 @@ jobs:
           grep -Fx 'package/lib/index.js' .artifacts/package-files.txt
           grep -Fx 'package/cordis.patch.yml' .artifacts/package-files.txt
           grep -Fx 'package/package.json' .artifacts/package-files.txt
-
-      - name: Upload generated lockfile for bootstrap review
-        uses: actions/upload-artifact@v4
-        with:
-          name: pnpm-lock-bootstrap
-          path: pnpm-lock.yaml
-          if-no-files-found: error
