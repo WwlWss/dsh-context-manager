@@ -83,3 +83,36 @@ jobs:
           grep -Fx 'package/lib/index.js' .artifacts/package-files.txt
           grep -Fx 'package/cordis.patch.yml' .artifacts/package-files.txt
           grep -Fx 'package/package.json' .artifacts/package-files.txt
+
+  dsh-smoke:
+    name: published DSH bundle smoke test
+    needs: package
+    runs-on: ubuntu-latest
+    env:
+      DSH_HOME: ${{ github.workspace }}/.dsh-ci-home
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.20.0
+
+      - name: Enable pinned pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.7.0 --activate
+
+      - name: Install and build this plugin
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm run build
+
+      - name: Install bundle into a temporary DSH profile
+        run: pnpm dlx @deepseek-ai/dsh@0.1.1-rc.2 plugin --profile context-manager-ci add "$GITHUB_WORKSPACE"
+
+      - name: Verify DSH composed configuration
+        run: |
+          pnpm dlx @deepseek-ai/dsh@0.1.1-rc.2 --profile context-manager-ci --dump-config > .dsh-composed.yml
+          grep -F 'dsh-context-manager' .dsh-composed.yml
