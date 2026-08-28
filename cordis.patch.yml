@@ -1,0 +1,3 @@
+- insert:
+    - id: context-manager
+      name: dsh-context-manager
