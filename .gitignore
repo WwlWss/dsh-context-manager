@@ -1,3 +1,7 @@
+# Project build artifacts
+/lib/
+/.artifacts/
+
 # Logs
 logs
 *.log
@@ -41,7 +45,7 @@ build/Release
 node_modules/
 jspm_packages/
 
-# Snowpack dependency directory (https://snowpack.dev/)
+# Snowpack dependency directory
 web_modules/
 
 # TypeScript cache
@@ -70,7 +74,7 @@ web_modules/
 .env.*
 !.env.example
 
-# parcel-bundler cache (https://parceljs.org/)
+# parcel-bundler cache
 .cache
 .parcel-cache
 
@@ -85,9 +89,6 @@ dist
 
 # Gatsby files
 .cache/
-# Comment in the public line in if your project uses Gatsby and not Next.js
-# https://nextjs.org/blog/next-9-1#public-directory-support
-# public
 
 # vuepress build output
 .vuepress/dist
@@ -111,13 +112,13 @@ dist
 .serverless/
 
 # FuseBox cache
-.fusebox/
+.fusebox
 
 # DynamoDB Local files
-.dynamodb/
+.dynamodb
 
 # Firebase cache directory
-.firebase/
+.firebase
 
 # TernJS port file
 .tern-port
