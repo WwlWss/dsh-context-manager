@@ -1,0 +1,58 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - feat/**
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.20.0
+
+      - name: Enable pinned pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.7.0 --activate
+
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Typecheck, build, and contract tests
+        run: pnpm run check
+
+      - name: Verify git-install prepare path from a clean output tree
+        run: |
+          pnpm run clean
+          pnpm run prepare
+          node --test ./tests/*.test.mjs
+
+      - name: Verify packed file surface
+        run: |
+          mkdir -p .artifacts
+          pnpm pack --pack-destination .artifacts
+          tarball=$(find .artifacts -maxdepth 1 -name '*.tgz' -print -quit)
+          test -n "$tarball"
+          tar -tzf "$tarball" | sort | tee .artifacts/package-files.txt
+          grep -Fx 'package/lib/index.js' .artifacts/package-files.txt
+          grep -Fx 'package/cordis.patch.yml' .artifacts/package-files.txt
+          grep -Fx 'package/package.json' .artifacts/package-files.txt
+
+      - name: Upload generated lockfile for bootstrap review
+        uses: actions/upload-artifact@v4
+        with:
+          name: pnpm-lock-bootstrap
+          path: pnpm-lock.yaml
+          if-no-files-found: error
