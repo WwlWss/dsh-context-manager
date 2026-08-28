@@ -5,17 +5,10 @@ export const name = 'dsh-context-manager'
 /**
  * Host entry for DSH Context Manager.
  *
- * The initial scaffold is intentionally side-effect-light: it proves that the
- * bundle can be installed and mounted without replacing any built-in preset,
- * skill provider, or Web UI surface. Functional services are added in later
- * milestones behind explicit capability checks.
+ * The scaffold intentionally performs no runtime mutation beyond diagnostics.
+ * Later milestones should use Cordis dependency injection and effect-owned
+ * registrations rather than broad exception swallowing.
  */
 export function apply(ctx: Context): void {
-  try {
-    const logger = ctx.logger('dsh-context-manager')
-    logger.info('Context Manager plugin loaded (scaffold mode)')
-  } catch (error) {
-    // A diagnostics failure must never make the optional plugin fatal.
-    console.warn('[dsh-context-manager] loaded, but diagnostics are unavailable', error)
-  }
+  ctx.logger('dsh-context-manager').info('Context Manager loaded (scaffold mode)')
 }
