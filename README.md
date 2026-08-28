@@ -4,38 +4,72 @@ Modular preset, prompt, and skill context manager for DeepSeek Harness, inspired
 
 ## Status
 
-Early scaffold. The first milestone proves that the project can be installed as an optional DSH bundle without replacing or modifying the built-in Standard, PTC, Minimal, or Create presets.
+Early scaffold. PR #1 establishes an installable, test-gated DSH bundle before feature code is added.
+
+The plugin is deliberately additive: installing it must not rewrite or replace DSH's shipped `standard`, `ptc`, `minimal`, or `cordis` agent presets, the built-in skill filesystem provider, the left workspace/session sidebar, or the existing Tool Details surface.
 
 ## Design goals
 
-- Keep the existing DSH presets usable and untouched.
-- Add a right-side Context Manager UI instead of replacing the existing left workspace/session sidebar.
-- Treat built-in presets as locked base presets and layer modular prompt/skill overlays on top.
-- Provide a reusable central module library without copying skills into every project.
-- Support skill states such as Always, Auto, Manual, and Off.
-- Preserve DSH's native skill invocation and Agent runtime whenever possible.
-- Fail soft: an optional Context Manager feature should not make the host unusable when a capability is missing or a configuration is invalid.
+- Treat DSH's native agent presets as locked base compositions and layer Context Manager policy on top.
+- Reuse DSH's native preset roster/Remote APIs instead of scanning DSH package directories.
+- Add modular prompt/context definitions through DSH prompt assembly rather than replacing the agent loop.
+- Preserve DSH's skill registry and providers; apply managed visibility/invocation policy by scope when possible.
+- Provide four skill states: Pinned, Auto, Manual, and Off.
+- Store UI/configuration state through DSH settings when available instead of building a parallel settings database.
+- Render the Web UI as an additive right-side Drawer through the shell overlay, without taking over the single-occupant `details` slot.
+- Keep browser presentation separated from Host filesystem/state through DSH's Host -> Remote -> Client -> UI architecture.
+- Fail in isolation for malformed Context Manager resources while keeping DSH's normal fail-fast behavior for invalid Cordis deployment configuration.
+- Make uninstall/disable restore stock DSH behavior without migration or repair work.
+
+The detailed compatibility and subsystem boundaries are recorded in [docs/architecture.md](docs/architecture.md). They are project constraints, not just implementation suggestions.
+
+## Important compatibility notes
+
+The shipped Minimal preset is intentionally restrictive: it uses a complete persona and disables runtime context. Context Manager must report those placement limitations honestly. Users who need to change Minimal's composition can create a DSH-native preset copy/modular variant; the shipped preset remains untouched.
+
+SillyTavern-style arbitrary historical `depth=N` insertion is not currently treated as equivalent to DSH prompt placement. Context Manager will use DSH's supported system-prompt/runtime-context primitives unless DSH exposes an authoritative history-transform extension point in the future.
 
 ## Planned milestones
 
-1. Installable DSH bundle scaffold.
-2. Host-side settings and profile model.
-3. Modular prompt overlay assembly.
-4. Filtered skill provider and skill state model.
-5. Web client package and right-side panel.
-6. Preset / Skills / Preview tabs.
-7. Project and Session overrides.
-8. Compatibility and regression tests against the built-in presets.
+1. Installable DSH bundle scaffold, build contract tests, and CI.
+2. Host-side Context Manager domain and settings-backed profile model.
+3. Native agent-preset roster/read integration and locked base-preset structural view.
+4. Modular system-prompt/runtime-context overlay model with capability-aware placement.
+5. Scoped skill policy model for Pinned / Auto / Manual / Off, with leakage and resume tests.
+6. Web client package and additive right-side Drawer.
+7. Preset / Skills / Preview UI, including final-context diagnostics.
+8. Project and Session overrides without mutating shipped preset files.
+9. Compatibility/regression tests across supported DSH releases and all shipped presets.
 
-## Development installation
+## Development
 
-Once the scaffold has a buildable release, it is intended to install into an existing DSH profile with:
+Requirements follow current DSH development baselines:
+
+- Node.js `^22.19.0 || >=24.0.0`
+- pnpm `11.7.0`
+
+Run:
+
+```sh
+pnpm install
+pnpm run check
+```
+
+`pnpm run check` performs type checking, a clean production build, and package-contract tests.
+
+The git-install `prepare` path is intentionally smaller than the development build: it transpiles only the runtime JavaScript required by the declared package entry. Type checking and declaration generation remain development/CI responsibilities.
+
+## Development installation into DSH
+
+Install the current repository into an existing DSH profile with:
 
 ```sh
 dsh plugin --profile web add github:WwlWss/dsh-context-manager
 ```
 
-Git-hosted TypeScript dependencies run their `prepare` build during installation. pnpm 10+ blocks dependency build scripts by default, so users may need to allow the exact package key printed by pnpm in the profile's `pnpm-workspace.yaml` before retrying the install.
+Git-hosted TypeScript dependencies run their `prepare` build during installation. pnpm 10+ blocks dependency build scripts by default, so the first install may ask the user to allow the exact package key in the profile's `pnpm-workspace.yaml` before retrying.
+
+For reproducible testing, pin a commit SHA when installing an unreviewed development version.
 
 ## License
 
