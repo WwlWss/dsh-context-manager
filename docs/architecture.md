@@ -62,7 +62,7 @@ Malformed Context Manager resources should fail in isolation and preserve last-g
 
 Large prompt/skill bodies may live in a dedicated content library, but do not reimplement settings revisions, stale-write detection, or user override merging around them.
 
-## Web client
+## Host and Web client boundary
 
 Follow the DSH data direction:
 
@@ -70,7 +70,15 @@ Follow the DSH data direction:
 
 Browser presentation components must not read Host files directly.
 
-The shipped `details` Slot is single-occupant and belongs to the existing Conversation details panel. Context Manager must not register itself there. The additive integration point is `shell.overlay`; render a right-side Drawer there so disabling/uninstalling this package leaves the original layout and Tool Details intact.
+The package starts with only a Host entry. When browser UI is introduced, add a separate `./client` export and a `dsh.client` manifest with `platform: web` and only the DSH client packages the browser face actually injects. Do not import Host-only modules into the client bundle. Host and client build outputs must be independently covered by package-contract tests before the client manifest is enabled.
+
+A malformed `dsh.client` declaration or a missing advertised client bundle can fail Web client module composition, so the browser face must not be added speculatively. The PR that first enables it must prove that a packed install contains the declared client artifact and that DSH can discover it.
+
+## Web placement
+
+The shipped `details` Slot is single-occupant and belongs to the existing Conversation details panel. Context Manager must not register itself there.
+
+The additive surface for the Drawer is `shell.overlay`. A trigger should use an additive list slot where practical (for example a conversation header action/utility) and keep a root-safe fallback only if the product needs access without an active Session. Never replace the whole `conversation`, `sidebar`, or `details` occupant just to add a Context Manager control.
 
 If a future DSH release exposes an additive right-panel/tab Slot, prefer it behind capability/version checks rather than patching AppFrame.
 
@@ -86,3 +94,5 @@ If a future DSH release exposes an additive right-panel/tab Slot, prefer it behi
 ## Compatibility boundary
 
 DSH is evolving quickly. Features that depend on optional DSH services should be capability-gated and tested against explicitly supported DSH versions. A missing optional integration may disable only that Context Manager feature; it must not be simulated by reaching into undocumented internal state.
+
+Do not encode current DSH package-internal filesystem paths as compatibility contracts. Prefer exported services, generated Remote surfaces, public package exports, and declared Slots. When an upstream API is missing, document the limitation and add an adapter only after an explicit public seam exists.
