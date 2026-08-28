@@ -4,7 +4,7 @@ Modular preset, prompt, and skill context manager for DeepSeek Harness, inspired
 
 ## Status
 
-Early scaffold. PR #1 establishes an installable, test-gated DSH bundle before feature code is added.
+Early scaffold. The current foundation provides an installable, test-gated DSH bundle before feature code is added.
 
 The plugin is deliberately additive: installing it must not rewrite or replace DSH's shipped `standard`, `ptc`, `minimal`, or `cordis` agent presets, the built-in skill filesystem provider, the left workspace/session sidebar, or the existing Tool Details surface.
 
