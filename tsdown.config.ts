@@ -9,5 +9,7 @@ export default defineConfig({
   fixedExtension: false,
   dts: true,
   clean: true,
-  external: ['@deepseek-ai/cordis'],
+  deps: {
+    neverBundle: specifier => specifier === '@deepseek-ai/cordis',
+  },
 })
