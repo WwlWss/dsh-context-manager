@@ -4,6 +4,7 @@ import {
   type ContextManagerPersistenceState,
   type ContextManagerSnapshot,
   type ContextProfile,
+  type SkillBinding,
   type SkillMode,
 } from './model.js'
 import {
@@ -22,6 +23,17 @@ export function parseSkillMode(value: unknown): SkillMode {
   return value as SkillMode
 }
 
+export function parseSkillBinding(raw: unknown): SkillBinding {
+  if (!isPlainObject(raw)) throw new TypeError('skill binding must be an object')
+  let mode: SkillMode
+  try {
+    mode = parseSkillMode(raw.mode)
+  } catch {
+    throw new TypeError('skill binding.mode must be pinned, auto, manual, or off')
+  }
+  return Object.freeze({ mode })
+}
+
 export function parseProfile(raw: unknown): ContextProfile {
   if (!isPlainObject(raw)) throw new TypeError('profile must be an object')
   if (typeof raw.name !== 'string') throw new TypeError('profile.name must be a string')
@@ -33,12 +45,14 @@ export function parseProfile(raw: unknown): ContextProfile {
     throw new TypeError('profile.skills must be an object when present')
   }
 
-  const skills: Record<string, SkillMode> = Object.create(null) as Record<string, SkillMode>
-  for (const [name, mode] of Object.entries(raw.skills ?? {})) {
+  const skills: Record<string, SkillBinding> = Object.create(null) as Record<string, SkillBinding>
+  for (const [name, binding] of Object.entries(raw.skills ?? {})) {
     try {
-      skills[name] = parseSkillMode(mode)
-    } catch {
-      throw new TypeError(`profile.skills[${JSON.stringify(name)}] must be pinned, auto, manual, or off`)
+      skills[name] = parseSkillBinding(binding)
+    } catch (error) {
+      throw new TypeError(
+        `profile.skills[${JSON.stringify(name)}] ${error instanceof Error ? error.message : String(error)}`,
+      )
     }
   }
 
