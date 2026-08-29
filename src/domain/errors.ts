@@ -2,6 +2,7 @@ export type ContextManagerErrorCode =
   | 'profile-exists'
   | 'profile-not-found'
   | 'profile-path-not-editable'
+  | 'skill-binding-not-found'
   | 'invalid-profile'
   | 'invalid-raw-profile'
   | 'invalid-skill-mode'
@@ -9,6 +10,7 @@ export type ContextManagerErrorCode =
   | 'persistence-unavailable'
   | 'persistence-not-ready'
   | 'persistence-read-only'
+  | 'persistence-document-invalid'
   | 'invalid-schema-version'
   | 'unsupported-schema-version'
 
