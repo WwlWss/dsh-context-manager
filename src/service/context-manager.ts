@@ -18,11 +18,7 @@ import {
   EMPTY_CONTEXT_MANAGER_SETTINGS,
   type StoredContextManagerSettings,
 } from '../domain/schema.js'
-import {
-  assertStoredProfilePayloadSafe,
-  assertStoredSettingsSectionSafe,
-  isPlainObject,
-} from '../domain/storage.js'
+import { assertStoredProfilePayloadSafe, isPlainObject } from '../domain/storage.js'
 
 export const CONTEXT_MANAGER_SETTINGS_NAMESPACE = settingsNamespace('dsh-context-manager')
 
@@ -295,11 +291,10 @@ export class ContextManagerService extends Service {
     if (descriptor.user === undefined) return
     try {
       CONTEXT_MANAGER_SETTINGS_SCHEMA(descriptor.user as never)
-      assertStoredSettingsSectionSafe(descriptor.user)
     } catch (error) {
       throw new ContextManagerError(
         'persistence-document-invalid',
-        `the current stored Context Manager settings section is invalid or cannot be preserved losslessly; edit or restore that document explicitly before applying semantic mutations (${error instanceof Error ? error.message : String(error)})`,
+        `the current stored Context Manager settings section is invalid; edit or restore that document explicitly before applying semantic mutations (${error instanceof Error ? error.message : String(error)})`,
       )
     }
   }
