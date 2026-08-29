@@ -2,19 +2,26 @@ import { Service, type Context } from '@deepseek-ai/cordis'
 import {
   installSettingsSection,
   settingsNamespace,
-  type SettingsProvider,
+  SettingsConflictError,
   type SettingsPathOp,
+  type SettingsProvider,
 } from '@deepseek-ai/dsh-settings'
 
 import { assertSafePathKey, ContextManagerError } from '../domain/errors.js'
 import type { ContextManagerSnapshot, ContextProfile, SkillMode } from '../domain/model.js'
-import { normalizeSettings, parseProfileForWrite } from '../domain/normalize.js'
+import { normalizeSettings, parseProfileForWrite, parseSkillMode } from '../domain/normalize.js'
 import {
+  classifyContextManagerSchemaVersion,
   CONTEXT_MANAGER_SCHEMA_VERSION,
   CONTEXT_MANAGER_SETTINGS_SCHEMA,
   EMPTY_CONTEXT_MANAGER_SETTINGS,
   type StoredContextManagerSettings,
 } from '../domain/schema.js'
+import {
+  assertNoUnsafeDshPropertyKeys,
+  assertRawProfileWriteSafe,
+  isPlainObject,
+} from '../domain/storage.js'
 
 export const CONTEXT_MANAGER_SETTINGS_NAMESPACE = settingsNamespace('dsh-context-manager')
 
@@ -24,25 +31,26 @@ declare module '@deepseek-ai/cordis' {
   }
 }
 
+interface WritableState {
+  settings: SettingsProvider
+  stored: StoredContextManagerSettings
+  revision: number
+}
+
 /**
- * Authoritative Host-side state for Context Manager.
+ * Authoritative Host-side domain service for Context Manager.
  *
- * This service is deliberately model-inert: it stores user intent and exposes
- * diagnostics, but it does not mount presets, alter system prompts, or shadow
- * skills. Runtime adapters are separate milestones.
+ * This milestone is deliberately model-inert: it stores explicit user intent
+ * and derives diagnostics, but does not mount presets, alter system prompts,
+ * or shadow skills. Runtime/effective state belongs to later adapters.
  */
 export class ContextManagerService extends Service {
   private readonly ownerCtx: Context
   private source: () => StoredContextManagerSettings = () => EMPTY_CONTEXT_MANAGER_SETTINGS
-  private current: ContextManagerSnapshot
 
   constructor(ctx: Context) {
     super(ctx, 'dshContextManager')
     this.ownerCtx = ctx
-    this.current = normalizeSettings(EMPTY_CONTEXT_MANAGER_SETTINGS, {
-      available: false,
-      writable: false,
-    })
 
     installSettingsSection(
       ctx,
@@ -52,80 +60,107 @@ export class ContextManagerService extends Service {
       {
         setSource: source => {
           this.source = source
-          this.refresh()
         },
-        onChange: () => {
-          this.refresh()
-        },
+        // PR2 keeps no second state cache. Consumers derive a snapshot on read;
+        // later Remote code can add an explicit change publication seam.
+        onChange: () => {},
       },
     )
   }
 
-  /** Current immutable domain view. */
+  /**
+   * Current immutable Domain view. Read-time derivation keeps DSH Settings'
+   * document revision authoritative even when the raw user section changes to
+   * an override whose resolved value is deep-equal and scope.watch() is silent.
+   */
   snapshot(): ContextManagerSnapshot {
-    return this.current
+    const { stored, persistence } = this.readState()
+    return normalizeSettings(stored, persistence)
+  }
+
+  /** List every stored profile payload, including ones the Domain cannot parse. */
+  listStoredProfileIds(): readonly string[] {
+    return Object.freeze(Object.keys(this.readState().stored.profiles))
   }
 
   /**
-   * Create a normal profile. This validates only the profile's own storage
-   * shape; it does not require referenced presets or skills to exist.
+   * Return a detached stored payload for the advanced editor. This is the
+   * resolved Context Manager profile payload, not a mutable reference into DSH
+   * Settings and not the later runtime/effective view.
+   */
+  getStoredProfile(id: string): unknown {
+    const stored = this.readState().stored
+    if (!Object.hasOwn(stored.profiles, id)) {
+      throw new ContextManagerError('profile-not-found', `profile ${JSON.stringify(id)} does not exist`)
+    }
+    return structuredClone(stored.profiles[id])
+  }
+
+  /**
+   * Create a structured profile. Referenced presets/skills need not exist, but
+   * the profile's own current Domain shape must be valid.
    */
   async createProfile(id: string, input: unknown, expectedRevision?: number): Promise<void> {
     assertSafePathKey(id, 'profile id')
-    const stored = this.source()
-    if (Object.hasOwn(stored.profiles, id)) {
+    const state = this.captureWritableState(expectedRevision)
+    if (Object.hasOwn(state.stored.profiles, id)) {
       throw new ContextManagerError('profile-exists', `profile ${JSON.stringify(id)} already exists`)
     }
+
     const profile = this.parseWritableProfile(input)
-    await this.mutate([{ op: 'set', path: ['profiles', id], value: profile }], expectedRevision)
+    assertNoUnsafeDshPropertyKeys(profile, 'profile')
+    await this.mutate(state, [{ op: 'set', path: ['profiles', id], value: profile }])
   }
 
-  /** Explicitly replace a profile with a normal, domain-usable value. */
+  /** Explicitly replace any stored payload with a structured Domain profile. */
   async replaceProfile(id: string, input: unknown, expectedRevision?: number): Promise<void> {
     assertSafePathKey(id, 'profile id')
-    this.requireStoredProfile(id)
+    const state = this.captureWritableState(expectedRevision)
+    this.requireStoredProfile(state.stored, id)
+
     const profile = this.parseWritableProfile(input)
-    await this.mutate([{ op: 'set', path: ['profiles', id], value: profile }], expectedRevision)
+    assertNoUnsafeDshPropertyKeys(profile, 'profile')
+    await this.mutate(state, [{ op: 'set', path: ['profiles', id], value: profile }])
   }
 
   /**
-   * Advanced/raw editor seam. The value is stored exactly as supplied after
-   * DSH Settings' JSON-integrity checks. Invalid domain content is preserved
-   * and appears as diagnostics instead of being auto-repaired.
+   * Advanced stored-payload editor seam. Domain-invalid JSON data is allowed;
+   * only lossless DSH persistence constraints are enforced here.
    */
   async setRawProfile(id: string, value: unknown, expectedRevision?: number): Promise<void> {
     assertSafePathKey(id, 'profile id')
-    await this.mutate([{ op: 'set', path: ['profiles', id], value }], expectedRevision)
+    assertRawProfileWriteSafe(value)
+    const state = this.captureWritableState(expectedRevision)
+    await this.mutate(state, [{ op: 'set', path: ['profiles', id], value }])
   }
 
   /**
-   * Delete only the profile the caller named. A default reference pointing at
-   * it is deliberately left dangling and becomes a diagnostic until the user
-   * explicitly changes that reference.
+   * Delete only the profile explicitly named. A default reference pointing at
+   * it is intentionally left dangling for diagnostics until the user changes
+   * that reference separately.
    */
   async deleteProfile(id: string, expectedRevision?: number): Promise<void> {
     assertSafePathKey(id, 'profile id')
-    this.requireStoredProfile(id)
-    await this.mutate([{ op: 'unset', path: ['profiles', id] }], expectedRevision)
+    const state = this.captureWritableState(expectedRevision)
+    this.requireStoredProfile(state.stored, id)
+    await this.mutate(state, [{ op: 'unset', path: ['profiles', id] }])
   }
 
-  /**
-   * Store the user's default reference literally. It may intentionally point
-   * at a missing or currently malformed profile; that state is diagnostic,
-   * not grounds for silent fallback.
-   */
+  /** Store the user's default reference literally, including unresolved ids. */
   async setDefaultProfile(id: string | undefined, expectedRevision?: number): Promise<void> {
-    if (id !== undefined) assertSafePathKey(id, 'default profile id')
-    await this.mutate([
+    const state = this.captureWritableState(expectedRevision)
+    await this.mutate(state, [
       id === undefined
         ? { op: 'unset', path: ['defaultProfileId'] }
         : { op: 'set', path: ['defaultProfileId'], value: id },
-    ], expectedRevision)
+    ])
   }
 
   /**
-   * Edit one skill policy without restating the rest of the profile. The skill
-   * does not have to exist in the native DSH registry yet.
+   * Edit exactly one skill policy. The mutation only requires the path it
+   * traverses (profile object and optional skills object) to be structurally
+   * safe; unrelated malformed fields and unresolved references do not block a
+   * local repair/edit.
    */
   async setSkillMode(
     profileId: string,
@@ -135,13 +170,33 @@ export class ContextManagerService extends Service {
   ): Promise<void> {
     assertSafePathKey(profileId, 'profile id')
     assertSafePathKey(skillName, 'skill name')
-    this.requireStoredProfile(profileId)
 
-    await this.mutate([
-      mode === undefined
+    const state = this.captureWritableState(expectedRevision)
+    const profile = this.requireProfileObject(state.stored, profileId)
+    if (profile.skills !== undefined && !isPlainObject(profile.skills)) {
+      throw new ContextManagerError(
+        'profile-path-not-editable',
+        `profile ${JSON.stringify(profileId)} has a non-object skills field; use the stored-payload editor or replace the profile explicitly`,
+      )
+    }
+
+    let parsedMode: SkillMode | undefined
+    if (mode !== undefined) {
+      try {
+        parsedMode = parseSkillMode(mode)
+      } catch (error) {
+        throw new ContextManagerError(
+          'invalid-skill-mode',
+          error instanceof Error ? error.message : String(error),
+        )
+      }
+    }
+
+    await this.mutate(state, [
+      parsedMode === undefined
         ? { op: 'unset', path: ['profiles', profileId, 'skills', skillName] }
-        : { op: 'set', path: ['profiles', profileId, 'skills', skillName], value: mode },
-    ], expectedRevision)
+        : { op: 'set', path: ['profiles', profileId, 'skills', skillName], value: parsedMode },
+    ])
   }
 
   private parseWritableProfile(input: unknown): ContextProfile {
@@ -155,13 +210,70 @@ export class ContextManagerService extends Service {
     }
   }
 
-  private requireStoredProfile(id: string): void {
-    if (!Object.hasOwn(this.source().profiles, id)) {
+  private requireStoredProfile(stored: StoredContextManagerSettings, id: string): unknown {
+    if (!Object.hasOwn(stored.profiles, id)) {
       throw new ContextManagerError('profile-not-found', `profile ${JSON.stringify(id)} does not exist`)
+    }
+    return stored.profiles[id]
+  }
+
+  private requireProfileObject(
+    stored: StoredContextManagerSettings,
+    id: string,
+  ): Record<string, unknown> {
+    const profile = this.requireStoredProfile(stored, id)
+    if (!isPlainObject(profile)) {
+      throw new ContextManagerError(
+        'profile-path-not-editable',
+        `profile ${JSON.stringify(id)} is not an object; use the stored-payload editor or replace it explicitly`,
+      )
+    }
+    return profile
+  }
+
+  private readState(): {
+    stored: StoredContextManagerSettings
+    persistence: ContextManagerSnapshot['persistence']
+  } {
+    const settings = this.ownerCtx.get('settings')
+    if (settings === undefined) {
+      return {
+        stored: this.source(),
+        persistence: Object.freeze({ available: false, writable: false }),
+      }
+    }
+
+    const descriptor = settings
+      .describe({ redactSecrets: true })
+      .find(item => item.ns === CONTEXT_MANAGER_SETTINGS_NAMESPACE)
+
+    if (descriptor === undefined) {
+      return {
+        stored: this.source(),
+        persistence: Object.freeze({
+          available: true,
+          writable: settings.writable,
+        }),
+      }
+    }
+
+    return {
+      stored: descriptor.value as StoredContextManagerSettings,
+      persistence: Object.freeze({
+        available: true,
+        writable: settings.writable,
+        revision: descriptor.revision,
+      }),
     }
   }
 
-  private settingsForWrite(): SettingsProvider {
+  /**
+   * Capture one write basis without awaiting: Domain/path validation and the
+   * eventual Settings mutation are fenced to this exact raw-section revision.
+   * If another writer lands first, native SettingsConflictError wins instead
+   * of letting a stale path check overwrite newly changed data.
+   */
+  private captureWritableState(expectedRevision?: number): WritableState {
     const settings = this.ownerCtx.get('settings')
     if (settings === undefined) {
       throw new ContextManagerError(
@@ -175,34 +287,48 @@ export class ContextManagerService extends Service {
         'Context Manager settings provider is read-only',
       )
     }
-    if (this.source().schemaVersion > CONTEXT_MANAGER_SCHEMA_VERSION) {
+
+    const descriptor = settings
+      .describe({ redactSecrets: true })
+      .find(item => item.ns === CONTEXT_MANAGER_SETTINGS_NAMESPACE)
+    if (descriptor === undefined) {
       throw new ContextManagerError(
-        'unsupported-schema-version',
-        `settings schema ${String(this.source().schemaVersion)} is newer than supported schema ${String(CONTEXT_MANAGER_SCHEMA_VERSION)}`,
+        'persistence-not-ready',
+        'Context Manager settings namespace is not registered yet',
       )
     }
-    return settings
+
+    if (expectedRevision !== undefined && expectedRevision !== descriptor.revision) {
+      throw new SettingsConflictError(
+        CONTEXT_MANAGER_SETTINGS_NAMESPACE,
+        expectedRevision,
+        descriptor.revision,
+      )
+    }
+
+    const stored = descriptor.value as StoredContextManagerSettings
+    const versionStatus = classifyContextManagerSchemaVersion(stored.schemaVersion)
+    if (versionStatus !== 'supported') {
+      throw new ContextManagerError(
+        'unsupported-schema-version',
+        versionStatus === 'invalid'
+          ? `settings schema version ${String(stored.schemaVersion)} is invalid; this build only writes schema ${String(CONTEXT_MANAGER_SCHEMA_VERSION)}`
+          : `settings schema version ${String(stored.schemaVersion)} is unsupported; this build only writes schema ${String(CONTEXT_MANAGER_SCHEMA_VERSION)}`,
+      )
+    }
+
+    return {
+      settings,
+      stored,
+      revision: expectedRevision ?? descriptor.revision,
+    }
   }
 
-  private async mutate(ops: readonly SettingsPathOp[], expectedRevision?: number): Promise<void> {
-    const settings = this.settingsForWrite()
-    await settings.mutate(CONTEXT_MANAGER_SETTINGS_NAMESPACE, ops, expectedRevision)
-    // Settings commits its resolved value before watcher callbacks run. Refresh
-    // synchronously after the awaited write so callers never observe a stale
-    // service snapshot while the watcher queue catches up.
-    this.refresh()
-  }
-
-  private refresh(): void {
-    const settings = this.ownerCtx.get('settings')
-    const descriptor = settings
-      ?.describe({ redactSecrets: true })
-      .find(item => item.ns === CONTEXT_MANAGER_SETTINGS_NAMESPACE)
-
-    this.current = normalizeSettings(this.source(), {
-      available: settings !== undefined,
-      writable: settings?.writable === true,
-      ...(descriptor === undefined ? {} : { revision: descriptor.revision }),
-    })
+  private async mutate(state: WritableState, ops: readonly SettingsPathOp[]): Promise<void> {
+    await state.settings.mutate(
+      CONTEXT_MANAGER_SETTINGS_NAMESPACE,
+      ops,
+      state.revision,
+    )
   }
 }
