@@ -9,6 +9,7 @@ export type ContextManagerErrorCode =
   | 'persistence-unavailable'
   | 'persistence-not-ready'
   | 'persistence-read-only'
+  | 'invalid-schema-version'
   | 'unsupported-schema-version'
 
 export class ContextManagerError extends Error {
