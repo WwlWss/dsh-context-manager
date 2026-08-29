@@ -67,6 +67,7 @@ test('service starts without settings and reports persistence honestly', async (
   assert.ok(manager)
   assert.deepEqual(manager.snapshot().persistence, {
     available: false,
+    registered: false,
     writable: false,
   })
 
@@ -81,6 +82,7 @@ test('profile CRUD persists through DSH Settings without resolving references', 
 
   await manager.createProfile('anima', anima)
   let snapshot = manager.snapshot()
+  assert.equal(snapshot.persistence.registered, true)
   assert.equal(snapshot.profiles.anima.name, 'Anima Development')
   assert.equal(snapshot.profiles.anima.skills.docker, 'manual')
 
@@ -270,10 +272,12 @@ test('settings provider detach falls back to the composition entry without killi
   const { manager, settingsFiber } = await boot()
   await manager.createProfile('anima', anima)
   assert.equal(manager.snapshot().persistence.available, true)
+  assert.equal(manager.snapshot().persistence.registered, true)
 
   await settingsFiber.dispose()
   const snapshot = manager.snapshot()
   assert.equal(snapshot.persistence.available, false)
+  assert.equal(snapshot.persistence.registered, false)
   assert.equal(snapshot.persistence.writable, false)
   assert.deepEqual(Object.keys(snapshot.profiles), [])
 })
