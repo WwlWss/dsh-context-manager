@@ -53,8 +53,8 @@ const anima = {
   name: 'Anima Development',
   basePreset: 'standard',
   skills: {
-    'anima-training': 'auto',
-    docker: 'manual',
+    'anima-training': { mode: 'auto' },
+    docker: { mode: 'manual' },
   },
 }
 
@@ -84,7 +84,7 @@ test('profile CRUD persists through DSH Settings without resolving references', 
   let snapshot = manager.snapshot()
   assert.equal(snapshot.persistence.registered, true)
   assert.equal(snapshot.profiles.anima.name, 'Anima Development')
-  assert.equal(snapshot.profiles.anima.skills.docker, 'manual')
+  assert.equal(snapshot.profiles.anima.skills.docker.mode, 'manual')
 
   await manager.setDefaultProfile('future-profile', snapshot.persistence.revision)
   snapshot = manager.snapshot()
@@ -94,29 +94,53 @@ test('profile CRUD persists through DSH Settings without resolving references', 
 
   await manager.setSkillMode('anima', 'future-skill', 'pinned', snapshot.persistence.revision)
   snapshot = manager.snapshot()
-  assert.equal(snapshot.profiles.anima.skills['future-skill'], 'pinned')
+  assert.equal(snapshot.profiles.anima.skills['future-skill'].mode, 'pinned')
 
   const descriptor = settings.describe().find(item => item.ns === CONTEXT_MANAGER_SETTINGS_NAMESPACE)
   assert.ok(descriptor)
-  assert.equal(descriptor.user.profiles.anima.skills['future-skill'], 'pinned')
+  assert.equal(descriptor.user.profiles.anima.skills['future-skill'].mode, 'pinned')
 })
 
-test('structured writes preserve caller-supplied extension fields', async () => {
+test('structured writes preserve caller-supplied extension fields, including skill binding metadata', async () => {
   const { manager } = await boot()
   await manager.createProfile('extended', {
     ...anima,
+    skills: {
+      ...anima.skills,
+      docker: {
+        mode: 'manual',
+        placement: 'future-anchor',
+        order: 500,
+        activation: { kind: 'future-rule' },
+      },
+    },
     futureField: {
       keep: true,
       nested: ['a', 'b'],
     },
   })
 
-  const stored = manager.getStoredProfile('extended')
+  let stored = manager.getStoredProfile('extended')
   assert.deepEqual(stored.futureField, {
     keep: true,
     nested: ['a', 'b'],
   })
-  assert.equal(manager.snapshot().profiles.extended.name, 'Anima Development')
+  assert.deepEqual(stored.skills.docker, {
+    mode: 'manual',
+    placement: 'future-anchor',
+    order: 500,
+    activation: { kind: 'future-rule' },
+  })
+  assert.deepEqual(manager.snapshot().profiles.extended.skills.docker, { mode: 'manual' })
+
+  await manager.setSkillMode('extended', 'docker', 'off', manager.snapshot().persistence.revision)
+  stored = manager.getStoredProfile('extended')
+  assert.deepEqual(stored.skills.docker, {
+    mode: 'off',
+    placement: 'future-anchor',
+    order: 500,
+    activation: { kind: 'future-rule' },
+  })
 })
 
 test('deleting a profile preserves the dangling default reference explicitly', async () => {
@@ -171,20 +195,20 @@ test('structured skill edits use path-local guards instead of whole-profile gati
     basePreset: [],
     futureField: { untouched: true },
     skills: {
-      broken: 'banana',
-      docker: 'manual',
+      broken: { mode: 'banana', future: 'keep' },
+      docker: { mode: 'manual', placement: 'keep-me' },
     },
   })
 
   await manager.setSkillMode('repairable', 'docker', 'off', manager.snapshot().persistence.revision)
   let stored = manager.getStoredProfile('repairable')
-  assert.equal(stored.skills.docker, 'off')
-  assert.equal(stored.skills.broken, 'banana')
+  assert.deepEqual(stored.skills.docker, { mode: 'off', placement: 'keep-me' })
+  assert.deepEqual(stored.skills.broken, { mode: 'banana', future: 'keep' })
   assert.deepEqual(stored.futureField, { untouched: true })
 
   await manager.setSkillMode('repairable', 'broken', 'auto', manager.snapshot().persistence.revision)
   stored = manager.getStoredProfile('repairable')
-  assert.equal(stored.skills.broken, 'auto')
+  assert.deepEqual(stored.skills.broken, { mode: 'auto', future: 'keep' })
   assert.equal(stored.name, 42)
 })
 
@@ -209,11 +233,48 @@ test('structured skill edits never replace non-object path segments', async () =
     error => error instanceof ContextManagerError && error.code === 'profile-path-not-editable',
   )
   assert.equal(manager.getStoredProfile('bad-skills').skills, 'DO NOT REPLACE')
+
+  await manager.setRawProfile('bad-binding', {
+    name: 'Bad binding',
+    basePreset: 'standard',
+    skills: { docker: 'legacy scalar must not be overwritten' },
+  }, manager.snapshot().persistence.revision)
+
+  await assert.rejects(
+    manager.setSkillMode('bad-binding', 'docker', 'off', manager.snapshot().persistence.revision),
+    error => error instanceof ContextManagerError && error.code === 'profile-path-not-editable',
+  )
+  assert.equal(manager.getStoredProfile('bad-binding').skills.docker, 'legacy scalar must not be overwritten')
 })
 
-test('skill mode validation exists at runtime and does not corrupt the profile', async () => {
+test('removing a skill binding is an explicit whole-binding operation', async () => {
   const { manager } = await boot()
-  await manager.createProfile('anima', anima)
+  await manager.setRawProfile('repair', {
+    name: 'Repair',
+    basePreset: 'standard',
+    skills: {
+      broken: 'legacy malformed binding',
+      keep: { mode: 'auto', future: true },
+    },
+  })
+
+  await manager.removeSkillBinding('repair', 'broken', manager.snapshot().persistence.revision)
+  const stored = manager.getStoredProfile('repair')
+  assert.equal(Object.hasOwn(stored.skills, 'broken'), false)
+  assert.deepEqual(stored.skills.keep, { mode: 'auto', future: true })
+
+  await assert.rejects(
+    manager.removeSkillBinding('repair', 'missing', manager.snapshot().persistence.revision),
+    error => error instanceof ContextManagerError && error.code === 'skill-binding-not-found',
+  )
+})
+
+test('skill mode validation exists at runtime and does not corrupt the binding', async () => {
+  const { manager } = await boot()
+  await manager.createProfile('anima', {
+    ...anima,
+    skills: { docker: { mode: 'manual', future: 'keep' } },
+  })
   const before = manager.snapshot().persistence.revision
 
   await assert.rejects(
@@ -221,7 +282,7 @@ test('skill mode validation exists at runtime and does not corrupt the profile',
     error => error instanceof ContextManagerError && error.code === 'invalid-skill-mode',
   )
 
-  assert.equal(manager.getStoredProfile('anima').skills.docker, 'manual')
+  assert.deepEqual(manager.getStoredProfile('anima').skills.docker, { mode: 'manual', future: 'keep' })
   assert.equal(manager.snapshot().persistence.revision, before)
 })
 
@@ -268,6 +329,35 @@ test('explicit stale expectedRevision is rejected by native Settings conflict se
     manager.setSkillMode('anima', 'react', 'auto', stale),
     error => error instanceof SettingsConflictError,
   )
+})
+
+test('schema-invalid external user documents cannot be overwritten from last-good state', async () => {
+  const { manager, settings } = await boot()
+  await manager.createProfile('anima', anima)
+  const before = manager.snapshot()
+
+  const externallyEdited = {
+    [CONTEXT_MANAGER_SETTINGS_NAMESPACE]: {
+      schemaVersion: 'broken-version',
+      profiles: {
+        anima: 'EXTERNAL DATA MUST NOT BE REPAIRED BY A STALE STRUCTURED EDIT',
+      },
+      futureTopLevel: { preserve: true },
+    },
+  }
+  settings.externalEdit(externallyEdited)
+
+  // DSH deliberately keeps the last-good resolved value and does not advance
+  // the namespace revision for a schema-invalid external edit.
+  const afterExternalEdit = manager.snapshot()
+  assert.equal(afterExternalEdit.persistence.revision, before.persistence.revision)
+  assert.equal(afterExternalEdit.profiles.anima.skills.docker.mode, 'manual')
+
+  await assert.rejects(
+    manager.setSkillMode('anima', 'docker', 'off', afterExternalEdit.persistence.revision),
+    error => error instanceof ContextManagerError && error.code === 'persistence-document-invalid',
+  )
+  assert.deepEqual(settings.doc, externallyEdited)
 })
 
 test('snapshot revision follows raw document changes even when resolved settings are unchanged', async () => {
@@ -340,10 +430,10 @@ test('advanced editing rejects only current DSH losslessness hazards, not cosmet
   await manager.createProfile('constructor', {
     name: '  preserved exactly  ',
     basePreset: 'missing preset is allowed',
-    skills: { prototype: 'manual' },
+    skills: { prototype: { mode: 'manual' } },
   })
   assert.equal(manager.snapshot().profiles.constructor.name, '  preserved exactly  ')
-  assert.equal(manager.snapshot().profiles.constructor.skills.prototype, 'manual')
+  assert.equal(manager.snapshot().profiles.constructor.skills.prototype.mode, 'manual')
 
   await assert.rejects(
     manager.setRawProfile('__proto__', {}),
@@ -366,10 +456,16 @@ test('advanced editing rejects only current DSH losslessness hazards, not cosmet
   )
 })
 
-test('domain snapshots are immutable down to diagnostic records', async () => {
+test('domain snapshots are immutable down to skill bindings and diagnostic records', async () => {
   const { manager } = await boot()
-  await manager.setRawProfile('broken', { name: 42, basePreset: 'standard' })
+  await manager.createProfile('anima', anima)
+  await manager.setRawProfile('broken', { name: 42, basePreset: 'standard' }, manager.snapshot().persistence.revision)
   const snapshot = manager.snapshot()
+
+  assert.throws(() => {
+    snapshot.profiles.anima.skills.docker.mode = 'off'
+  }, TypeError)
+
   const diagnostic = snapshot.diagnostics.find(item => item.profileId === 'broken')
   assert.ok(diagnostic)
   assert.throws(() => {
