@@ -8,7 +8,7 @@ import {
 } from '@deepseek-ai/dsh-settings'
 
 import { assertSafePathKey, ContextManagerError } from '../domain/errors.js'
-import type { ContextManagerSnapshot, ContextProfile, SkillMode } from '../domain/model.js'
+import type { ContextManagerSnapshot, SkillMode } from '../domain/model.js'
 import { normalizeSettings, parseProfileForWrite, parseSkillMode } from '../domain/normalize.js'
 import {
   classifyContextManagerSchemaVersion,
@@ -17,11 +17,7 @@ import {
   EMPTY_CONTEXT_MANAGER_SETTINGS,
   type StoredContextManagerSettings,
 } from '../domain/schema.js'
-import {
-  assertNoUnsafeDshPropertyKeys,
-  assertRawProfileWriteSafe,
-  isPlainObject,
-} from '../domain/storage.js'
+import { assertRawProfileWriteSafe, isPlainObject } from '../domain/storage.js'
 
 export const CONTEXT_MANAGER_SETTINGS_NAMESPACE = settingsNamespace('dsh-context-manager')
 
@@ -97,8 +93,9 @@ export class ContextManagerService extends Service {
   }
 
   /**
-   * Create a structured profile. Referenced presets/skills need not exist, but
-   * the profile's own current Domain shape must be valid.
+   * Create a structured profile. Known Domain fields are validated, while
+   * additional JSON-shaped fields are preserved verbatim for forward-compatible
+   * editing instead of being silently discarded by the parser.
    */
   async createProfile(id: string, input: unknown, expectedRevision?: number): Promise<void> {
     assertSafePathKey(id, 'profile id')
@@ -107,20 +104,21 @@ export class ContextManagerService extends Service {
       throw new ContextManagerError('profile-exists', `profile ${JSON.stringify(id)} already exists`)
     }
 
-    const profile = this.parseWritableProfile(input)
-    assertNoUnsafeDshPropertyKeys(profile, 'profile')
-    await this.mutate(state, [{ op: 'set', path: ['profiles', id], value: profile }])
+    this.validateStructuredProfileWrite(input)
+    await this.mutate(state, [{ op: 'set', path: ['profiles', id], value: input }])
   }
 
-  /** Explicitly replace any stored payload with a structured Domain profile. */
+  /**
+   * Explicitly replace any stored payload with a structurally valid profile,
+   * preserving any additional JSON-shaped fields supplied by the caller.
+   */
   async replaceProfile(id: string, input: unknown, expectedRevision?: number): Promise<void> {
     assertSafePathKey(id, 'profile id')
     const state = this.captureWritableState(expectedRevision)
     this.requireStoredProfile(state.stored, id)
 
-    const profile = this.parseWritableProfile(input)
-    assertNoUnsafeDshPropertyKeys(profile, 'profile')
-    await this.mutate(state, [{ op: 'set', path: ['profiles', id], value: profile }])
+    this.validateStructuredProfileWrite(input)
+    await this.mutate(state, [{ op: 'set', path: ['profiles', id], value: input }])
   }
 
   /**
@@ -199,15 +197,20 @@ export class ContextManagerService extends Service {
     ])
   }
 
-  private parseWritableProfile(input: unknown): ContextProfile {
+  private validateStructuredProfileWrite(input: unknown): void {
     try {
-      return parseProfileForWrite(input)
+      parseProfileForWrite(input)
     } catch (error) {
       throw new ContextManagerError(
         'invalid-profile',
         error instanceof Error ? error.message : String(error),
       )
     }
+
+    // The parser intentionally ignores unknown extension fields. Validate the
+    // complete supplied payload for advanced-editor losslessness before storing
+    // that original payload, so successful structured writes never drop them.
+    assertRawProfileWriteSafe(input)
   }
 
   private requireStoredProfile(stored: StoredContextManagerSettings, id: string): unknown {
