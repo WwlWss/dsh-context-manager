@@ -26,7 +26,12 @@ The plugin is deliberately additive: installing it must not rewrite or replace D
 - Keep browser presentation separated from Host filesystem/state through DSH's Host -> Remote -> Client -> UI architecture.
 - Make uninstall/disable restore stock DSH behavior without migration or repair work.
 
-The maintained project constraints live in [docs/architecture.md](docs/architecture.md), and the reviewed/tested DSH baselines live in [docs/compatibility.md](docs/compatibility.md).
+Project documentation:
+
+- [Architecture and non-negotiable design constraints](docs/architecture.md)
+- [Maintainer development guide](docs/development-guide.md)
+- [Long-term implementation roadmap](docs/roadmap.md)
+- [Reviewed/tested DSH compatibility baselines](docs/compatibility.md)
 
 ## Current Host profile model
 
@@ -69,6 +74,8 @@ DSH Settings revision fencing is an in-process guarantee. If multiple DSH proces
 9. Transformation pipeline: prompt/source transforms, durable history-Surface transforms, display regex, and isolated renderer/helper bindings.
 10. Compatibility/regression tests across supported DSH releases and all shipped presets.
 
+The detailed dependency-ordered implementation plan lives in [docs/roadmap.md](docs/roadmap.md).
+
 ## Development
 
 Requirements follow current DSH development baselines:
@@ -84,6 +91,8 @@ pnpm run check
 ```
 
 `pnpm run check` performs type checking, a clean production build, and package/domain tests.
+
+Before changing runtime integration or adding a Web capability, read [docs/development-guide.md](docs/development-guide.md). It records the project's persistence, lifecycle, DSH-integration, transform, client, performance, and testing rules.
 
 The git-install `prepare` path is intentionally smaller than the development build: it transpiles only the runtime JavaScript required by the declared package entry. Type checking and declaration generation remain development/CI responsibilities.
 
