@@ -12,13 +12,16 @@ function fromRoot(relativePath) {
   return path.resolve(root, relativePath)
 }
 
-test('package manifest points at real build and bundle artifacts', async () => {
+test('package manifest points at real build, types, and bundle artifacts', async () => {
   assert.equal(packageJson.type, 'module')
   assert.equal(packageJson.main, './lib/index.js')
-  assert.equal(packageJson.exports['.'], './lib/index.js')
+  assert.equal(packageJson.types, './lib/index.d.ts')
+  assert.equal(packageJson.exports['.'].default, './lib/index.js')
+  assert.equal(packageJson.exports['.'].types, './lib/index.d.ts')
   assert.equal(packageJson.dsh?.bundle?.patch, './cordis.patch.yml')
 
   await access(fromRoot(packageJson.main))
+  await access(fromRoot(packageJson.types))
   await access(fromRoot(packageJson.dsh.bundle.patch))
 })
 
@@ -30,23 +33,10 @@ test('bundle patch inserts only the namespaced context-manager row', async () =>
   assert.doesNotMatch(patch, /^- id:/m)
 })
 
-test('built host entry has the expected Cordis plugin shape', async () => {
+test('built host entry exposes the Context Manager service contract', async () => {
   const entry = await import(pathToFileURL(fromRoot(packageJson.main)).href)
   assert.equal(entry.name, 'dsh-context-manager')
   assert.equal(typeof entry.apply, 'function')
-
-  const messages = []
-  const ctx = {
-    logger(name) {
-      assert.equal(name, 'dsh-context-manager')
-      return {
-        info(message) {
-          messages.push(message)
-        },
-      }
-    },
-  }
-
-  entry.apply(ctx)
-  assert.deepEqual(messages, ['Context Manager loaded (scaffold mode)'])
+  assert.equal(typeof entry.ContextManagerService, 'function')
+  assert.equal(entry.CONTEXT_MANAGER_SETTINGS_NAMESPACE, 'dsh-context-manager')
 })

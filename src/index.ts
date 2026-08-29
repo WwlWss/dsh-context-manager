@@ -1,14 +1,16 @@
 import type { Context } from '@deepseek-ai/cordis'
 
+import { ContextManagerService } from './service/context-manager.js'
+
+export * from './domain/errors.js'
+export * from './domain/model.js'
+export * from './domain/schema.js'
+export { ContextManagerService, CONTEXT_MANAGER_SETTINGS_NAMESPACE } from './service/context-manager.js'
+
 export const name = 'dsh-context-manager'
 
-/**
- * Host entry for DSH Context Manager.
- *
- * The scaffold intentionally performs no runtime mutation beyond diagnostics.
- * Later milestones should use Cordis dependency injection and effect-owned
- * registrations rather than broad exception swallowing.
- */
+/** Mount the model-inert Host state service into the plugin's Cordis fiber. */
 export function apply(ctx: Context): void {
-  ctx.logger('dsh-context-manager').info('Context Manager loaded (scaffold mode)')
+  ctx.plugin(ContextManagerService)
+  ctx.logger('dsh-context-manager').info('Context Manager host state service loaded')
 }
