@@ -30,8 +30,13 @@ export interface ContextManagerDiagnostic {
 }
 
 export interface ContextManagerPersistenceState {
+  /** Whether a Settings provider is visible from the Context Manager scope. */
   available: boolean
+  /** Whether the Context Manager namespace is currently registered on it. */
+  registered: boolean
+  /** Whether a Context Manager write can currently be attempted. */
   writable: boolean
+  /** Raw user-section revision when the namespace is registered. */
   revision?: number
 }
 
