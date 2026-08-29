@@ -10,9 +10,9 @@ Context Manager is an advanced context editor. It exposes DSH capabilities and p
 - Do not auto-fallback missing references, auto-disable conflicting modules, auto-trim content, auto-reorder entries, or silently rewrite user data.
 - Unresolved preset/skill/module references are valid stored intent. Surface their health separately as diagnostics.
 - Diagnostics are informational by default, not gates.
-- Reject only operations that cannot be represented safely: storage is unavailable/read-only, the stored schema is newer than this plugin can safely write, data violates persistence integrity, or the DSH runtime cannot actually provide the claimed capability.
+- Reject only operations that cannot be represented safely: storage is unavailable/read-only, the stored schema cannot be safely written by this build, data violates persistence integrity, or the DSH runtime cannot actually provide the claimed capability.
 - Do not invent a UI control for a runtime behavior DSH cannot faithfully express.
-- Prefer raw/advanced editing seams where they can preserve the same technical integrity guarantees as structured editing.
+- Prefer advanced stored-payload editing seams where they can preserve the same technical integrity guarantees as structured editing.
 
 ## Principle: native-first overlays
 
@@ -33,17 +33,41 @@ The Host is authoritative for Context Manager state. Browser/client code will ed
 
 DSH Settings currently provides schema defaults/composition base plus one user layer. Therefore `ctx.settings` stores the reusable Context Manager profile library and a global `defaultProfileId`; it must not be misrepresented as native Global -> Project -> Session inheritance. Future project/session bindings belong to their appropriate DSH persistence scopes.
 
-The settings namespace uses a tolerant envelope: `schemaVersion`, optional `defaultProfileId`, and `profiles: Record<string, unknown>`. Individual profile payloads are parsed independently. One malformed profile therefore becomes a diagnostic instead of preventing every other profile from loading.
+The settings namespace uses a tolerant envelope: numeric `schemaVersion`, optional string `defaultProfileId`, and `profiles: Record<string, unknown>`. The envelope remains schema-owned technical structure; individual profile payloads are parsed independently. One malformed profile therefore becomes a diagnostic instead of preventing every other profile from loading.
 
-A profile currently records only semantics implemented by the domain: display metadata, a native base-preset reference, and desired skill modes. Prompt placement/order fields are added only when their runtime adapter exists, so persisted configuration never pretends an unimplemented behavior is active.
+### Stored -> Domain -> Runtime
 
-Profile ids and reference strings are not cosmetically normalized. The only reserved path keys are those that cross a known technical integrity boundary in the current DSH Settings object/path implementation (`__proto__`, `prototype`, and `constructor`).
+Keep three state layers distinct:
 
-The Host exposes both structured profile writes and an advanced raw-profile write. Raw writes are preserved as supplied after DSH Settings' JSON-integrity checks; malformed domain content remains stored and is surfaced as diagnostics rather than auto-repaired.
+1. **Stored payload** — what Context Manager persistence currently contains for a profile, including unknown fields or malformed advanced-editor data.
+2. **Domain view** — the subset this Context Manager build can structurally parse as a `ContextProfile`.
+3. **Runtime/effective view** — what the current DSH composition can actually resolve/apply. This layer is deliberately absent from PR2 and belongs to later preset/prompt/skill adapters.
 
-`schemaVersion` is forward-protective. If stored data is newer than this plugin understands, reads remain diagnostic but all writes are refused so an older plugin cannot destroy newer fields.
+Do not put runtime health (for example `basePresetExists`) into the stored `ContextProfile`. Missing preset/skill references remain valid declarative Domain data and are resolved separately.
 
-Profile mutations use DSH Settings path mutation and optional `expectedRevision` instead of private read/modify/write locking. This preserves unrelated fields and delegates stale-writer detection to the owning DSH service.
+A profile currently records only semantics implemented by the Domain: display metadata, a native base-preset reference, and desired skill modes. Prompt placement/order fields are added only when their runtime adapter exists, so persisted configuration never pretends an unimplemented behavior is active.
+
+### Structured and advanced edits
+
+Structured profile creation/replacement requires the complete current Domain shape. Narrow structured field edits use **path-local structural guards** instead: they validate only the path they traverse and the value being written. Unrelated malformed fields do not block a local edit or repair, and Context Manager never replaces a non-object intermediate path just to make an edit succeed.
+
+The Host also exposes detached stored-payload reads plus an advanced stored-payload write. Domain-invalid JSON-shaped data may be preserved and diagnosed rather than repaired. The advanced editor is still bounded by lossless persistence: `undefined` is refused because DSH Settings treats object `undefined` as sparse omission, and the valid JSON key `__proto__` is temporarily refused because current DSH Settings carries an upstream property-safe-construction TODO for that key. Ordinary names such as `constructor` and `prototype` are not cosmetically restricted.
+
+Profile ids, display names, references, and content are otherwise not normalized or rewritten.
+
+### Schema versions
+
+`schemaVersion` stays numerically broad at the DSH Settings schema layer so an unsupported numeric version can still register and produce a read-only Context Manager diagnostic. Compatibility is decided explicitly in the Domain, not by assuming every version less than or equal to the current number is readable.
+
+PR2 supports schema version `1` only. Invalid numeric forms (for example `0` or `1.5`) and unsupported future versions remain inspectable as diagnostics, but every Context Manager write is refused until a build with an explicit parser/migration supports them.
+
+### Revision-fenced writes
+
+Every semantic Context Manager write is fenced with DSH Settings' raw-section `revision`. A caller-supplied `expectedRevision` is honored; when omitted, the Host captures the current revision immediately before it validates the operation and passes that same revision to `settings.mutate()`. This closes the check-to-mutate race: if another writer changes the namespace before the queued mutation reaches the front, native `SettingsConflictError` rejects the stale edit rather than applying it to a newly changed path.
+
+This guarantee is in-process, matching DSH Settings. Cross-process concurrency remains provider-defined and Context Manager does not add a parallel lock manager.
+
+PR2 deliberately keeps no second Context Manager state cache. `snapshot()` derives the Domain view on demand from the currently registered Settings descriptor/source, so the raw document revision remains authoritative even for user-layer changes whose resolved value is deep-equal and therefore do not trigger a normal Settings watcher.
 
 This domain milestone is intentionally model-inert: saving `basePreset`, `pinned`, `auto`, `manual`, or `off` records user intent only. Preset, prompt, and skill runtime adapters are separate milestones and must not claim those policies are active until they are actually connected and tested.
 
@@ -93,6 +117,8 @@ Use DSH `settings` for reusable Context Manager configuration state when availab
 Malformed Context Manager resources should fail in isolation. A malformed profile remains stored and becomes a diagnostic; it is not silently deleted or rewritten. Invalid Cordis deployment configuration is different: follow DSH conventions and fail fast with an actionable schema error rather than swallowing it.
 
 Large prompt/skill bodies may live in a dedicated content library, but do not reimplement settings revisions, stale-write detection, JSON-shape validation, or user override merging around them.
+
+DSH Settings' in-process revision queue is not a cross-process transaction protocol. When multiple DSH processes share one provider/document, convergence and same-namespace conflicts remain provider-defined.
 
 ## Host and Web client boundary
 
