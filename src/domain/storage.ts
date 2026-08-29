@@ -14,50 +14,13 @@ function childPath(path: string, key: string | number): string {
 }
 
 /**
- * Refuse only the JSON property key that current DSH Settings cannot yet
- * construct losslessly. DSH itself carries an upstream property-safety TODO
- * for `__proto__`; ordinary names such as `constructor` and `prototype` remain
- * valid editor data.
+ * Context Manager's narrow preflight for a profile payload before handing the
+ * write to native DSH Settings. DSH remains the authoritative JSON-shape
+ * validator; this helper only rejects cases where the current Settings
+ * implementation would accept an operation but cannot preserve the editor's
+ * payload semantics losslessly.
  */
-export function assertNoUnsafeDshPropertyKeys(value: unknown, label: string): void {
-  const seen = new WeakSet<object>()
-
-  const visit = (current: unknown, path: string): void => {
-    if (typeof current !== 'object' || current === null) return
-    if (seen.has(current)) return
-    seen.add(current)
-
-    if (Array.isArray(current)) {
-      current.forEach((entry, index) => visit(entry, childPath(path, index)))
-      return
-    }
-
-    // Non-plain objects are rejected later by native DSH Settings JSON-shape
-    // validation. Do not duplicate that validator here.
-    if (!isPlainObject(current)) return
-
-    for (const [key, entry] of Object.entries(current)) {
-      const nextPath = childPath(path, key)
-      if (key === '__proto__') {
-        throw new ContextManagerError(
-          'unsafe-path-key',
-          `${label} contains the DSH-unsafe property key "__proto__" at ${nextPath}`,
-        )
-      }
-      visit(entry, nextPath)
-    }
-  }
-
-  visit(value, '$')
-}
-
-/**
- * Additional checks needed by the advanced stored-payload editor before DSH
- * Settings takes over JSON-shape validation. In particular, DSH treats
- * `undefined` object fields as sparse omissions, which would make a raw editor
- * claim to store data that was actually discarded.
- */
-export function assertRawProfileWriteSafe(value: unknown): void {
+export function assertStoredProfilePayloadSafe(value: unknown): void {
   if (value === undefined) {
     throw new ContextManagerError(
       'invalid-raw-profile',
@@ -83,8 +46,8 @@ export function assertRawProfileWriteSafe(value: unknown): void {
       return
     }
 
-    // Let DSH reject Dates, Maps, cycles through non-plain containers, BigInts,
-    // and other non-JSON values with its authoritative JSON-shape error.
+    // Non-plain objects and cycles remain native DSH Settings concerns. Do not
+    // grow a competing JSON validator in Context Manager.
     if (!isPlainObject(current)) return
 
     for (const [key, entry] of Object.entries(current)) {
@@ -92,7 +55,7 @@ export function assertRawProfileWriteSafe(value: unknown): void {
       if (key === '__proto__') {
         throw new ContextManagerError(
           'unsafe-path-key',
-          `raw profile contains the DSH-unsafe property key "__proto__" at ${nextPath}`,
+          `profile payload contains the DSH-unsafe property key "__proto__" at ${nextPath}`,
         )
       }
       visit(entry, nextPath)
