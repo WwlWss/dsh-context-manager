@@ -2,6 +2,18 @@
 
 This document records the constraints that keep Context Manager additive to DeepSeek Harness instead of becoming a parallel agent runtime.
 
+## Principle: editor, not policy engine
+
+Context Manager is an advanced context editor. It exposes DSH capabilities and preserves user intent; it does not decide what the user ought to configure.
+
+- Mutations happen only because the user explicitly requested them.
+- Do not auto-fallback missing references, auto-disable conflicting modules, auto-trim content, auto-reorder entries, or silently rewrite user data.
+- Unresolved preset/skill/module references are valid stored intent. Surface their health separately as diagnostics.
+- Diagnostics are informational by default, not gates.
+- Reject only operations that cannot be represented safely: storage is unavailable/read-only, the stored schema is newer than this plugin can safely write, data violates persistence integrity, or the DSH runtime cannot actually provide the claimed capability.
+- Do not invent a UI control for a runtime behavior DSH cannot faithfully express.
+- Prefer raw/advanced editing seams where they can preserve the same technical integrity guarantees as structured editing.
+
 ## Principle: native-first overlays
 
 Context Manager must compose with DSH-owned capabilities rather than reimplement them.
@@ -14,6 +26,26 @@ Context Manager must compose with DSH-owned capabilities rather than reimplement
 - DSH owns the Web layout and Slot composition model.
 
 Context Manager owns only user-facing organization and policy overlays: modular prompt definitions, skill bindings, placement/order metadata, profiles, and their UI.
+
+## Host profile domain
+
+The Host is authoritative for Context Manager state. Browser/client code will edit it through a later Remote surface rather than keeping a second independent truth.
+
+DSH Settings currently provides schema defaults/composition base plus one user layer. Therefore `ctx.settings` stores the reusable Context Manager profile library and a global `defaultProfileId`; it must not be misrepresented as native Global -> Project -> Session inheritance. Future project/session bindings belong to their appropriate DSH persistence scopes.
+
+The settings namespace uses a tolerant envelope: `schemaVersion`, optional `defaultProfileId`, and `profiles: Record<string, unknown>`. Individual profile payloads are parsed independently. One malformed profile therefore becomes a diagnostic instead of preventing every other profile from loading.
+
+A profile currently records only semantics implemented by the domain: display metadata, a native base-preset reference, and desired skill modes. Prompt placement/order fields are added only when their runtime adapter exists, so persisted configuration never pretends an unimplemented behavior is active.
+
+Profile ids and reference strings are not cosmetically normalized. The only reserved path keys are those that cross a known technical integrity boundary in the current DSH Settings object/path implementation (`__proto__`, `prototype`, and `constructor`).
+
+The Host exposes both structured profile writes and an advanced raw-profile write. Raw writes are preserved as supplied after DSH Settings' JSON-integrity checks; malformed domain content remains stored and is surfaced as diagnostics rather than auto-repaired.
+
+`schemaVersion` is forward-protective. If stored data is newer than this plugin understands, reads remain diagnostic but all writes are refused so an older plugin cannot destroy newer fields.
+
+Profile mutations use DSH Settings path mutation and optional `expectedRevision` instead of private read/modify/write locking. This preserves unrelated fields and delegates stale-writer detection to the owning DSH service.
+
+This domain milestone is intentionally model-inert: saving `basePreset`, `pinned`, `auto`, `manual`, or `off` records user intent only. Preset, prompt, and skill runtime adapters are separate milestones and must not claim those policies are active until they are actually connected and tested.
 
 ## Agent presets
 
@@ -56,11 +88,11 @@ Before shipping this behavior, verify live sessions, cold/resumed sessions, pres
 
 ## Settings and persistence
 
-Use DSH `settings` for Context Manager UI/configuration state when available: active profile, bindings, placement/order, feature flags, and other JSON-shaped user overrides.
+Use DSH `settings` for reusable Context Manager configuration state when available. Do not read or write DSH's settings file directly.
 
-Malformed Context Manager resources should fail in isolation and preserve last-good usable state where the owning DSH service supports it. Invalid Cordis deployment configuration is different: follow DSH conventions and fail fast with an actionable schema error rather than swallowing it.
+Malformed Context Manager resources should fail in isolation. A malformed profile remains stored and becomes a diagnostic; it is not silently deleted or rewritten. Invalid Cordis deployment configuration is different: follow DSH conventions and fail fast with an actionable schema error rather than swallowing it.
 
-Large prompt/skill bodies may live in a dedicated content library, but do not reimplement settings revisions, stale-write detection, or user override merging around them.
+Large prompt/skill bodies may live in a dedicated content library, but do not reimplement settings revisions, stale-write detection, JSON-shape validation, or user override merging around them.
 
 ## Host and Web client boundary
 
