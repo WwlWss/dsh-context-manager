@@ -18,8 +18,8 @@ The plugin is deliberately additive: installing it must not rewrite or replace D
 - Preserve DSH's skill registry and providers; apply managed visibility/invocation policy by scope when possible.
 - Provide four skill states: Pinned, Auto, Manual, and Off.
 - Store reusable profile state through DSH settings instead of building a parallel settings database.
-- Preserve unresolved references and malformed raw profile content; diagnostics describe health without becoming content-policy gates.
-- Expose advanced/raw editing where DSH storage integrity can still be guaranteed.
+- Preserve unresolved references and malformed advanced-editor profile payloads; diagnostics describe health without becoming content-policy gates.
+- Expose advanced stored-payload editing where DSH storage integrity can still be guaranteed.
 - Render the Web UI as an additive right-side Drawer through the shell overlay, without taking over the single-occupant `details` slot.
 - Keep browser presentation separated from Host filesystem/state through DSH's Host -> Remote -> Client -> UI architecture.
 - Make uninstall/disable restore stock DSH behavior without migration or repair work.
@@ -30,15 +30,21 @@ The maintained project constraints live in [docs/architecture.md](docs/architect
 
 The Host service stores a global reusable profile library plus an optional `defaultProfileId` through DSH Settings. Project/Session binding is intentionally not faked as a Settings feature; those scopes are later milestones.
 
-A profile currently contains only state whose meaning is defined by the domain: display metadata, a native `basePreset` reference, and desired skill modes. These values are model-inert in this milestone: saving `basePreset: standard` or `docker: off` does not yet mount a preset or alter the native skill registry.
+A profile currently contains only state whose meaning is defined by the Domain: display metadata, a native `basePreset` reference, and desired skill modes. These values are model-inert in this milestone: saving `basePreset: standard` or `docker: off` does not yet mount a preset or alter the native skill registry.
 
-The settings envelope is intentionally tolerant so one malformed raw profile cannot take every other profile offline. Structured writes create normal profiles; an advanced raw-profile write preserves technically storable content exactly and lets the domain surface any unusable profile as a diagnostic.
+The settings envelope is intentionally tolerant so one malformed profile payload cannot take every other profile offline. Context Manager separates stored payloads from parsed Domain profiles; later runtime/effective resolution remains a separate layer.
+
+Structured creation/replacement validates the full current profile shape. Narrow edits such as one skill mode validate only the path they touch, so unrelated malformed fields do not block an explicit local repair. Every write is fenced to a DSH Settings revision, including calls that omit an explicit `expectedRevision`, which prevents a stale path check from being applied after another queued writer changed the profile.
+
+The advanced stored-payload seam accepts Domain-invalid JSON-shaped content without auto-repair. It still refuses values DSH cannot preserve losslessly: `undefined`, and currently the JSON property key `__proto__` because DSH Settings has an upstream property-safe-construction limitation for that key. Names such as `constructor` and `prototype` remain valid.
 
 ## Important compatibility notes
 
 The shipped Minimal preset is intentionally restrictive: it uses a complete persona and disables runtime context. Context Manager must report those placement limitations honestly. Users who need to change Minimal's composition can create a DSH-native preset copy/modular variant; the shipped preset remains untouched.
 
 SillyTavern-style arbitrary historical `depth=N` insertion is not currently treated as equivalent to DSH prompt placement. Context Manager will use DSH's supported system-prompt/runtime-context primitives unless DSH exposes an authoritative history-transform extension point in the future.
+
+DSH Settings revision fencing is an in-process guarantee. If multiple DSH processes share one settings provider/document, cross-process convergence remains provider-defined; Context Manager does not add a second locking system on top of DSH.
 
 ## Planned milestones
 
