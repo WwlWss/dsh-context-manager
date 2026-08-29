@@ -310,7 +310,7 @@ export class ContextManagerService extends Service {
     const versionStatus = classifyContextManagerSchemaVersion(stored.schemaVersion)
     if (versionStatus !== 'supported') {
       throw new ContextManagerError(
-        'unsupported-schema-version',
+        versionStatus === 'invalid' ? 'invalid-schema-version' : 'unsupported-schema-version',
         versionStatus === 'invalid'
           ? `settings schema version ${String(stored.schemaVersion)} is invalid; this build only writes schema ${String(CONTEXT_MANAGER_SCHEMA_VERSION)}`
           : `settings schema version ${String(stored.schemaVersion)} is unsupported; this build only writes schema ${String(CONTEXT_MANAGER_SCHEMA_VERSION)}`,
