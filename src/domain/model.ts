@@ -3,6 +3,17 @@ export const SKILL_MODES = ['pinned', 'auto', 'manual', 'off'] as const
 export type SkillMode = (typeof SKILL_MODES)[number]
 
 /**
+ * Structured Domain view of one stored skill binding.
+ *
+ * PR2 only interprets `mode`. The stored binding may carry additional fields
+ * for later placement, ordering, activation, transform, or runtime metadata;
+ * narrow edits must preserve those unknown siblings.
+ */
+export interface SkillBinding {
+  readonly mode: SkillMode
+}
+
+/**
  * Structured Domain view of one stored Context Manager profile payload.
  *
  * The stored payload may contain additional fields or may fail to parse
@@ -10,10 +21,10 @@ export type SkillMode = (typeof SKILL_MODES)[number]
  * make this structure invalid and is resolved only by later runtime adapters.
  */
 export interface ContextProfile {
-  name: string
-  description?: string
-  basePreset: string
-  skills: Record<string, SkillMode>
+  readonly name: string
+  readonly description?: string
+  readonly basePreset: string
+  readonly skills: Readonly<Record<string, SkillBinding>>
 }
 
 export type ContextManagerDiagnosticCode =
