@@ -17,7 +17,7 @@ import {
   EMPTY_CONTEXT_MANAGER_SETTINGS,
   type StoredContextManagerSettings,
 } from '../domain/schema.js'
-import { assertRawProfileWriteSafe, isPlainObject } from '../domain/storage.js'
+import { assertStoredProfilePayloadSafe, isPlainObject } from '../domain/storage.js'
 
 export const CONTEXT_MANAGER_SETTINGS_NAMESPACE = settingsNamespace('dsh-context-manager')
 
@@ -127,7 +127,7 @@ export class ContextManagerService extends Service {
    */
   async setRawProfile(id: string, value: unknown, expectedRevision?: number): Promise<void> {
     assertSafePathKey(id, 'profile id')
-    assertRawProfileWriteSafe(value)
+    assertStoredProfilePayloadSafe(value)
     const state = this.captureWritableState(expectedRevision)
     await this.mutate(state, [{ op: 'set', path: ['profiles', id], value }])
   }
@@ -208,9 +208,9 @@ export class ContextManagerService extends Service {
     }
 
     // The parser intentionally ignores unknown extension fields. Validate the
-    // complete supplied payload for advanced-editor losslessness before storing
-    // that original payload, so successful structured writes never drop them.
-    assertRawProfileWriteSafe(input)
+    // complete supplied payload for editor losslessness before storing that
+    // original payload, so successful structured writes never drop them.
+    assertStoredProfilePayloadSafe(input)
   }
 
   private requireStoredProfile(stored: StoredContextManagerSettings, id: string): unknown {
