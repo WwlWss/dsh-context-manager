@@ -98,16 +98,15 @@ export class ContextManagerService extends Service {
     await this.mutate([{ op: 'set', path: ['profiles', id], value }], expectedRevision)
   }
 
+  /**
+   * Delete only the profile the caller named. A default reference pointing at
+   * it is deliberately left dangling and becomes a diagnostic until the user
+   * explicitly changes that reference.
+   */
   async deleteProfile(id: string, expectedRevision?: number): Promise<void> {
     assertSafePathKey(id, 'profile id')
     this.requireStoredProfile(id)
-
-    const stored = this.source()
-    const ops: SettingsPathOp[] = [{ op: 'unset', path: ['profiles', id] }]
-    if (stored.defaultProfileId === id) {
-      ops.push({ op: 'unset', path: ['defaultProfileId'] })
-    }
-    await this.mutate(ops, expectedRevision)
+    await this.mutate([{ op: 'unset', path: ['profiles', id] }], expectedRevision)
   }
 
   /**
@@ -137,10 +136,6 @@ export class ContextManagerService extends Service {
     assertSafePathKey(profileId, 'profile id')
     assertSafePathKey(skillName, 'skill name')
     this.requireStoredProfile(profileId)
-
-    if (mode !== undefined && !(['pinned', 'auto', 'manual', 'off'] as const).includes(mode)) {
-      throw new ContextManagerError('invalid-profile', `invalid skill mode ${JSON.stringify(mode)}`)
-    }
 
     await this.mutate([
       mode === undefined
