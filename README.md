@@ -4,7 +4,9 @@ Modular preset, prompt, and skill context manager for DeepSeek Harness, inspired
 
 ## Status
 
-Early scaffold. The current foundation provides an installable, test-gated DSH bundle before feature code is added.
+Host-state milestone in development. The installable/test-gated DSH bundle foundation is complete; the current branch adds the first model-inert Context Manager domain service and settings-backed reusable profile library.
+
+Context Manager is an editor, not a policy engine. It preserves explicit user intent, reports unresolved or malformed resources as diagnostics, and does not silently fallback, repair, normalize, reorder, or delete user-authored configuration.
 
 The plugin is deliberately additive: installing it must not rewrite or replace DSH's shipped `standard`, `ptc`, `minimal`, or `cordis` agent presets, the built-in skill filesystem provider, the left workspace/session sidebar, or the existing Tool Details surface.
 
@@ -15,13 +17,22 @@ The plugin is deliberately additive: installing it must not rewrite or replace D
 - Add modular prompt/context definitions through DSH prompt assembly rather than replacing the agent loop.
 - Preserve DSH's skill registry and providers; apply managed visibility/invocation policy by scope when possible.
 - Provide four skill states: Pinned, Auto, Manual, and Off.
-- Store UI/configuration state through DSH settings when available instead of building a parallel settings database.
+- Store reusable profile state through DSH settings instead of building a parallel settings database.
+- Preserve unresolved references and malformed raw profile content; diagnostics describe health without becoming content-policy gates.
+- Expose advanced/raw editing where DSH storage integrity can still be guaranteed.
 - Render the Web UI as an additive right-side Drawer through the shell overlay, without taking over the single-occupant `details` slot.
 - Keep browser presentation separated from Host filesystem/state through DSH's Host -> Remote -> Client -> UI architecture.
-- Fail in isolation for malformed Context Manager resources while keeping DSH's normal fail-fast behavior for invalid Cordis deployment configuration.
 - Make uninstall/disable restore stock DSH behavior without migration or repair work.
 
 The maintained project constraints live in [docs/architecture.md](docs/architecture.md), and the reviewed/tested DSH baselines live in [docs/compatibility.md](docs/compatibility.md).
+
+## Current Host profile model
+
+The Host service stores a global reusable profile library plus an optional `defaultProfileId` through DSH Settings. Project/Session binding is intentionally not faked as a Settings feature; those scopes are later milestones.
+
+A profile currently contains only state whose meaning is defined by the domain: display metadata, a native `basePreset` reference, and desired skill modes. These values are model-inert in this milestone: saving `basePreset: standard` or `docker: off` does not yet mount a preset or alter the native skill registry.
+
+The settings envelope is intentionally tolerant so one malformed raw profile cannot take every other profile offline. Structured writes create normal profiles; an advanced raw-profile write preserves technically storable content exactly and lets the domain surface any unusable profile as a diagnostic.
 
 ## Important compatibility notes
 
@@ -31,8 +42,8 @@ SillyTavern-style arbitrary historical `depth=N` insertion is not currently trea
 
 ## Planned milestones
 
-1. Installable DSH bundle scaffold, build contract tests, and CI.
-2. Host-side Context Manager domain and settings-backed profile model.
+1. **Complete** — Installable DSH bundle scaffold, build contract tests, and CI.
+2. **In development** — Host-side Context Manager domain and settings-backed reusable profile model.
 3. Native agent-preset roster/read integration and locked base-preset structural view.
 4. Modular system-prompt/runtime-context overlay model with capability-aware placement.
 5. Scoped skill policy model for Pinned / Auto / Manual / Off, with leakage and resume tests.
@@ -55,7 +66,7 @@ pnpm install --frozen-lockfile
 pnpm run check
 ```
 
-`pnpm run check` performs type checking, a clean production build, and package-contract tests.
+`pnpm run check` performs type checking, a clean production build, and package/domain tests.
 
 The git-install `prepare` path is intentionally smaller than the development build: it transpiles only the runtime JavaScript required by the declared package entry. Type checking and declaration generation remain development/CI responsibilities.
 
