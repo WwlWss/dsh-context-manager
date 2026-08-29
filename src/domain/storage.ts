@@ -14,16 +14,17 @@ function childPath(path: string, key: string | number): string {
 }
 
 /**
- * Context Manager's narrow preflight for data that DSH Settings is about to
- * preserve as part of a semantic mutation. DSH remains the authoritative
- * JSON-shape validator; this walk only rejects cases where the current Settings
- * implementation cannot preserve the editor's data semantics losslessly.
+ * Context Manager's narrow preflight for a profile payload before handing the
+ * write to native DSH Settings. DSH remains the authoritative JSON-shape
+ * validator; this helper only rejects cases where the current Settings
+ * implementation would accept an operation but cannot preserve the newly
+ * supplied payload semantics losslessly.
  */
-function assertDshSettingsValueLossless(value: unknown, label: string): void {
+export function assertStoredProfilePayloadSafe(value: unknown): void {
   if (value === undefined) {
     throw new ContextManagerError(
       'invalid-raw-profile',
-      `undefined cannot be represented losslessly in ${label}`,
+      'undefined cannot be stored as a profile payload; delete the profile explicitly instead',
     )
   }
 
@@ -33,7 +34,7 @@ function assertDshSettingsValueLossless(value: unknown, label: string): void {
     if (current === undefined) {
       throw new ContextManagerError(
         'invalid-raw-profile',
-        `undefined at ${path} cannot be represented losslessly in ${label}`,
+        `undefined at ${path} cannot be represented losslessly by DSH Settings`,
       )
     }
     if (typeof current !== 'object' || current === null) return
@@ -54,7 +55,7 @@ function assertDshSettingsValueLossless(value: unknown, label: string): void {
       if (key === '__proto__') {
         throw new ContextManagerError(
           'unsafe-path-key',
-          `${label} contains the DSH-unsafe property key "__proto__" at ${nextPath}`,
+          `profile payload contains the DSH-unsafe property key "__proto__" at ${nextPath}`,
         )
       }
       visit(entry, nextPath)
@@ -62,24 +63,4 @@ function assertDshSettingsValueLossless(value: unknown, label: string): void {
   }
 
   visit(value, '$')
-}
-
-/** Validate one profile payload before a Context Manager-authored write. */
-export function assertStoredProfilePayloadSafe(value: unknown): void {
-  if (value === undefined) {
-    throw new ContextManagerError(
-      'invalid-raw-profile',
-      'undefined cannot be stored as a profile payload; delete the profile explicitly instead',
-    )
-  }
-  assertDshSettingsValueLossless(value, 'profile payload')
-}
-
-/**
- * Validate an already persisted raw Context Manager user section before a
- * semantic mutation reuses it. This catches forward/externally-authored data
- * that current DSH property construction cannot preserve losslessly.
- */
-export function assertStoredSettingsSectionSafe(value: unknown): void {
-  assertDshSettingsValueLossless(value, 'stored Context Manager settings section')
 }
