@@ -9,7 +9,7 @@ DeepSeek Harness is evolving quickly. Context Manager separates a **published co
 | Published baseline | `dsh-v0.1.1-rc.2` | Minimum line whose public architecture has been reviewed for the features Context Manager plans to use. The CI bundle smoke test uses the published `@deepseek-ai/dsh@0.1.1-rc.2` CLI. |
 | Source-forward target | `dsh-v0.1.2-alpha.1` (`cd5ef814...`) | Review current DSH direction and avoid designing against an API already superseded upstream. It is not a substitute for testing an installable published package. |
 
-Support claims should name a tested DSH version. Reading `master` or an unreleased tag is useful for design review, but is not by itself a compatibility test.
+Support claims should name a tested DSH version. Reading `master` or an unreleased tag is useful for design review, but is not by itself a compatibility test. Peer dependency ranges should therefore follow installable/tested releases rather than being widened merely to match an unreleased source version.
 
 ## Public seams verified in the published baseline
 
@@ -47,9 +47,19 @@ This is the basis for the planned policy-overlay prototype. Hard Off/Manual beha
 - `ctx.settings` supports schema-owned namespaces.
 - Resolution layers schema defaults, composition base, and user overrides.
 - Writes are validated and revision-aware.
+- `mutate()` applies path edits against the user section as it stands when the queued write reaches the front; `expectedRevision` is checked at that same point.
+- Resolved-value watchers are deep-equality gated, while raw user-section changes maintain a separate revision/document-update signal.
 - Externally observed invalid user data retains the last good resolved value; boot/registration validation remains fail-fast.
+- `installSettingsSection()` is the supported optional-capability helper for consumers that must continue operating without a mounted Settings provider.
 
-Use this for Context Manager configuration state rather than reproducing its concurrency and persistence rules.
+Context Manager therefore uses the Settings descriptor revision as its compare-and-swap fence and derives PR2 snapshots on demand instead of keeping a second cached revision.
+
+Two upstream limits are intentionally not papered over by Context Manager:
+
+1. **Cross-process concurrency is provider-defined.** DSH's namespace write queue and revision fence are in-process guarantees. If multiple DSH processes share one provider/document, Context Manager does not add a competing lock protocol.
+2. **Registration replacement has an upstream resynchronization TODO.** Current source-forward DSH notes that an old registration's in-flight write can outlive disposal/re-registration and may leave the replacement registration temporarily stale. Context Manager relies on normal Cordis effect teardown and does not claim stronger HMR guarantees than the owning Settings service.
+
+Current source-forward DSH also carries a property-safe-construction TODO for the valid JSON key `__proto__`. Until a supported DSH release fixes and is regression-tested for that path, Context Manager refuses that key at its own profile/skill path boundary and inside advanced stored payloads. It does not extend that restriction to cosmetic names such as `constructor` or `prototype`.
 
 ### Web client and Slots
 
