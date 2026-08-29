@@ -3,6 +3,7 @@ import {
   installSettingsSection,
   settingsNamespace,
   SettingsConflictError,
+  type SettingsDescriptor,
   type SettingsPathOp,
   type SettingsProvider,
 } from '@deepseek-ai/dsh-settings'
@@ -155,46 +156,71 @@ export class ContextManagerService extends Service {
   }
 
   /**
-   * Edit exactly one skill policy. The mutation only requires the path it
-   * traverses (profile object and optional skills object) to be structurally
-   * safe; unrelated malformed fields and unresolved references do not block a
-   * local repair/edit.
+   * Edit exactly one skill binding's `mode` leaf. Existing sibling metadata is
+   * preserved for forward-compatible placement/order/activation extensions.
+   * Unrelated malformed profile fields do not block this local repair/edit.
    */
   async setSkillMode(
     profileId: string,
     skillName: string,
-    mode: SkillMode | undefined,
+    mode: SkillMode,
     expectedRevision?: number,
   ): Promise<void> {
     assertSafePathKey(profileId, 'profile id')
     assertSafePathKey(skillName, 'skill name')
 
     const state = this.captureWritableState(expectedRevision)
-    const profile = this.requireProfileObject(state.stored, profileId)
-    if (profile.skills !== undefined && !isPlainObject(profile.skills)) {
+    const skills = this.requireSkillsObjectOrAbsent(state.stored, profileId)
+    const binding = skills?.[skillName]
+    if (binding !== undefined && !isPlainObject(binding)) {
       throw new ContextManagerError(
         'profile-path-not-editable',
-        `profile ${JSON.stringify(profileId)} has a non-object skills field; use the stored-payload editor or replace the profile explicitly`,
+        `profile ${JSON.stringify(profileId)} skill ${JSON.stringify(skillName)} is not an object; replace or remove that binding explicitly`,
       )
     }
 
-    let parsedMode: SkillMode | undefined
-    if (mode !== undefined) {
-      try {
-        parsedMode = parseSkillMode(mode)
-      } catch (error) {
-        throw new ContextManagerError(
-          'invalid-skill-mode',
-          error instanceof Error ? error.message : String(error),
-        )
-      }
+    let parsedMode: SkillMode
+    try {
+      parsedMode = parseSkillMode(mode)
+    } catch (error) {
+      throw new ContextManagerError(
+        'invalid-skill-mode',
+        error instanceof Error ? error.message : String(error),
+      )
     }
 
-    await this.mutate(state, [
-      parsedMode === undefined
-        ? { op: 'unset', path: ['profiles', profileId, 'skills', skillName] }
-        : { op: 'set', path: ['profiles', profileId, 'skills', skillName], value: parsedMode },
-    ])
+    await this.mutate(state, [{
+      op: 'set',
+      path: ['profiles', profileId, 'skills', skillName, 'mode'],
+      value: parsedMode,
+    }])
+  }
+
+  /**
+   * Explicitly remove one complete skill binding, including any unknown future
+   * sibling metadata. This is intentionally separate from changing `mode`.
+   */
+  async removeSkillBinding(
+    profileId: string,
+    skillName: string,
+    expectedRevision?: number,
+  ): Promise<void> {
+    assertSafePathKey(profileId, 'profile id')
+    assertSafePathKey(skillName, 'skill name')
+
+    const state = this.captureWritableState(expectedRevision)
+    const skills = this.requireSkillsObjectOrAbsent(state.stored, profileId)
+    if (skills === undefined || !Object.hasOwn(skills, skillName)) {
+      throw new ContextManagerError(
+        'skill-binding-not-found',
+        `profile ${JSON.stringify(profileId)} has no stored skill binding ${JSON.stringify(skillName)}`,
+      )
+    }
+
+    await this.mutate(state, [{
+      op: 'unset',
+      path: ['profiles', profileId, 'skills', skillName],
+    }])
   }
 
   private validateStructuredProfileWrite(input: unknown): void {
@@ -234,6 +260,45 @@ export class ContextManagerService extends Service {
     return profile
   }
 
+  private requireSkillsObjectOrAbsent(
+    stored: StoredContextManagerSettings,
+    profileId: string,
+  ): Record<string, unknown> | undefined {
+    const profile = this.requireProfileObject(stored, profileId)
+    if (profile.skills === undefined) return undefined
+    if (!isPlainObject(profile.skills)) {
+      throw new ContextManagerError(
+        'profile-path-not-editable',
+        `profile ${JSON.stringify(profileId)} has a non-object skills field; use the stored-payload editor or replace the profile explicitly`,
+      )
+    }
+    return profile.skills
+  }
+
+  /**
+   * DSH keeps the last good resolved value after a schema-invalid external
+   * edit. For a still-object raw user section, `describe().user` exposes that
+   * invalid document even though `value` remains last-good. Refuse semantic
+   * writes in that state so an edit cannot be based on stale resolved data and
+   * accidentally repair/overwrite unrelated raw fields.
+   *
+   * A non-object raw namespace is reported by DSH as `user === undefined` and
+   * cannot be distinguished from an absent section through the public
+   * descriptor. Native `settings.mutate()` still rejects that state at its
+   * `section()` boundary before persistence, so it remains lossless.
+   */
+  private assertCurrentUserDocumentWritable(descriptor: SettingsDescriptor): void {
+    if (descriptor.user === undefined) return
+    try {
+      CONTEXT_MANAGER_SETTINGS_SCHEMA(descriptor.user as never)
+    } catch (error) {
+      throw new ContextManagerError(
+        'persistence-document-invalid',
+        `the current stored Context Manager settings section is invalid; edit or restore that document explicitly before applying structured mutations (${error instanceof Error ? error.message : String(error)})`,
+      )
+    }
+  }
+
   private readState(): {
     stored: StoredContextManagerSettings
     persistence: ContextManagerSnapshot['persistence']
@@ -250,8 +315,11 @@ export class ContextManagerService extends Service {
       }
     }
 
+    // Host-internal authoritative reads use the verbatim descriptor. Redaction
+    // is for wire/UI surfaces; consuming a redacted value here would make a
+    // future secret-bearing field alter the service's own Domain state.
     const descriptor = settings
-      .describe({ redactSecrets: true })
+      .describe()
       .find(item => item.ns === CONTEXT_MANAGER_SETTINGS_NAMESPACE)
 
     if (descriptor === undefined) {
@@ -279,8 +347,9 @@ export class ContextManagerService extends Service {
   /**
    * Capture one write basis without awaiting: Domain/path validation and the
    * eventual Settings mutation are fenced to this exact raw-section revision.
-   * If another writer lands first, native SettingsConflictError wins instead
-   * of letting a stale path check overwrite newly changed data.
+   * If another valid writer lands first, native SettingsConflictError wins.
+   * Schema-invalid external edits are checked separately against descriptor.user
+   * because DSH intentionally keeps the last-good resolved value for them.
    */
   private captureWritableState(expectedRevision?: number): WritableState {
     const settings = this.ownerCtx.get('settings')
@@ -298,7 +367,7 @@ export class ContextManagerService extends Service {
     }
 
     const descriptor = settings
-      .describe({ redactSecrets: true })
+      .describe()
       .find(item => item.ns === CONTEXT_MANAGER_SETTINGS_NAMESPACE)
     if (descriptor === undefined) {
       throw new ContextManagerError(
@@ -314,6 +383,8 @@ export class ContextManagerService extends Service {
         descriptor.revision,
       )
     }
+
+    this.assertCurrentUserDocumentWritable(descriptor)
 
     const stored = descriptor.value as StoredContextManagerSettings
     const versionStatus = classifyContextManagerSchemaVersion(stored.schemaVersion)
