@@ -3,10 +3,11 @@ export const SKILL_MODES = ['pinned', 'auto', 'manual', 'off'] as const
 export type SkillMode = (typeof SKILL_MODES)[number]
 
 /**
- * User-authored Context Manager profile.
+ * Structured Domain view of one stored Context Manager profile payload.
  *
- * References are intentionally declarative. A missing preset or skill remains
- * valid stored intent and is diagnosed by the integration that resolves it.
+ * The stored payload may contain additional fields or may fail to parse
+ * entirely. References remain declarative: a missing preset or skill does not
+ * make this structure invalid and is resolved only by later runtime adapters.
  */
 export interface ContextProfile {
   name: string
@@ -18,6 +19,8 @@ export interface ContextProfile {
 export type ContextManagerDiagnosticCode =
   | 'invalid-profile'
   | 'missing-default-profile'
+  | 'invalid-default-profile'
+  | 'invalid-schema-version'
   | 'unsupported-schema-version'
 
 export interface ContextManagerDiagnostic {
@@ -32,13 +35,16 @@ export interface ContextManagerPersistenceState {
   revision?: number
 }
 
-/** Immutable, normalized view consumed by future Host adapters and Remote UI. */
+/**
+ * Immutable Domain snapshot. This is the usable/parsed layer only; later PRs
+ * must keep runtime/effective resolution in a separate state model.
+ */
 export interface ContextManagerSnapshot {
   schemaVersion: number
   schemaCompatible: boolean
   configuredDefaultProfileId?: string
-  defaultProfileId?: string
+  usableDefaultProfileId?: string
   profiles: Readonly<Record<string, ContextProfile>>
-  diagnostics: readonly ContextManagerDiagnostic[]
+  diagnostics: readonly Readonly<ContextManagerDiagnostic>[]
   persistence: Readonly<ContextManagerPersistenceState>
 }
