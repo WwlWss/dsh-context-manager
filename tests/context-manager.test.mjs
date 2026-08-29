@@ -101,6 +101,24 @@ test('profile CRUD persists through DSH Settings without resolving references', 
   assert.equal(descriptor.user.profiles.anima.skills['future-skill'], 'pinned')
 })
 
+test('structured writes preserve caller-supplied extension fields', async () => {
+  const { manager } = await boot()
+  await manager.createProfile('extended', {
+    ...anima,
+    futureField: {
+      keep: true,
+      nested: ['a', 'b'],
+    },
+  })
+
+  const stored = manager.getStoredProfile('extended')
+  assert.deepEqual(stored.futureField, {
+    keep: true,
+    nested: ['a', 'b'],
+  })
+  assert.equal(manager.snapshot().profiles.extended.name, 'Anima Development')
+})
+
 test('deleting a profile preserves the dangling default reference explicitly', async () => {
   const { manager } = await boot()
   await manager.createProfile('anima', anima)
