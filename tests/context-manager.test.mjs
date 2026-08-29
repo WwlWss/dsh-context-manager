@@ -137,7 +137,7 @@ test('stored malformed payloads remain visible and detached from callers', async
   assert.ok(snapshot.profiles.good)
   assert.equal(snapshot.profiles.broken, undefined)
   assert.ok(snapshot.diagnostics.some(item => item.code === 'invalid-profile' && item.profileId === 'broken'))
-  assert.deepEqual(manager.listStoredProfileIds().sort(), ['broken', 'good'])
+  assert.deepEqual([...manager.listStoredProfileIds()].sort(), ['broken', 'good'])
 
   const payload = manager.getStoredProfile('broken')
   payload.futureField.preserve = false
