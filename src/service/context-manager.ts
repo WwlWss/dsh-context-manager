@@ -252,7 +252,7 @@ export class ContextManagerService extends Service {
         stored: this.source(),
         persistence: Object.freeze({
           available: true,
-          writable: settings.writable,
+          writable: false,
         }),
       }
     }
@@ -320,7 +320,9 @@ export class ContextManagerService extends Service {
     return {
       settings,
       stored,
-      revision: expectedRevision ?? descriptor.revision,
+      // The caller may omit expectedRevision for same-process convenience, but
+      // the write is still fenced to the revision whose data we just checked.
+      revision: descriptor.revision,
     }
   }
 
