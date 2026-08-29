@@ -1,24 +1,28 @@
 import {
   SKILL_MODES,
+  type ContextManagerDiagnostic,
   type ContextManagerPersistenceState,
   type ContextManagerSnapshot,
   type ContextProfile,
   type SkillMode,
 } from './model.js'
 import {
+  classifyContextManagerSchemaVersion,
   CONTEXT_MANAGER_SCHEMA_VERSION,
   type StoredContextManagerSettings,
 } from './schema.js'
+import { isPlainObject } from './storage.js'
 
 const skillModes = new Set<string>(SKILL_MODES)
 
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false
-  const proto = Object.getPrototypeOf(value)
-  return proto === Object.prototype || proto === null
+export function parseSkillMode(value: unknown): SkillMode {
+  if (typeof value !== 'string' || !skillModes.has(value)) {
+    throw new TypeError('skill mode must be pinned, auto, manual, or off')
+  }
+  return value as SkillMode
 }
 
-function parseProfile(raw: unknown): ContextProfile {
+export function parseProfile(raw: unknown): ContextProfile {
   if (!isPlainObject(raw)) throw new TypeError('profile must be an object')
   if (typeof raw.name !== 'string') throw new TypeError('profile.name must be a string')
   if (typeof raw.basePreset !== 'string') throw new TypeError('profile.basePreset must be a string')
@@ -31,10 +35,11 @@ function parseProfile(raw: unknown): ContextProfile {
 
   const skills: Record<string, SkillMode> = Object.create(null) as Record<string, SkillMode>
   for (const [name, mode] of Object.entries(raw.skills ?? {})) {
-    if (typeof mode !== 'string' || !skillModes.has(mode)) {
+    try {
+      skills[name] = parseSkillMode(mode)
+    } catch {
       throw new TypeError(`profile.skills[${JSON.stringify(name)}] must be pinned, auto, manual, or off`)
     }
-    skills[name] = mode as SkillMode
   }
 
   return Object.freeze({
@@ -45,62 +50,88 @@ function parseProfile(raw: unknown): ContextProfile {
   })
 }
 
+function freezeDiagnostic(diagnostic: ContextManagerDiagnostic): Readonly<ContextManagerDiagnostic> {
+  return Object.freeze(diagnostic)
+}
+
 function freezeSnapshot(snapshot: ContextManagerSnapshot): ContextManagerSnapshot {
+  for (const diagnostic of snapshot.diagnostics) Object.freeze(diagnostic)
   Object.freeze(snapshot.profiles)
   Object.freeze(snapshot.diagnostics)
   Object.freeze(snapshot.persistence)
   return Object.freeze(snapshot)
 }
 
+function incompatibleSnapshot(
+  stored: StoredContextManagerSettings,
+  persistence: ContextManagerPersistenceState,
+): ContextManagerSnapshot {
+  const status = classifyContextManagerSchemaVersion(stored.schemaVersion)
+  const diagnostic = status === 'invalid'
+    ? freezeDiagnostic({
+        code: 'invalid-schema-version',
+        message: `settings schema version ${String(stored.schemaVersion)} is not a positive integer`,
+      })
+    : freezeDiagnostic({
+        code: 'unsupported-schema-version',
+        message: `settings schema version ${String(stored.schemaVersion)} is not supported; this build supports ${String(CONTEXT_MANAGER_SCHEMA_VERSION)}`,
+      })
+
+  return freezeSnapshot({
+    schemaVersion: stored.schemaVersion,
+    schemaCompatible: false,
+    ...(stored.defaultProfileId === undefined
+      ? {}
+      : { configuredDefaultProfileId: stored.defaultProfileId }),
+    profiles: Object.create(null) as Record<string, ContextProfile>,
+    diagnostics: [diagnostic],
+    persistence,
+  })
+}
+
 /**
- * Build the usable domain view without rewriting, trimming, falling back, or
- * otherwise repairing user-authored data.
+ * Build the usable Domain view without rewriting, trimming, falling back, or
+ * otherwise repairing stored user-authored profile payloads.
  */
 export function normalizeSettings(
   stored: StoredContextManagerSettings,
   persistence: ContextManagerPersistenceState,
 ): ContextManagerSnapshot {
-  if (stored.schemaVersion > CONTEXT_MANAGER_SCHEMA_VERSION) {
-    return freezeSnapshot({
-      schemaVersion: stored.schemaVersion,
-      schemaCompatible: false,
-      ...(stored.defaultProfileId === undefined
-        ? {}
-        : { configuredDefaultProfileId: stored.defaultProfileId }),
-      profiles: Object.create(null) as Record<string, ContextProfile>,
-      diagnostics: [{
-        code: 'unsupported-schema-version',
-        message: `settings schema ${String(stored.schemaVersion)} is newer than supported schema ${String(CONTEXT_MANAGER_SCHEMA_VERSION)}`,
-      }],
-      persistence,
-    })
+  if (classifyContextManagerSchemaVersion(stored.schemaVersion) !== 'supported') {
+    return incompatibleSnapshot(stored, persistence)
   }
 
   const profiles: Record<string, ContextProfile> = Object.create(null) as Record<string, ContextProfile>
-  const diagnostics: ContextManagerSnapshot['diagnostics'][number][] = []
+  const diagnostics: ContextManagerDiagnostic[] = []
 
   for (const [id, raw] of Object.entries(stored.profiles)) {
     try {
       profiles[id] = parseProfile(raw)
     } catch (error) {
-      diagnostics.push({
+      diagnostics.push(freezeDiagnostic({
         code: 'invalid-profile',
         profileId: id,
         message: error instanceof Error ? error.message : String(error),
-      })
+      }))
     }
   }
 
-  let defaultProfileId: string | undefined
+  let usableDefaultProfileId: string | undefined
   if (stored.defaultProfileId !== undefined) {
-    if (Object.hasOwn(profiles, stored.defaultProfileId)) {
-      defaultProfileId = stored.defaultProfileId
-    } else {
-      diagnostics.push({
+    if (!Object.hasOwn(stored.profiles, stored.defaultProfileId)) {
+      diagnostics.push(freezeDiagnostic({
         code: 'missing-default-profile',
         profileId: stored.defaultProfileId,
-        message: `default profile ${JSON.stringify(stored.defaultProfileId)} is not currently usable`,
-      })
+        message: `default profile ${JSON.stringify(stored.defaultProfileId)} is not stored`,
+      }))
+    } else if (!Object.hasOwn(profiles, stored.defaultProfileId)) {
+      diagnostics.push(freezeDiagnostic({
+        code: 'invalid-default-profile',
+        profileId: stored.defaultProfileId,
+        message: `default profile ${JSON.stringify(stored.defaultProfileId)} is stored but is not structurally usable`,
+      }))
+    } else {
+      usableDefaultProfileId = stored.defaultProfileId
     }
   }
 
@@ -110,7 +141,7 @@ export function normalizeSettings(
     ...(stored.defaultProfileId === undefined
       ? {}
       : { configuredDefaultProfileId: stored.defaultProfileId }),
-    ...(defaultProfileId === undefined ? {} : { defaultProfileId }),
+    ...(usableDefaultProfileId === undefined ? {} : { usableDefaultProfileId }),
     profiles,
     diagnostics,
     persistence,
