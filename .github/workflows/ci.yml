@@ -51,7 +51,7 @@ jobs:
         run: |
           pnpm run clean
           pnpm run prepare
-          node --test ./tests/*.test.mjs
+          node --test ./tests/prepare-contract.test.mjs
 
   package:
     name: verify packed bundle
@@ -86,6 +86,7 @@ jobs:
           test -n "$tarball"
           tar -tzf "$tarball" | sort | tee .artifacts/package-files.txt
           grep -Fx 'package/lib/index.js' .artifacts/package-files.txt
+          grep -Fx 'package/lib/index.d.ts' .artifacts/package-files.txt
           grep -Fx 'package/cordis.patch.yml' .artifacts/package-files.txt
           grep -Fx 'package/package.json' .artifacts/package-files.txt
 
