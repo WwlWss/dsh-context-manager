@@ -99,6 +99,18 @@ test('profile CRUD persists through DSH Settings without resolving references', 
   assert.equal(descriptor.user.profiles.anima.skills['future-skill'], 'pinned')
 })
 
+test('deleting a profile does not silently repair a dangling default reference', async () => {
+  const { manager } = await boot()
+  await manager.createProfile('anima', anima)
+  await manager.setDefaultProfile('anima', manager.snapshot().persistence.revision)
+  await manager.deleteProfile('anima', manager.snapshot().persistence.revision)
+
+  const snapshot = manager.snapshot()
+  assert.equal(snapshot.configuredDefaultProfileId, 'anima')
+  assert.equal(snapshot.defaultProfileId, undefined)
+  assert.ok(snapshot.diagnostics.some(item => item.code === 'missing-default-profile' && item.profileId === 'anima'))
+})
+
 test('one malformed raw profile is preserved and isolated as a diagnostic', async () => {
   const { manager, settings } = await boot()
 
