@@ -239,7 +239,11 @@ export class ContextManagerService extends Service {
     if (settings === undefined) {
       return {
         stored: this.source(),
-        persistence: Object.freeze({ available: false, writable: false }),
+        persistence: Object.freeze({
+          available: false,
+          registered: false,
+          writable: false,
+        }),
       }
     }
 
@@ -252,6 +256,7 @@ export class ContextManagerService extends Service {
         stored: this.source(),
         persistence: Object.freeze({
           available: true,
+          registered: false,
           writable: false,
         }),
       }
@@ -261,6 +266,7 @@ export class ContextManagerService extends Service {
       stored: descriptor.value as StoredContextManagerSettings,
       persistence: Object.freeze({
         available: true,
+        registered: true,
         writable: settings.writable,
         revision: descriptor.revision,
       }),
