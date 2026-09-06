@@ -4,7 +4,7 @@ Modular preset, prompt, skill, transform, and presentation context manager for D
 
 ## Status
 
-Host-state milestone in development. The installable/test-gated DSH bundle foundation is complete; the current branch adds the first model-inert Context Manager domain service and settings-backed reusable profile library.
+The installable/test-gated DSH bundle foundation and the model-inert Settings-backed Host profile Domain are complete. The current compatibility branch adapts that foundation across the supported legacy and current DSH Settings API generations without adding model-visible behavior.
 
 Context Manager is an editor, not a policy engine. It preserves explicit user intent, reports unresolved or malformed resources as diagnostics, and does not silently fallback, repair, normalize, reorder, or delete user-authored configuration.
 
@@ -37,7 +37,7 @@ Project documentation:
 
 The Host service stores a global reusable profile library plus an optional `defaultProfileId` through DSH Settings. Project/Session binding is intentionally not faked as a Settings feature; those scopes are later milestones.
 
-A profile currently contains only state whose meaning is defined by the Domain: display metadata, a native `basePreset` reference, and desired skill bindings. Each binding is currently an object such as `{ mode: "manual" }`, not a scalar string. These values are model-inert in this milestone: saving `basePreset: standard` or `docker: { mode: "off" }` does not yet mount a preset or alter the native skill registry.
+A profile currently contains only state whose meaning is defined by the Domain: display metadata, a native `basePreset` reference, and desired skill bindings. Each binding is currently an object such as `{ mode: "manual" }`, not a scalar string. These values remain model-inert: saving `basePreset: standard` or `docker: { mode: "off" }` does not yet mount a preset or alter the native skill registry.
 
 The object-shaped binding is deliberate. Later versions can add sibling data such as placement, ordering, activation, or triggers, while `setSkillMode()` changes only the `.mode` leaf and preserves unknown siblings. Removing the whole binding is a separate explicit operation.
 
@@ -51,11 +51,13 @@ The advanced stored-payload seam accepts Domain-invalid JSON-shaped content with
 
 ## Important compatibility notes
 
+The currently tested Settings generations are the legacy `dsh-v0.1.1-rc.2` line and the latest installable `dsh-v0.1.2-rc.1` line. CI runs the full Domain/runtime regression suite against both public Settings shapes. The latest official repository/GitHub release is `dsh-v0.1.3-alpha.1`; it is source-reviewed until the corresponding umbrella package is installable. See [docs/compatibility.md](docs/compatibility.md) for the exact matrix.
+
 The shipped Minimal preset is intentionally restrictive: it uses a complete persona and disables runtime context. Context Manager must report those placement limitations honestly. Users who need to change Minimal's composition can create a DSH-native preset copy/modular variant; the shipped preset remains untouched.
 
-SillyTavern-style arbitrary historical `depth=N` insertion is not treated as equivalent to DSH prompt placement. However, DSH Session Surface already exposes durable range replacement through `surfaceOp: { op: "replace", start, end }`. Future Context Manager history transforms can use that public mechanism for genuine replacement/compaction semantics, such as replacing sufficiently old body text with extracted summaries while the append-only transcript remains intact.
+SillyTavern-style arbitrary historical `depth=N` insertion is not treated as equivalent to DSH prompt placement. History replacement/shadowing is a separate future capability: it may be implemented only through a public DSH Session/Surface seam whose exact current contract is verified when that milestone begins. Context Manager must not treat conceptual support for replacement as permission to bind to obsolete Session APIs.
 
-Display-only regex behavior is a different client concern. Stock DSH assistant Markdown intentionally disables raw HTML, and stock Chat owns its keyed assistant renderer, so richer summary disclosures or Tavern-style presentation should use additive public client surfaces such as an enhanced `conversation.view` rather than patching stock Chat internals.
+Display-only regex behavior is a different client concern. Stock DSH assistant Markdown intentionally disables raw HTML, and stock Chat owns its keyed assistant renderer, so richer presentation should use additive public client surfaces rather than patching stock Chat internals.
 
 Future HTML/JavaScript helper rendering must run in an isolated browser runtime with an explicit capability bridge for any DSH interaction. This keeps arbitrary user-enabled scripts possible without granting model output ambient authority over the parent DSH application.
 
@@ -64,8 +66,8 @@ DSH Settings revision fencing is an in-process guarantee. If multiple DSH proces
 ## Planned milestones
 
 1. **Complete** — Installable DSH bundle scaffold, build contract tests, and CI.
-2. **In development** — Host-side Context Manager domain and settings-backed reusable profile model.
-3. Native agent-preset roster/read integration and locked base-preset structural view.
+2. **Complete** — Host-side Context Manager domain and settings-backed reusable profile model.
+3. **Next** — Native AgentPreset roster/configured-resolution integration, followed separately by effective Session/Agent identity.
 4. Modular system-prompt/runtime-context overlay model with capability-aware placement.
 5. Scoped skill policy model for Pinned / Auto / Manual / Off, with leakage and resume tests.
 6. Web client package and additive right-side Drawer.
@@ -78,7 +80,7 @@ The detailed dependency-ordered implementation plan lives in [docs/roadmap.md](d
 
 ## Development
 
-Requirements follow current DSH development baselines:
+Requirements follow current project baselines:
 
 - Node.js `^22.19.0 || >=24.0.0`
 - pnpm `11.7.0`
@@ -90,7 +92,7 @@ pnpm install --frozen-lockfile
 pnpm run check
 ```
 
-`pnpm run check` performs type checking, a clean production build, and package/domain tests.
+`pnpm run check` performs type checking, a clean production build, and package/domain tests against the legacy development dependency set. CI additionally runs the same suite against the latest installable Settings generation.
 
 Before changing runtime integration or adding a Web capability, read [docs/development-guide.md](docs/development-guide.md). It records the project's persistence, lifecycle, DSH-integration, transform, client, performance, and testing rules.
 

@@ -24,22 +24,22 @@ That has concrete implementation consequences:
 
 DSH evolves quickly. Before changing an integration, inspect the public documentation and the exact supported source line rather than coding from memory.
 
-Current reviewed references are recorded in [compatibility.md](compatibility.md). At the time this guide was written, the published baseline is `dsh-v0.1.1-rc.2` and the source-forward target is `dsh-v0.1.2-alpha.1` / `cd5ef814...`.
+Current reviewed references are recorded in [compatibility.md](compatibility.md). The committed legacy regression baseline is `dsh-v0.1.1-rc.2`; the latest installable runtime line is `dsh-v0.1.2-rc.1`; and the current source-forward target is `dsh-v0.1.3-alpha.1` / `d347e703...`. Treat those tracks separately: install-tested package compatibility and source review are not interchangeable claims.
 
 For the corresponding feature, read these upstream documents first:
 
 | Area | DSH reference |
 | --- | --- |
-| Package/plugin structure | `docs/cookbook/adding-a-package.md` / `.zh.md` |
+| Package/plugin structure | current DSH plugin/publish documentation and bundle examples |
 | Cordis lifecycle and events | `docs/cordis-primer.md` and generated Cordis API docs |
-| Settings | `docs/subsystems/settings.md` / `.zh.md`, `packages/settings/settings/src/index.ts` |
+| Settings | `docs/subsystems/settings.md` / `.zh.md`, public `@deepseek-ai/dsh-settings` declarations/source |
 | Agent/session lifecycle | `docs/subsystems/core.md`, `docs/subsystems/session.md` |
 | System prompt/runtime context | `docs/subsystems/system-prompt.md` |
 | Agent presets | agent-preset package docs and public `ctx.agentPresets` surface |
 | Skills | skill subsystem docs and public `ctx.skills` surface |
-| Compaction/history replacement | `@deepseek-ai/dsh-compaction`, session Surface docs |
-| Web client packaging | `docs/subsystems/client-modules.md`, `packages/client/AGENTS.md` |
-| Slots/UI composition | `docs/subsystems/slots.md`, `docs/subsystems/conversation.md` |
+| Compaction/history replacement | current compaction packages plus Session Surface docs/types |
+| Web client packaging | current client-module docs and `packages/client/AGENTS.md` |
+| Slots/UI composition | current Slots/conversation docs |
 
 Do not import DSH `src/` internals in production code merely because the repository source is visible. Source inspection is for understanding public semantics and tracking upstream drift; runtime integration should use public package exports, Cordis services/events, Remotes, and declared Slots.
 
@@ -139,7 +139,7 @@ Narrow structured editing uses **path-local guards**:
 - validate only the object path the operation traverses;
 - validate the new leaf value;
 - do not require unrelated malformed fields to become valid;
-- never replace a non-object intermediate value merely to make the edit succeed.
+- never replace a non-object intermediate value merely to make an edit succeed.
 
 This permits explicit local repair. For example, one invalid skill binding mode can be corrected even if another unrelated profile field remains malformed.
 
@@ -193,11 +193,20 @@ Do not derive Host Domain state from `describe({ redactSecrets: true })`: if Con
 
 ### Revision fencing
 
-Every semantic write must use DSH's raw user-section revision as a compare-and-swap fence.
+Every semantic Context Manager write must use DSH's raw user-section revision as a compare-and-swap fence.
 
 If the caller supplies `expectedRevision`, honor it. If it does not, capture the current revision before validation and pass that same revision into `settings.mutate()`. Do not automatically retry on `SettingsConflictError`; retrying would reinterpret an old user action against a different state.
 
 DSH's write queue and revision guarantee are in-process. Cross-process convergence is provider-defined; Context Manager must not invent a second lock protocol on top of Settings.
+
+### Settings API-generation adapter
+
+The Settings optional-consumer helper changed public shape between the supported lines. Keep that difference isolated in `src/adapters/settings.ts`:
+
+- legacy generation: module-level `installSettingsSection(...)`;
+- current generation: `settings.installSection(owner, ...)`.
+
+The adapter must delegate lifecycle behavior to DSH rather than reproducing attach/detach rules. It must select only public API generation, never a fork identity or commit hash. The same production bundle must work on official DSH and compatible patched forks.
 
 ## 8. Cordis lifecycle rules
 
@@ -230,7 +239,15 @@ Context Manager must not:
 - represent every Cordis row inside a preset as an independent prompt toggle;
 - pretend an already-running session can freely hot-swap its native base preset when DSH locks that composition.
 
-Runtime state must distinguish the configured base-preset reference from the effective preset actually composing a live session.
+Runtime state must distinguish at least:
+
+```text
+configured = what the Context Profile says
+resolved   = whether that reference exists/is healthy in the current native roster
+effective  = what a live or durable Session/Agent is actually using
+```
+
+Do not force those into one adapter. Roster/configured resolution should land before effective Session identity because the latter follows different lifecycle/version seams.
 
 ## 10. Prompt and runtime-context modules
 
@@ -274,11 +291,13 @@ Transforms Context Manager-owned prompt/module source before it is contributed t
 
 ### Host history-Surface transform
 
-Changes model-visible historical projection while retaining DSH's append-only Session log. DSH already exposes Surface range replacement; this is the correct foundation for semantics such as replacing sufficiently old completed turns with extracted summaries.
+Changes model-visible historical projection while retaining DSH's append-only Session log. The low-level Surface replacement primitive is a possible foundation, but implementation must wait until the complete current public Session/lifecycle/maintenance path is verified for the supported DSH versions.
 
-A history transform must not directly mutate old `SessionEvent`s. It appends a new surface-producing event that cites/replaces the old surface range.
+Context Manager must expose generic user-authored transform semantics rather than a hard-coded summary policy. A preset author may choose to emit `<summary>...</summary>` and configure old-history extraction/replacement around that protocol, but another preset may use `<memory>`, a custom delimiter, selected paragraphs, diff-only retention, or another representation. `<summary>` has no privileged Domain meaning.
 
-History transforms must be serialized against active agent work. The implementation should use the public agent maintenance/lifecycle seam and must study the built-in compaction transaction/locking rules before shipping. Surface edges must remain valid, and tool-call/result pairs must not be split.
+A history transform must not directly mutate old source events. It should append a valid model-visible replacement/shadowing transition through the public DSH contract available at implementation time.
+
+History transforms must be serialized against active agent work. The implementation must study the then-current built-in compaction transaction/locking rules before shipping. Surface edges must remain valid, and tool-call/result pairs must not be split.
 
 Do not assume "one floor" means one surface node. A user-facing conversation floor should be defined in terms of completed DSH turns (or another explicit product concept), because one turn may contain several model steps and tool calls.
 
@@ -286,7 +305,7 @@ Do not assume "one floor" means one surface node. A user-facing conversation flo
 
 Transforms presentation only. It must not change what the model sees and must not mutate the durable Session log.
 
-A `<summary>...</summary>` rule may, for example, render the summary as a disclosure while leaving the source assistant message intact.
+A user-authored transform may, for example, extract a tagged region and render it as a disclosure while leaving the source assistant message intact. The tag syntax belongs to that resource, not to Context Manager core semantics.
 
 ### Client renderer/helper
 
@@ -298,21 +317,22 @@ Isolation is a technical integrity boundary, not content policy: the user may au
 
 ## 13. History replacement and DSH compaction
 
-DSH's Session log is append-only; the model-visible Surface is derived. `SurfaceOp.replace` can replace an inclusive visible range with one new surface node while retaining the shadowed source events.
+The current DSH source keeps an append-only Session log and derives a model-visible Surface. It still defines `SurfaceOp.replace`, and built-in compaction uses that primitive. This is architecture evidence for replacement/shadowing, not sufficient by itself to claim that Context Manager may safely append replacements from arbitrary plugin code across every supported Session generation.
 
-The built-in compaction subsystem also uses replacement and has stronger transaction rules: idle/manual maintenance, durable compaction locks, selected-span stability, balanced tool boundaries, and persistence handling.
-
-Future Context Manager history transforms therefore need an explicit coexistence design:
+Future Context Manager history transforms therefore need an explicit coexistence design using current public APIs:
 
 - do not run while the agent is actively driving a turn;
+- acquire/use the lifecycle or maintenance serialization DSH publicly exposes at that time;
 - re-read the current Surface immediately before committing a replacement;
 - avoid splitting tool call/result pairs;
 - detect and define behavior around existing compaction checkpoint nodes;
 - ensure a built-in compaction and Context Manager replacement cannot concurrently commit overlapping ranges;
-- preserve complete `sourceEventSeqs` required by the Surface contract;
-- test resume/replay so the same derived Surface is reconstructed from the durable log.
+- preserve complete source-event provenance required by the Surface contract;
+- test persistence, replay, migration, and resume so the same derived Surface is reconstructed.
 
-Do not abuse `ctx.compaction` merely because it also replaces history if its provider-owned summarization semantics do not match the user's configured transform. Use the compaction service directly only when the requested operation genuinely matches its public contract.
+Do not abuse `ctx.compaction` merely because it also replaces history if its provider-owned summarization semantics do not match the user's configured transform. Use a DSH compaction service directly only when the requested operation genuinely matches its public contract.
+
+The representative "small summary -> old body shadow -> native compaction fallback" workflow belongs in examples/documentation, not in the core type system. The plugin supplies authorable transformation capability; the preset author supplies the summary protocol and thresholds.
 
 ## 14. Web client rules
 
@@ -324,13 +344,13 @@ When the Web face is introduced, follow DSH's dynamic client package contract ex
 - use public Slots for UI composition;
 - do not replace stock single-occupant surfaces merely to add a Context Manager button or panel.
 
-The initial Context Manager drawer belongs on an additive shell overlay. Rich conversation presentation should use an additive `conversation.view` unless DSH later exposes a narrower public assistant-presentation transform slot.
+The initial Context Manager drawer belongs on an additive shell overlay. Rich conversation presentation should use an additive public conversation surface if the then-current DSH client contract still provides one; re-check the exact Slot names before implementation rather than treating an old name as permanent.
 
-Do not try to register a second keyed stock `assistant-step` renderer.
+Do not try to register a second keyed stock assistant renderer.
 
 ### React/client data discipline
 
-Follow the upstream `packages/client/AGENTS.md` rules:
+Follow the upstream `packages/client/AGENTS.md` rules current at implementation time:
 
 - `ctx` belongs in plugin `apply`/inject closures, not business components;
 - components receive plain data/callbacks through the declared Slot shares;
@@ -402,9 +422,17 @@ When the client face exists, add package-contract checks for `./client` plus foc
 
 ### Compatibility tests
 
-CI currently verifies Node 22/24 on Windows/Linux, the packed artifact, and installation/composition against the published DSH baseline. When a new DSH package becomes a production dependency, add a focused compatibility test for the public contract being relied on.
+CI deliberately uses two Settings test generations rather than one broad semver install:
 
-A source-forward review of DSH `master` is design evidence, not a support claim.
+1. the committed/frozen development dependency set remains on the legacy `0.1.1-rc.2` Settings generation and runs the normal Windows/Linux Node 22/24 suite;
+2. a focused Linux compatibility lane installs the exact DSH-facing versions shipped by `dsh-v0.1.2-rc.1` (`@deepseek-ai/cordis@4.0.2`, `@deepseek-ai/dsh-settings@0.1.2-rc.1`, `@deepseek-ai/schemastery@3.18.2`), asserts that the module-level legacy helper is absent and `SettingsProvider.installSection()` is present, then reruns the complete type/build/Domain suite;
+3. the DSH CLI bundle smoke separately proves package installation/config composition on `@deepseek-ai/dsh@0.1.2-rc.1`.
+
+This separation prevents two common false positives: compiling only against the newest declarations while accidentally breaking the minimum line, or passing `--dump-config` while never executing the new runtime adapter branch.
+
+Do not mutate the committed lockfile just to test the current generation. The current-generation lane changes only its disposable CI workspace. Do not add every DSH release to the OS/Node matrix; add a focused compatibility lane only when a public contract used by production code actually changes.
+
+A source-forward review of DSH `master` is design evidence, not a support claim. An unreleased source tree does not justify widening peer ranges or claiming install-tested support.
 
 ## 18. PR workflow
 
@@ -416,10 +444,11 @@ For each feature PR:
 4. If adding a binding, make it object-shaped and ensure narrow writes preserve unknown siblings.
 5. Add runtime validation at untyped boundaries; TypeScript is not a wire/security boundary.
 6. Add failure-path tests before claiming the capability.
-7. Check both the published compatibility baseline and current DSH source-forward target.
-8. Update [compatibility.md](compatibility.md) if the minimum tested DSH contract changes.
-9. Update [roadmap.md](roadmap.md) when a milestone moves or a public DSH limitation changes the planned implementation.
-10. Keep the PR Draft until the latest head is green and a final source-level review finds no blocker.
+7. Check the legacy regression line, latest installable line, and current source-forward target as applicable.
+8. If a compatibility adapter branches at runtime, add a test that actually executes every supported branch; a bundle/config smoke is not enough.
+9. Update [compatibility.md](compatibility.md) if the minimum tested DSH contract changes.
+10. Update [roadmap.md](roadmap.md) when a milestone moves or a public DSH limitation changes the planned implementation.
+11. Keep the PR Draft until the latest head is green and a final source-level review finds no blocker.
 
 Before merge, verify:
 
@@ -429,6 +458,7 @@ Before merge, verify:
 - stale writes fail rather than retry silently;
 - Host-only values cannot leak over a wire surface;
 - the feature does not claim semantics stronger than the tested DSH version provides;
+- every compatibility branch used in production is executed by at least one focused test lane;
 - package exports and packed artifacts match the manifest.
 
 ## 19. Local development
@@ -447,7 +477,7 @@ pnpm install --frozen-lockfile
 pnpm run check
 ```
 
-`pnpm run check` performs type checking, a clean production build, and the package/domain test suite.
+`pnpm run check` performs type checking, a clean production build, and the package/domain test suite on the committed legacy dependency set. CI adds the current Settings-generation compatibility lane described above.
 
 The git-install `prepare` path intentionally emits only the runtime JavaScript needed for installation. Declaration generation and full type checking remain development/CI responsibilities.
 

@@ -53,9 +53,46 @@ jobs:
           pnpm run prepare
           node --test ./tests/prepare-contract.test.mjs
 
+  settings-current:
+    name: current Settings runtime (0.1.2-rc.1)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22.20.0
+
+      - name: Enable pinned pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.7.0 --activate
+
+      - name: Install legacy-locked development dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Switch the ephemeral test workspace to the current Settings generation
+        run: |
+          pnpm add --save-dev --save-exact \
+            @deepseek-ai/cordis@4.0.2 \
+            @deepseek-ai/dsh-settings@0.1.2-rc.1 \
+            @deepseek-ai/schemastery@3.18.2
+
+      - name: Assert the current public Settings API shape
+        run: |
+          node --input-type=module -e "const api = await import('@deepseek-ai/dsh-settings'); if (typeof api.installSettingsSection !== 'undefined') throw new Error('expected the 0.1.2 Settings generation without module-level installSettingsSection'); if (typeof api.SettingsProvider?.prototype?.installSection !== 'function') throw new Error('expected SettingsProvider.installSection() in the 0.1.2 Settings generation')"
+
+      - name: Run the full type, build, and Domain regression suite on current Settings
+        run: pnpm run check
+
   package:
     name: verify packed bundle
-    needs: verify
+    needs:
+      - verify
+      - settings-current
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -91,12 +128,12 @@ jobs:
           grep -Fx 'package/package.json' .artifacts/package-files.txt
 
   dsh-smoke:
-    name: published DSH bundle smoke test
+    name: published DSH bundle smoke (0.1.2-rc.1)
     needs: package
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
-      DSH_HOME: ${{ github.workspace }}/.dsh-ci-home
+      DSH_HOME: ${{ github.workspace }}/.dsh-ci-home-0.1.2-rc.1
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -117,9 +154,9 @@ jobs:
           pnpm run build
 
       - name: Install bundle into a temporary DSH profile
-        run: pnpm dlx @deepseek-ai/dsh@0.1.1-rc.2 plugin --profile context-manager-ci add "$GITHUB_WORKSPACE"
+        run: pnpm dlx @deepseek-ai/dsh@0.1.2-rc.1 plugin --profile context-manager-ci add "$GITHUB_WORKSPACE"
 
       - name: Verify DSH composed configuration
         run: |
-          pnpm dlx @deepseek-ai/dsh@0.1.1-rc.2 --profile context-manager-ci --dump-config > .dsh-composed.yml
+          pnpm dlx @deepseek-ai/dsh@0.1.2-rc.1 --profile context-manager-ci --dump-config > .dsh-composed.yml
           grep -F 'dsh-context-manager' .dsh-composed.yml
