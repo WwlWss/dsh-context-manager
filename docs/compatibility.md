@@ -1,102 +1,93 @@
 # DSH compatibility
 
-DeepSeek Harness is evolving quickly. Context Manager separates a **published compatibility baseline** from a **source-forward review target** so development does not accidentally depend on an unreleased implementation detail.
+DeepSeek Harness evolves quickly. Context Manager therefore separates the **minimum API generation it can still compile/test against** from the **current published DSH lines it must load inside**.
 
-## Current baselines
+## Current compatibility matrix
 
-| Track | DSH reference | Purpose |
+| Track | DSH reference | How it is used |
 | --- | --- | --- |
-| Published baseline | `dsh-v0.1.1-rc.2` | Minimum line whose public architecture has been reviewed for the features Context Manager plans to use. The CI bundle smoke test uses the published `@deepseek-ai/dsh@0.1.1-rc.2` CLI. |
-| Source-forward target | `dsh-v0.1.2-alpha.1` (`cd5ef814...`) | Review current DSH direction and avoid designing against an API already superseded upstream. It is not a substitute for testing an installable published package. |
+| Legacy API regression | `dsh-v0.1.1-rc.2` | Development dependency for unit/type regression. This keeps the old Settings API generation visible so compatibility code cannot accidentally depend only on the new method shape. |
+| Current published baseline | `dsh-v0.1.2-rc.1` | Required bundle smoke target. This is the first supported line where optional Settings wiring moved from the module helper to `settings.installSection(...)`. |
+| Latest published/source-forward target | `dsh-v0.1.3-alpha.1` / `d347e703...` | Required bundle smoke target and current architecture review target. It includes the Session v2 / `SessionHandle` persistence changes, but those APIs are not yet consumed by Context Manager. |
 
-Support claims should name a tested DSH version. Reading `master` or an unreleased tag is useful for design review, but is not by itself a compatibility test. Peer dependency ranges should therefore follow installable/tested releases rather than being widened merely to match an unreleased source version.
+Support claims should name tested versions. Reading `master` is useful for architecture review, but a source inspection alone is not a compatibility test.
 
-## Public seams verified in the published baseline
+## Settings compatibility rule
 
-The following capabilities are present in `dsh-v0.1.1-rc.2` and are therefore valid foundations for the planned architecture:
+Context Manager owns the `dsh-context-manager` Settings namespace and never reads or writes DSH settings files directly.
 
-### Agent presets
+The Settings public surface changed between the legacy and current lines:
 
-- `ctx.agentPresets` owns preset discovery and standing per-preset composition.
-- Preset registrations resolve through agent -> preset -> global scope chains.
-- The service can list/resolve/read/copy/remove presets and can resolve a standing scope for cold/session reconstruction paths.
-- User authoring is copy-based; shipped presets remain deployment-owned inputs.
+- `0.1.1-rc.2` exported `settingsNamespace()` and a module-level `installSettingsSection()` helper.
+- `0.1.2-rc.1+` validates namespace strings in the Settings service and exposes the optional-consumer lifecycle as `settings.installSection(owner, ns, schema, entry, hooks)`.
 
-Context Manager should consume this domain instead of scanning the DSH installation tree.
+Production Context Manager code does **not** import either generation-specific helper. `src/adapters/settings.ts` owns the narrow compatibility seam:
 
-### System prompt and runtime context
+1. use current `settings.installSection()` when the mounted provider exposes it;
+2. otherwise reproduce the same optional-consumer behavior only from the public common denominator: `ctx.inject(['settings'])`, `settings.register()`, `scope.watch()`, and Cordis effects;
+3. keep the service alive when Settings is absent;
+4. never inspect DSH package internals or branch on a fork identity.
 
-- `ctx.systemPrompt.section()` contributes ordered, scoped prompt sections.
-- `ctx.systemPrompt.context()` contributes ordered dynamic context.
-- `complete: true` is an explicit final-prompt constraint.
-- Runtime context can be disabled/suppressed by the active composition.
+This is a DSH-version adapter, not a WwlWss-fork adapter. The same Context Manager package must run unchanged on official DSH and on a patched DSH fork that preserves the public service contract.
 
-Placement features must respect these constraints rather than emulating success when the active preset prevents an insertion.
+The rest of the PR2 persistence model remains unchanged:
 
-### Session log and model-visible Surface
+- Settings is authoritative storage;
+- descriptor revisions are compare-and-swap fences;
+- invalid external edits keep last-good resolved state without being silently repaired;
+- semantic writes inspect the exposed raw user section before mutating from last-good state;
+- no second Context Manager settings cache is maintained;
+- `__proto__` remains rejected at Context Manager's advanced-write/path boundary while upstream Settings still carries its property-safe-construction limitation.
 
-- A Session is an append-only event log and the durable source of truth; model history is derived from its ordered Surface rather than stored as a second mutable message array.
-- Surface message events support `surfaceOp: 'append'` and `surfaceOp: { op: 'replace', start, end }`.
-- DSH documents replacement as the mechanism used by compaction and explicitly permits any surface-replacing producer to use it.
-- Replacement shadows old Surface nodes without deleting their source events from the append-only log.
+## AgentPreset compatibility
 
-This is a public foundation for future Context Manager **history replacement/compaction** transforms, including policies that replace sufficiently old body text with summary checkpoints. It is not equivalent to arbitrary SillyTavern numeric `depth=N` insertion; that separate capability must not be faked.
+The public `ctx.agentPresets` roster remains the intended foundation for Milestone 3.
 
-Current source-forward Agent Loop additionally tracks the Surface replacement generation when constructing request series, which reinforces the native replacement model. Feature implementation must still target the published API actually supported by the minimum DSH release and add dedicated integration tests before history transforms ship.
+The current lines still expose the core roster facts Context Manager needs:
 
-### Skills
+- `list()`;
+- `defaultId`;
+- `authorable`;
+- preset identity/metadata including `id`, `trust`, optional `name`/`description`, and optional `broken` reason.
 
-- `ctx.skills` is layered by global/preset/agent scope.
-- A nearer scope shadows the same skill name from a farther scope.
-- Invocation policy independently models model and user visibility.
-- Provider invalidation and scoped catalog lookup are part of the public service model.
+Current DSH also exposes path-free Remote roster data and richer composition inventory APIs. Context Manager should consume native public APIs instead of scanning preset directories or parsing `agent.cordis.yml` itself.
 
-This is the basis for the planned policy-overlay prototype. Hard Off/Manual behavior is still a feature-level claim that requires leakage, cold-session, resume, and invalidation tests in this repository.
+The first AgentPreset integration remains deliberately narrow: one native roster read per aggregate snapshot, configured -> resolved/missing/broken/unavailable diagnostics, no fallback to `standard`, and no mount/recompose side effects.
 
-### Settings
+## Session compatibility boundary
 
-- `ctx.settings` supports schema-owned namespaces.
-- Resolution layers schema defaults, composition base, and user overrides.
-- Writes are validated and revision-aware.
-- `mutate()` applies path edits against the user section as it stands when the queued write reaches the front; `expectedRevision` is checked at that same point.
-- Resolved-value watchers are deep-equality gated, while raw user-section changes maintain a separate revision/document-update signal.
-- Externally observed invalid user data retains the last good resolved value; boot/registration validation remains fail-fast.
-- `SettingsDescriptor.user` exposes the current raw user section when that section remains a plain object, even when schema validation failed and `value` still reports last-good resolved state.
-- `installSettingsSection()` is the supported optional-capability helper for consumers that must continue operating without a mounted Settings provider.
+`0.1.2` and `0.1.3` substantially changed Session APIs:
 
-Context Manager therefore uses the Settings descriptor revision as its compare-and-swap fence and derives PR2 snapshots on demand instead of keeping a second cached revision. Before a semantic write it also validates an exposed raw `descriptor.user`, so a schema-invalid external edit cannot be overwritten from stale last-good assumptions merely because DSH intentionally did not commit that invalid edit as a new resolved value.
+- eager `Session.events` access moved toward `seq`, `eventAt()`, and `snapshotEvents()`;
+- Session persistence is now lifecycle-owned through `SessionHandle`;
+- `agentLoop.create()` became asynchronous;
+- Session format v2 introduced generation migration and durable assistant settlements.
 
-A malformed raw namespace that is not an object is deliberately hidden as `user === undefined` by `describe()` so the read API stays total. Context Manager cannot distinguish that case from an absent section through the public descriptor, but native `settings.mutate()` reads `section()` again at the front of the write queue and rejects the non-object section before persistence. Context Manager must rely on that native failure rather than reaching into provider internals.
+None of those APIs are currently required by the model-inert profile Domain. Future effective-session identity and history transforms must target the then-current public Session/projection contracts rather than reviving the old API surface.
 
-Two upstream limits are intentionally not papered over by Context Manager:
+This is why Milestone 3 remains split conceptually:
 
-1. **Cross-process concurrency is provider-defined.** DSH's namespace write queue and revision fence are in-process guarantees. If multiple DSH processes share one provider/document, Context Manager does not add a competing lock protocol.
-2. **Registration replacement has an upstream resynchronization TODO.** Current source-forward DSH notes that an old registration's in-flight write can outlive disposal/re-registration and may leave the replacement registration temporarily stale. Context Manager relies on normal Cordis effect teardown and does not claim stronger HMR guarantees than the owning Settings service.
+- roster/configured resolution first;
+- effective live/durable Session identity later.
 
-Current source-forward DSH also carries a property-safe-construction TODO for the valid JSON key `__proto__`. Until a supported DSH release fixes and is regression-tested for that path, Context Manager refuses that key at its own profile/skill path boundary and inside advanced stored payloads. It does not extend that restriction to cosmetic names such as `constructor` or `prototype`.
+## Windows fork fixes are not plugin dependencies
 
-### Web client and Slots
+Context Manager must never depend on private fixes in `WwlWss/deepseek-harness`.
 
-- Packages advertise a Web face through `dsh.client` and an exported `./client` bundle.
-- A missing/malformed advertised client bundle is a loud Web composition failure, so enabling the Web face requires package-contract coverage.
-- `details` is a single occupied slot; replacing it removes the shipped Conversation details subtree.
-- `shell.overlay` is an additive root-scoped list slot.
-- `conversation.view` is an additive session-scoped list, so another conversation presentation can coexist with stock Chat.
-- Stock Chat owns the keyed `conversation.chat.node` registration for `assistant-step`; duplicate keyed registration is rejected, so a third-party plugin must not pretend it can replace that renderer additively.
-- Stock assistant Markdown is intentionally an untrusted renderer with raw HTML disabled.
+In particular, the local Win32 directory-picker safety patch and any future Session/projection performance patch are DSH-fork implementation changes. Context Manager may rely on public capability values and semantics, but never on their private implementation or event/broadcast frequency.
 
-The right-side Context Manager surface therefore starts as an overlay Drawer rather than replacing DSH layout occupants. Rich display regex / summary disclosure / Tavern-style helper rendering should initially live in an additive enhanced Conversation View (or a future narrower public assistant-content transform slot if DSH adds one), not by patching stock Chat internals.
-
-Assistant-authored HTML/JavaScript must not execute with ambient authority in the DSH application document. Future scripted rendering should use an isolated browser runtime and an explicit capability bridge for any DSH interaction.
+A user must be able to switch official DSH <-> patched DSH without installing a different Context Manager build.
 
 ## Compatibility rules for future PRs
 
 When a PR begins using a new DSH seam:
 
-1. Identify the public package/service/Remote/Slot contract that owns the behavior.
-2. Check it against the published baseline and the current source-forward target.
-3. Add a focused adapter only when signatures/semantics actually differ; do not create a generic compatibility abstraction pre-emptively.
-4. Add a regression test that fails when the relied-on contract disappears or changes materially.
-5. Update this document when the minimum tested DSH line moves.
+1. identify the public package/service/Remote/Slot contract that owns the behavior;
+2. compare the current published baseline with latest published/master source;
+3. add a focused adapter only for an actual signature/semantic difference;
+4. never import production code from DSH `src/` internals;
+5. add a regression test or bundle smoke that fails when the relied-on contract disappears;
+6. keep unsupported/missing optional capabilities explicit instead of simulating them;
+7. update this document when the minimum tested DSH line moves.
 
-Avoid importing DSH `src/` internals into production code. Type-only imports of public declarations are preferred where possible; runtime behavior should cross public Cordis services, Remotes, package exports, or declared Slots.
+The compatibility objective is **one plugin codebase across supported official DSH lines and compatible forks**, not one plugin version per host build.
