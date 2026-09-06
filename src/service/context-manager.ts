@@ -6,7 +6,7 @@ import {
   type SettingsDescriptor,
   type SettingsPathOp,
   type SettingsProvider,
-} from '@deepseek-ai/dsh-settings'
+} from '../adapters/settings.js'
 
 import { assertSafePathKey, ContextManagerError } from '../domain/errors.js'
 import type { ContextManagerSnapshot, SkillMode } from '../domain/model.js'
@@ -378,7 +378,7 @@ export class ContextManagerService extends Service {
 
     if (expectedRevision !== undefined && expectedRevision !== descriptor.revision) {
       throw new SettingsConflictError(
-        CONTEXT_MANAGER_SETTINGS_NAMESPACE,
+        CONTEXT_MANAGER_SETTINGS_NAMESPACE as never,
         expectedRevision,
         descriptor.revision,
       )
@@ -408,7 +408,7 @@ export class ContextManagerService extends Service {
 
   private async mutate(state: WritableState, ops: readonly SettingsPathOp[]): Promise<void> {
     await state.settings.mutate(
-      CONTEXT_MANAGER_SETTINGS_NAMESPACE,
+      CONTEXT_MANAGER_SETTINGS_NAMESPACE as never,
       ops,
       state.revision,
     )
