@@ -16,7 +16,7 @@ The end-state includes:
 - diagnostics and a final-context preview;
 - project/session bindings and overrides without rewriting shipped presets;
 - regex/transform pipelines separated by model-facing versus display-only semantics;
-- durable old-history-to-summary replacement using DSH Session Surface semantics;
+- durable user-authored old-history replacement/shadowing using DSH Session Surface semantics where the current public lifecycle seam permits it;
 - an enhanced conversation view capable of summary disclosure and rich helper rendering;
 - isolated HTML/CSS/JavaScript helper execution with an explicit bridge back to allowed DSH operations;
 - import/export and advanced stored-payload editing without silent normalization.
@@ -63,7 +63,7 @@ Exit criterion was simply: the plugin can be installed/uninstalled without chang
 
 ## Milestone 2 — Settings-backed Host profile Domain
 
-**Status:** PR #2, final review.
+**Status:** complete in merged PR #2.
 
 Purpose: establish persistence semantics before any model behavior changes.
 
@@ -91,9 +91,9 @@ Persistence:
 
 This milestone remains model-inert. A persisted `basePreset`, skill mode, or future-looking unknown field has no runtime effect yet.
 
-**Exit criteria:**
+Exit criteria were met before merge:
 
-- latest head green on all CI lanes;
+- latest PR2 head green on all CI lanes;
 - no unresolved merge blocker in source review;
 - unrelated edits preserve unknown stored data;
 - uninstall leaves stock DSH unchanged.
@@ -102,18 +102,24 @@ This milestone remains model-inert. A persisted `basePreset`, skill mode, or fut
 
 ## Milestone 3 — Native AgentPreset discovery and runtime identity
 
-Goal: connect stored preset references to DSH's native preset domain without changing composition yet.
+Goal: connect stored preset references to DSH's native preset domain without changing composition, while keeping roster/configured resolution separate from live/durable Session identity.
+
+The Settings compatibility work required before this milestone is tracked independently in the current compatibility PR: the same model-inert PR2 Domain is exercised against both the legacy `0.1.1-rc.2` Settings API generation and the latest installable `0.1.2-rc.1` generation. Source-forward review follows `dsh-v0.1.3-alpha.1` without pretending that unreleased npm packages are install-tested.
+
+### 3A — Native roster and configured -> resolved state
 
 Host work:
 
 - add a narrow AgentPreset adapter using the public `ctx.agentPresets` service;
 - list native preset ids and metadata;
-- read a preset's public structural representation where available;
-- distinguish configured preset id from resolved/effective preset id;
-- add runtime diagnostics for missing/unavailable preset references;
-- expose capability state when `agentPresets` is absent.
+- read only the public structural representation actually needed by Context Manager;
+- distinguish configured preset id from roster resolution;
+- add runtime diagnostics for missing/broken/unavailable preset references;
+- expose capability state when `agentPresets` is absent;
+- take one native roster snapshot per aggregate Context Manager resolution pass rather than rescanning for every profile;
+- keep returned Context Manager DTOs path-free and detached from DSH-native mutable/private representation.
 
-UI-independent output should be a runtime snapshot such as:
+UI-independent output should distinguish facts such as:
 
 ```text
 configuredBasePreset = "foo"
@@ -123,11 +129,19 @@ status = missing
 
 No fallback to `standard`.
 
-Authoring:
+The first roster integration should be read-only/model-inert. It must not mount, recompose, or hot-switch an AgentPreset.
 
-- shipped presets remain locked;
-- if native DSH copy/create APIs are available and tested, expose an explicit "copy as user preset" Host operation;
-- never rewrite a shipped preset in place.
+### 3B — Effective Session/Agent preset identity
+
+Only after 3A is stable, add version-aware effective identity using the then-current public Session/projection lifecycle.
+
+Required distinction:
+
+```text
+configured = what the Context Profile says
+resolved   = whether the configured ref exists/is healthy now
+effective  = what the live/durable Session or Agent actually runs
+```
 
 Lifecycle tests:
 
@@ -137,7 +151,18 @@ Lifecycle tests:
 - preset service detach/reload if the public service supports it;
 - session whose durable preset identity differs from newly configured profile intent.
 
+Do not revive old `Session.events`/legacy persistence patterns merely to preserve an obsolete implementation plan. Current DSH has moved Session persistence toward lifecycle-owned `SessionHandle`s and newer projection/session APIs, so 3B must be designed against the current supported public seam.
+
 **Do not yet:** hot-switch the base preset of an already-running session unless DSH explicitly supports it.
+
+### 3C — Optional native preset authoring
+
+Keep authoring separate from discovery/identity unless the implementation remains trivially small.
+
+- shipped presets remain locked;
+- if native DSH copy/create APIs are available and tested, expose an explicit "copy as user preset" Host operation;
+- never rewrite a shipped preset in place;
+- do not infer editability only from `trust`; use the public authoring capability/operation contract.
 
 ---
 
@@ -298,7 +323,7 @@ Packaging:
 
 UI composition:
 
-- use additive `shell.overlay` for the main right-side Drawer;
+- use an additive shell surface available in the supported DSH client contract for the main Context Manager Drawer;
 - add a trigger through an additive list slot where the current DSH shell exposes one;
 - never replace the single-occupant stock `details` subtree;
 - keep a root-safe entry only if product access is needed outside an active Session.
@@ -425,70 +450,93 @@ Regex execution needs a performance strategy before arbitrary user expressions a
 
 ## Milestone 12 — Durable history-Surface transforms
 
-Goal: support policies such as:
+Goal: provide **generic user-authored** model-visible history transformation/replacement capability using the public DSH Session/Surface lifecycle available at implementation time.
 
-> Keep the most recent N completed conversation turns as full body text; replace older completed history with summary content extracted from `<summary>` blocks.
+A representative preset-authored use case is:
 
-DSH foundation:
+> The preset instructs the model to emit a compact tagged representation for each reply; after a user-selected age/turn threshold, a history transform shadows the old full body with that extracted representation while newer history stays full.
+
+`<summary>...</summary>` is only one possible protocol. Context Manager core must not privilege it. A preset author could instead use `<memory>`, custom delimiters, a selected paragraph, diff-only retention, dialogue-only retention, or another deterministic extraction/replacement rule.
+
+DSH foundation currently observed in source:
 
 - append-only SessionEvent log remains truth;
 - model-visible history comes from the derived Surface;
-- `SurfaceOp.replace` is the durable replacement primitive;
-- built-in compaction demonstrates transaction/locking/edge validation patterns.
+- `SurfaceOp.replace` remains the low-level durable replacement primitive;
+- built-in compaction demonstrates current transaction/locking/edge-validation behavior.
 
-### 12A. Define "floor" precisely
+These facts are architecture evidence, not yet a verified arbitrary-plugin history-transform extension seam. Before Milestone 12 implementation, re-check the exact public SessionHandle/maintenance/locking APIs on every supported DSH line.
 
-Do not count raw surface nodes. A user-facing floor should normally map to a completed DSH turn, because one turn can contain multiple assistant steps and tool call/result nodes.
+### 12A. Generic policy primitives
 
-Policy must define behavior for:
+The core Domain should describe generic operations rather than `SmallSummary`, `SummaryTag`, or a built-in 20-turn rule.
+
+Conceptually the authorable policy needs separate answers for:
+
+```text
+selector   → which model-visible historical units are candidates
+trigger    → when the rule becomes eligible
+extractor  → how replacement content is derived
+replacement→ how the derived content shadows/replaces the selected range
+```
+
+Regex/tag extraction may be one extractor implementation, not the architecture itself.
+
+The editor should preserve explicit user choices and diagnose cases it cannot represent. It must not silently pick a fallback threshold, tag, or summary behavior.
+
+### 12B. Define conversation units precisely
+
+Do not count raw surface nodes as if they were always user-facing floors. One completed DSH turn can contain multiple assistant steps and tool call/result nodes.
+
+Any selector that uses turns/floors must define behavior for:
 
 - interrupted turns;
 - tool-heavy turns;
 - synthetic/injected user messages;
 - existing compaction checkpoint nodes;
-- assistant output without a valid summary tag;
-- several summary tags;
-- malformed/unclosed tags.
+- source text that does not satisfy the configured extractor;
+- several matches;
+- malformed/unclosed configured delimiters when the extractor uses them.
 
-The editor should let the user choose semantics where reasonable; it must not guess by silently discarding content.
+### 12C. Extract versus generate
 
-### 12B. Extract versus generate
+Two different transform capabilities may eventually exist:
 
-Two distinct modes should remain possible:
+**Extracted replacement** — deterministically derive replacement text from content the conversation already contains. This is the representative preset-authored small-summary workflow and requires no additional model call.
 
-**Extracted summary** — use summary text the agent already emitted, e.g. `<summary>...</summary>`.
+**Generated replacement** — ask a model to derive replacement text for a selected range. This has routing/token/cancellation semantics much closer to compaction and must remain a separate execution type if implemented.
 
-**Generated summary** — ask a model to summarize a selected range.
+Do not conflate them and do not make generated summaries the default hidden behavior of an extraction rule.
 
-Do not conflate them. Extracted summary has no extra model call and can exactly follow a user's preset protocol. Generated summary belongs closer to compaction semantics and has routing/token/cancellation concerns.
-
-### 12C. Commit safely
+### 12D. Commit safely
 
 A history transform must:
 
-- serialize against active agent work, preferably through the public maintenance/lifecycle seam;
+- serialize against active agent work through the current public lifecycle/maintenance seam;
 - re-read the Surface just before commit;
-- choose an inclusive replacement range by actual visible surface positions/seqs;
-- preserve tool call/result balance;
-- cite complete source event seqs required by the Surface contract;
+- choose a valid replacement range using current visible seqs/positions rather than stale array indexes;
+- preserve tool call/result balance and other protocol invariants;
+- account for all source events required by the current Surface contract;
 - coordinate with built-in compaction so overlapping replacements cannot race;
-- append, never rewrite/delete old events;
-- survive persistence, replay, and resume with identical derived Surface.
+- append a valid transition rather than rewriting/deleting retained source events;
+- survive persistence, migration, replay, and resume with identical derived Surface.
 
-Whether this becomes its own provider/service or composes with `ctx.compaction` should be decided by semantic fit, not code reuse alone. The existing compaction provider owns summarization and compaction transaction semantics; a deterministic user-authored extract-and-replace pipeline may deserve its own narrow engine while reusing public balancing helpers where allowed.
+Whether this becomes its own provider/service or composes with a DSH compaction service should be decided by semantic fit, not code reuse alone. Native compaction is a DSH-owned coarse summarization policy; Context Manager's purpose is to execute user-authored transformation policy, not to relabel compaction as an editor feature.
 
-### 12D. Preview and undo
+### 12E. Preview and undo
 
 Before committing a replacement, the UI should eventually be able to preview:
 
 ```text
-shadowed surface range
-replacement summary
-source event ids
+selected/shadowed Surface range
+configured extractor result
+source event ids/provenance
 estimated model-visible reduction
 ```
 
 "Undo" cannot mean mutating the old log back into existence—it already exists. A reversible product operation must be designed as another valid Surface transition or a session fork/reconstruction mechanism supported by DSH. Do not advertise undo until this is worked out.
+
+Native DSH compaction may still act later as a coarse context-window fallback. That coexistence is useful, but it remains distinct from the user-authored Context Manager transform.
 
 ---
 
@@ -496,21 +544,21 @@ estimated model-visible reduction
 
 Goal: let the user transform how messages look without changing model history.
 
-Primary example:
+A representative user-authored tagged region such as:
 
 ```xml
 <body text>
 <summary>...</summary>
 ```
 
-may render as:
+may be configured to render as:
 
 ```text
 <body text>
 ▶ Summary
 ```
 
-with the disclosure content collapsed by default.
+with disclosure content collapsed by default. The tag name and extraction semantics belong to the user's display-transform resource; Context Manager core does not reserve `<summary>`.
 
 Rules:
 
@@ -520,7 +568,7 @@ Rules:
 - stock DSH Markdown remains untrusted and raw HTML-disabled;
 - do not patch the stock keyed assistant renderer.
 
-Initial route: an additive Context Manager enhanced `conversation.view` that can render the same session with additional presentation behavior while stock Chat remains available.
+Initial route: use an additive public conversation presentation surface available in the then-supported DSH client version, while stock Chat remains available.
 
 If a later DSH release exposes a narrower public assistant-presentation transform slot, reevaluate and prefer the narrower seam behind a compatibility adapter.
 
@@ -643,12 +691,14 @@ Keep all repair operations explicit. A diagnostic may offer a button, but the bu
 
 For every milestone:
 
-1. Verify the public seam on the published supported DSH line.
-2. Inspect the current source-forward line for impending semantic changes.
-3. Do not broaden peer ranges until an installable version is actually tested.
-4. Put DSH-version differences behind narrow adapters only where a real difference exists.
-5. Never reach into package-private state merely to preserve an old feature promise.
-6. If DSH removes the capability, expose a capability diagnostic and keep stored user intent intact.
+1. Verify the public seam on the minimum/legacy supported DSH line where applicable.
+2. Execute the same production compatibility branch against the latest installable DSH package generation.
+3. Inspect the current source-forward line for impending semantic changes.
+4. Do not broaden peer ranges until an installable version is actually tested.
+5. Put DSH-version differences behind narrow adapters only where a real difference exists.
+6. If an adapter branches at runtime, add a focused test that actually executes every supported branch; package/config composition smoke is not a substitute.
+7. Never reach into package-private state merely to preserve an old feature promise.
+8. If DSH removes the capability, expose a capability diagnostic and keep stored user intent intact.
 
 The project should be able to upgrade DSH by replacing a small adapter, not rewriting the Domain or migrating every profile.
 
@@ -675,7 +725,7 @@ Context Manager content library
 
 DSH Session persistence
   durable conversation events
-  Surface replacement history
+  model-visible Surface replacement/shadow history
   session-owned bindings only when a public session persistence seam supports them
 ```
 
@@ -713,7 +763,7 @@ A Context Manager feature is not complete merely because a setting and UI exist.
 - malformed/missing resources fail in isolation where intended;
 - unknown unrelated user data survives narrow edits;
 - concurrency behavior is defined;
-- supported DSH versions are tested;
+- every supported DSH compatibility branch used by that capability is actually executed in tests;
 - the UI shows capability limitations honestly;
 - uninstall returns the affected DSH behavior to stock operation.
 
