@@ -1,10 +1,10 @@
 import type { Context } from '@deepseek-ai/cordis'
+import * as SettingsApi from '@deepseek-ai/dsh-settings'
 import {
   SettingsConflictError,
   type SettingsDescriptor,
   type SettingsPathOp,
   type SettingsProvider,
-  type SettingsScope,
 } from '@deepseek-ai/dsh-settings'
 import type z from '@deepseek-ai/schemastery'
 
@@ -17,9 +17,9 @@ export {
 
 /**
  * Context Manager only needs a stable string namespace. Older DSH releases
- * exposed `settingsNamespace()` while current releases validate literal/raw
- * namespace strings inside the Settings service itself. Keeping the value
- * local avoids depending on either API generation.
+ * exposed `settingsNamespace()` while current releases validate namespace
+ * strings in the Settings service itself. Keeping the value local avoids
+ * coupling the Domain to either API generation.
  */
 export function settingsNamespace(value: string): string {
   if (!/^[a-z][a-z0-9-]*$/.test(value)) {
@@ -34,25 +34,27 @@ export interface SettingsSectionHooks<T> {
   validate?: (value: T) => void
 }
 
+type InstallSettingsSection = <T>(
+  owner: Context,
+  ns: string,
+  schema: z<T>,
+  entry: T,
+  hooks: SettingsSectionHooks<T>,
+) => void
+
 type CurrentSettingsProvider = SettingsProvider & {
-  installSection?: <T>(
-    owner: Context,
-    ns: string,
-    schema: z<T>,
-    entry: T,
-    hooks: SettingsSectionHooks<T>,
-  ) => void
+  installSection?: InstallSettingsSection
 }
 
 /**
- * Attach an optional Settings-backed section across supported DSH API
- * generations.
+ * Attach the optional Context Manager Settings section across DSH API
+ * generations without reimplementing DSH's lifecycle policy.
  *
- * DSH 0.1.2+ owns this lifecycle through `settings.installSection()`. Older
- * releases exposed the same behavior as a module helper instead. Context
- * Manager intentionally does not import that removed helper: when the current
- * method is unavailable, this adapter uses only the common public
- * `register()`/`watch()`/Cordis lifecycle primitives.
+ * Current DSH exposes the helper as `settings.installSection(...)`. The older
+ * supported line exposes the same owned lifecycle as the module-level
+ * `installSettingsSection(...)`. The adapter selects only between those two
+ * public API shapes; it never detects a particular fork or reaches into DSH
+ * internals.
  */
 export function installSettingsSection<T>(
   ctx: Context,
@@ -61,31 +63,22 @@ export function installSettingsSection<T>(
   entry: T,
   hooks: SettingsSectionHooks<T>,
 ): void {
+  const legacyInstall = (SettingsApi as unknown as {
+    installSettingsSection?: InstallSettingsSection
+  }).installSettingsSection
+
+  if (legacyInstall !== undefined) {
+    legacyInstall(ctx, ns, schema, entry, hooks)
+    return
+  }
+
   ctx.inject(['settings'], (settingsCtx) => {
     const settings = settingsCtx.settings as CurrentSettingsProvider
-
-    if (typeof settings.installSection === 'function') {
-      settings.installSection(ctx, ns, schema, entry, hooks)
-      return
+    if (typeof settings.installSection !== 'function') {
+      throw new Error(
+        'dsh-context-manager: unsupported @deepseek-ai/dsh-settings API; expected settings.installSection()',
+      )
     }
-
-    const scope = settings.register(
-      ns as Parameters<SettingsProvider['register']>[0],
-      schema,
-      {
-        base: entry,
-        ...hooks.validate === undefined ? {} : { validate: hooks.validate },
-      },
-    ) as SettingsScope<T>
-
-    hooks.setSource(() => scope.get())
-    hooks.onChange()
-
-    const stopWatching = scope.watch(() => hooks.onChange())
-    settingsCtx.effect(() => () => {
-      stopWatching()
-      hooks.setSource(() => entry)
-      hooks.onChange()
-    }, `dsh-context-manager.settings(${JSON.stringify(ns)})`)
+    settings.installSection(ctx, ns, schema, entry, hooks)
   })
 }
