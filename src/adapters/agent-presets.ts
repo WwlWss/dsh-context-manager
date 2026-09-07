@@ -43,7 +43,6 @@ export type BasePresetResolution =
     }
 
 export interface ContextProfilePresetState {
-  readonly configuredBasePreset: string
   readonly basePreset: BasePresetResolution
 }
 
@@ -99,19 +98,96 @@ interface AgentPresetsCapability {
   list(): Promise<readonly HostAgentPreset[]>
 }
 
-export interface AgentPresetsObservation {
+interface AgentPresetsObservation {
   readonly defaultId: string
   readonly authorable: boolean
   readonly presets: readonly HostAgentPreset[]
 }
 
+function unsupportedApi(message: string): Error {
+  return new Error(`dsh-context-manager: unsupported agentPresets API; ${message}`)
+}
+
+function readOptionalString(
+  row: Record<string, unknown>,
+  key: 'name' | 'description' | 'broken',
+  index: number,
+): string | undefined {
+  const value = row[key]
+  if (value === undefined) return undefined
+  if (typeof value !== 'string') {
+    throw unsupportedApi(`list()[${String(index)}].${key} must be a string when present`)
+  }
+  return value
+}
+
+function validateRosterRow(value: unknown, index: number): HostAgentPreset {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    throw unsupportedApi(`list()[${String(index)}] must be an object`)
+  }
+  const row = value as Record<string, unknown>
+  if (typeof row.id !== 'string') {
+    throw unsupportedApi(`list()[${String(index)}].id must be a string`)
+  }
+  if (row.trust !== 'system' && row.trust !== 'user') {
+    throw unsupportedApi(`list()[${String(index)}].trust must be "system" or "user"`)
+  }
+
+  const name = readOptionalString(row, 'name', index)
+  const description = readOptionalString(row, 'description', index)
+  const broken = readOptionalString(row, 'broken', index)
+
+  return {
+    id: row.id,
+    trust: row.trust,
+    ...(name === undefined ? {} : { name }),
+    ...(description === undefined ? {} : { description }),
+    ...(broken === undefined ? {} : { broken }),
+  }
+}
+
 /**
  * Look up the optional native AgentPreset Host capability without requiring it
  * as a Cordis injection. Absence is the only condition mapped to unavailable;
- * a present service that fails list() must fail loud at the call site.
+ * a present but incompatible service fails loud instead of being misreported as
+ * an absent capability.
  */
 export function getAgentPresetsCapability(ctx: Context): AgentPresetsCapability | undefined {
-  return ctx.get('agentPresets') as AgentPresetsCapability | undefined
+  const capability = ctx.get('agentPresets') as unknown
+  if (capability === undefined) return undefined
+  if (typeof capability !== 'object' || capability === null) {
+    throw unsupportedApi('service value must be an object')
+  }
+  const candidate = capability as Record<string, unknown>
+  if (typeof candidate.list !== 'function') {
+    throw unsupportedApi('expected list()')
+  }
+  return capability as AgentPresetsCapability
+}
+
+/** Read and validate the minimum native Host contract M3A consumes. */
+export async function observeAgentPresets(
+  capability: AgentPresetsCapability,
+): Promise<AgentPresetsObservation> {
+  const defaultId = capability.defaultId
+  const authorable = capability.authorable
+  if (typeof defaultId !== 'string') {
+    throw unsupportedApi('defaultId must be a string')
+  }
+  if (typeof authorable !== 'boolean') {
+    throw unsupportedApi('authorable must be a boolean')
+  }
+
+  const rawPresets = await capability.list()
+  if (!Array.isArray(rawPresets)) {
+    throw unsupportedApi('list() must resolve to an array')
+  }
+
+  return {
+    defaultId,
+    authorable,
+    presets: rawPresets.map((preset, index) => validateRosterRow(preset, index)),
+  }
 }
 
 function projectPreset(preset: HostAgentPreset, defaultId: string): NativePresetRow {
@@ -167,7 +243,6 @@ export function buildPresetSnapshot(
 
   for (const [profileId, profile] of Object.entries(domain.profiles)) {
     profiles[profileId] = Object.freeze({
-      configuredBasePreset: profile.basePreset,
       basePreset: resolveBasePreset(profile.basePreset, byId),
     })
   }
@@ -193,7 +268,6 @@ export function buildUnavailablePresetSnapshot(
 
   for (const [profileId, profile] of Object.entries(domain.profiles)) {
     profiles[profileId] = Object.freeze({
-      configuredBasePreset: profile.basePreset,
       basePreset: Object.freeze({
         status: 'unavailable',
         configuredId: profile.basePreset,
