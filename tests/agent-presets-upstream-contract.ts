@@ -1,19 +1,21 @@
-import type {
-  AgentPreset,
-  AgentPresets,
-  PresetTrust,
-} from '@deepseek-ai/dsh-agent-presets'
+import type { Context } from '@deepseek-ai/cordis'
+import type {} from '@deepseek-ai/dsh-agent-presets'
 
 type Assert<T extends true> = T
 
+type NativeAgentPresets = Context['agentPresets']
+type NativeRoster = Awaited<ReturnType<NativeAgentPresets['list']>>
+type NativeRow = NativeRoster[number]
+type NativeTrust = NativeRow['trust']
+
 type ExactPresetTrust =
-  [PresetTrust] extends ['system' | 'user']
-    ? ['system' | 'user'] extends [PresetTrust]
+  [NativeTrust] extends ['system' | 'user']
+    ? ['system' | 'user'] extends [NativeTrust]
       ? true
       : false
     : false
 
-type StableRosterRow = AgentPreset extends {
+type StableRosterRow = NativeRow extends {
   readonly id: string
   readonly trust: 'system' | 'user'
   readonly name?: string
@@ -23,10 +25,10 @@ type StableRosterRow = AgentPreset extends {
   ? true
   : false
 
-type StableHostService = AgentPresets extends {
+type StableHostService = NativeAgentPresets extends {
   readonly defaultId: string
   readonly authorable: boolean
-  list(): Promise<readonly AgentPreset[]>
+  list(): Promise<readonly unknown[]>
 }
   ? true
   : false
