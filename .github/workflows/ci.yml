@@ -121,6 +121,7 @@ jobs:
       - name: Compile the minimum public Host contract fixture
         run: |
           pnpm exec tsc \
+            --ignoreConfig \
             --noEmit \
             --strict \
             --skipLibCheck \
