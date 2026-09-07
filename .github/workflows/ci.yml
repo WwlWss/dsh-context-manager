@@ -88,11 +88,53 @@ jobs:
       - name: Run the full type, build, and Domain regression suite on current Settings
         run: pnpm run check
 
+  agent-presets-contract:
+    name: AgentPreset Host contract (${{ matrix.version }})
+    strategy:
+      fail-fast: false
+      matrix:
+        version:
+          - 0.1.1-rc.2
+          - 0.1.2-rc.1
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22.20.0
+
+      - name: Enable pinned pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.7.0 --activate
+
+      - name: Install project dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install the selected native AgentPreset package in the ephemeral workspace
+        run: pnpm add --save-dev --save-exact @deepseek-ai/dsh-agent-presets@${{ matrix.version }}
+
+      - name: Compile the minimum public Host contract fixture
+        run: |
+          pnpm exec tsc \
+            --noEmit \
+            --strict \
+            --skipLibCheck \
+            --module NodeNext \
+            --moduleResolution NodeNext \
+            --target ES2024 \
+            tests/agent-presets-upstream-contract.ts
+
   package:
     name: verify packed bundle
     needs:
       - verify
       - settings-current
+      - agent-presets-contract
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
