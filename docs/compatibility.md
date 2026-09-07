@@ -87,7 +87,7 @@ Runtime structural typing by itself would not make TypeScript notice an upstream
 - `@deepseek-ai/dsh-agent-presets@0.1.1-rc.2`;
 - `@deepseek-ai/dsh-agent-presets@0.1.2-rc.1`.
 
-The fixture asserts that the public native declarations still provide `AgentPresets.defaultId`, `AgentPresets.authorable`, `AgentPresets.list()`, the minimum `AgentPreset` row shape, and the exact currently supported `PresetTrust` union. The package is installed only in the disposable CI workspace. It remains absent from Context Manager's committed peer/dev/runtime dependency surface.
+The fixture loads the native package's public Cordis module augmentation and derives the consumed capability from `Context['agentPresets']`. It then asserts that this actual Host seam still provides `defaultId`, `authorable`, `list()`, the minimum roster-row shape, and the exact currently supported `trust` union. The check deliberately does not depend on package-root named exports such as `AgentPresets`, `AgentPreset`, or `PresetTrust`, because production does not consume those names. The package is installed only in the disposable CI workspace. It remains absent from Context Manager's committed peer/dev/runtime dependency surface.
 
 This creates a deliberate split:
 
