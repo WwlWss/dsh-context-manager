@@ -6,8 +6,8 @@ DeepSeek Harness evolves quickly. Context Manager separates **installable/tested
 
 | Track | DSH reference | How it is used |
 | --- | --- | --- |
-| Legacy Settings regression | `dsh-v0.1.1-rc.2` | The committed development dependency set. The full type/build/Domain suite exercises the legacy module-level `installSettingsSection(...)` API generation. AgentPreset source review confirms the M3A Host intersection `defaultId` / `authorable` / `list()` already exists here. |
-| Latest installable Settings/runtime | `dsh-v0.1.2-rc.1` | A dedicated CI lane replaces only the ephemeral test workspace's DSH-facing dependencies with the versions shipped by this DSH line and reruns the full type/build/Domain suite, exercising `settings.installSection(...)`. The bundle smoke also installs/composes the plugin with the published `@deepseek-ai/dsh@0.1.2-rc.1` CLI. This line also publishes the path-free native AgentPreset roster DTO. |
+| Legacy Settings regression | `dsh-v0.1.1-rc.2` | The committed development dependency set. The full type/build/Domain suite exercises the legacy module-level `installSettingsSection(...)` API generation. AgentPreset source review and a focused published-package type-contract lane verify the M3A Host intersection `defaultId` / `authorable` / `list()` here. |
+| Latest installable Settings/runtime | `dsh-v0.1.2-rc.1` | A dedicated CI lane replaces only the ephemeral test workspace's DSH-facing dependencies with the versions shipped by this DSH line and reruns the full type/build/Domain suite, exercising `settings.installSection(...)`. The bundle smoke also installs/composes the plugin with the published `@deepseek-ai/dsh@0.1.2-rc.1` CLI. A separate AgentPreset contract lane compiles against the published `@deepseek-ai/dsh-agent-presets@0.1.2-rc.1`; this line also publishes the path-free native AgentPreset roster DTO. |
 | Latest official repository | `dsh-v0.1.3-alpha.1` / `d347e703...` | Source-forward architecture target. The GitHub release and repository carry this version, but the umbrella `@deepseek-ai/dsh@0.1.3-alpha.1` package is not currently available from npm, so this line is reviewed from official source rather than claimed as install-tested. |
 
 Support claims must name what was actually tested. A GitHub release/source tree and an installable npm package are deliberately not treated as the same thing.
@@ -60,13 +60,41 @@ The reason is compatibility rather than avoidance of the native domain. The stab
 
 That intersection exists in `dsh-v0.1.1-rc.2`, remains in the installable `dsh-v0.1.2-rc.1`, and remains in official `dsh-v0.1.3-alpha.1` source. Current source changed the service base class to `TypertRemoteService` and added richer Remote/structural features, but those changes do not alter the M3A Host reads.
 
-The local structural interface in `src/adapters/agent-presets.ts` is therefore intentionally smaller than the native class. It prevents three unnecessary dependencies:
+The local structural interface in `src/adapters/agent-presets.ts` is intentionally smaller than the native class. It prevents three unnecessary dependencies:
 
 1. the legacy line does not export the newer path-free `AgentPresetRow` type, so importing that DTO would silently raise the baseline;
 2. `agentPresets` is an optional composition capability, so absence must yield `unavailable`, not a package-resolution/install failure;
 3. Context Manager needs no native constructor, filesystem helpers, Remote client, or mount machinery for read-only roster resolution.
 
 This is still a native-first design: DSH owns discovery, root precedence, health, defaults, and authorability. Context Manager merely consumes the public service result and projects it to its own path-free read model.
+
+### M3A runtime boundary
+
+The structural seam is intentionally loose at package-resolution time but not unchecked at runtime.
+
+- `ctx.get('agentPresets') === undefined` is the only condition mapped to capability `unavailable`.
+- A present service must expose `list()`; otherwise M3A fails loud as an unsupported Host API rather than pretending the capability is absent.
+- `defaultId` must be a string and `authorable` a boolean.
+- `list()` must resolve to an array whose minimum consumed row fields match the supported Host contract: string `id`, `trust` of `system | user`, and optional string `name` / `description` / `broken`.
+- Unknown additional service or row fields are ignored. The guard validates the minimum contract only; it does not inspect `path`, `order`, mount state, class identity, DSH version, or fork identity.
+
+A widening of a field whose semantics Context Manager actually consumes, such as a new `trust` category, intentionally fails loud until reviewed. Pure additive metadata does not.
+
+### M3A upstream contract lane
+
+Runtime structural typing by itself would not make TypeScript notice an upstream declaration change. CI therefore has a separate compile-only contract fixture against the published native package versions:
+
+- `@deepseek-ai/dsh-agent-presets@0.1.1-rc.2`;
+- `@deepseek-ai/dsh-agent-presets@0.1.2-rc.1`.
+
+The fixture asserts that the public native declarations still provide `AgentPresets.defaultId`, `AgentPresets.authorable`, `AgentPresets.list()`, the minimum `AgentPreset` row shape, and the exact currently supported `PresetTrust` union. The package is installed only in the disposable CI workspace. It remains absent from Context Manager's committed peer/dev/runtime dependency surface.
+
+This creates a deliberate split:
+
+```text
+production runtime: loose package coupling + narrow runtime validation
+CI compatibility:   strong compile-time check against supported native packages
+```
 
 ### M3A rules
 
@@ -78,8 +106,10 @@ This is still a native-first design: DSH owns discovery, root precedence, health
 - `trust` is descriptive provenance, not an invented `editable` / `deletable` policy. Native authoring operations own those decisions.
 - Do not call `resolve()` once per profile: it re-enters unmemoized discovery and would turn N profiles into N root scans.
 - Do not call `mount()`, `recompose()`, `standingKeyFor()`, or any other composition-affecting API from M3A.
-- Do not catch a failing `list()` and label it `unavailable`; only `ctx.get('agentPresets') === undefined` means capability absence. A present native service that fails discovery must fail loud.
+- Do not catch a failing `list()` and label it `unavailable`; only capability absence means unavailable. A present native service that fails discovery must fail loud.
 - Treat the aggregate result as an authoritative best-effort observation, not an atomic transaction spanning Settings and the preset filesystem.
+- Treat the aggregate snapshot as a control-plane read. Native roster discovery is filesystem-backed and intentionally unmemoized, so future Remote/UI code must not poll it per render frame, token, Session event, or request hot path.
+- Keep adapter mechanics private to the package. The root package exports stable read-model types and `ContextManagerPresetDirectory`, not discovery/validation/builder helpers.
 
 The installable `0.1.2-rc.1` and current `0.1.3-alpha.1` source also provide a path-free native Remote roster (`AgentPresetRow` / `AgentPresetRoster`). Current source additionally provides `compositionInventory()`, which can read flattened preset composition without mounting an unmounted preset. Those are strong upstream signals for future work, but M3A deliberately does not depend on them because the legacy baseline does not expose the same contract.
 
@@ -152,6 +182,6 @@ When a PR begins using a new DSH seam:
 6. use bundle smoke tests for installation/composition claims, not as a substitute for runtime API tests;
 7. use source-forward review for unreleased repository changes and do not label them install-tested until packages exist;
 8. keep unsupported/missing optional capabilities explicit instead of simulating them;
-9. update this document when the minimum tested DSH line moves.
+9. update this document when the minimum tested DSH contract changes.
 
 The compatibility objective is **one plugin codebase across supported official DSH lines and compatible forks**, not one plugin version per host build.
