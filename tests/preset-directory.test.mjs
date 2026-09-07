@@ -79,10 +79,14 @@ function settingsDoc(profiles, schemaVersion = 1) {
   }
 }
 
-async function boot({ profiles = {}, schemaVersion = 1, presetState } = {}) {
+async function boot({ profiles = {}, schemaVersion = 1, presetState, withSettings = true } = {}) {
   const ctx = new Context()
-  const settingsFiber = ctx.plugin(MemorySettings, settingsDoc(profiles, schemaVersion))
-  await settingsFiber
+
+  let settingsFiber
+  if (withSettings) {
+    settingsFiber = ctx.plugin(MemorySettings, settingsDoc(profiles, schemaVersion))
+    await settingsFiber
+  }
 
   const managerFiber = ctx.plugin(ContextManagerService)
   await managerFiber
@@ -127,12 +131,26 @@ test('directory remains active without agentPresets and preserves configured ids
   const snapshot = await directory.snapshot()
   assert.equal(snapshot.directory.status, 'unavailable')
   assert.deepEqual(snapshot.profiles.roleplay, {
-    configuredBasePreset: 'future-preset',
     basePreset: {
       status: 'unavailable',
       configuredId: 'future-preset',
     },
   })
+})
+
+test('native roster remains available when Settings is absent', async () => {
+  const state = nativeState({
+    presets: [{ id: 'standard', trust: 'system' }],
+  })
+  const { directory } = await boot({
+    withSettings: false,
+    presetState: state,
+  })
+
+  const snapshot = await directory.snapshot()
+  assert.equal(snapshot.directory.status, 'available')
+  assert.equal(snapshot.directory.presets.length, 1)
+  assert.deepEqual(Object.keys(snapshot.profiles), [])
 })
 
 test('optional agentPresets attach and detach are observed without a stale cache', async () => {
@@ -234,6 +252,49 @@ test('a present agentPresets service whose list fails rejects instead of masquer
   })
 
   await assert.rejects(directory.snapshot(), error => error === failure)
+})
+
+test('an incompatible agentPresets service fails loud instead of masquerading as unavailable', async () => {
+  class BrokenAgentPresets extends Service {
+    constructor(ctx) {
+      super(ctx, 'agentPresets')
+      this.defaultId = 'standard'
+      this.authorable = true
+    }
+  }
+
+  const { ctx, directory } = await boot({
+    profiles: { main: profile('standard') },
+  })
+  const fiber = ctx.plugin(BrokenAgentPresets)
+  await fiber
+
+  await assert.rejects(
+    directory.snapshot(),
+    /unsupported agentPresets API; expected list\(\)/,
+  )
+})
+
+test('invalid minimum roster fields fail loud while unknown extra fields remain compatible', async () => {
+  const state = nativeState({
+    presets: [{
+      id: 'standard',
+      trust: 'system',
+      futureField: { safeToIgnore: true },
+    }],
+  })
+  const { directory } = await boot({
+    profiles: { main: profile('standard') },
+    presetState: state,
+  })
+
+  assert.equal((await directory.snapshot()).profiles.main.basePreset.status, 'resolved')
+
+  state.presets = [{ id: 'standard', trust: 'workspace' }]
+  await assert.rejects(
+    directory.snapshot(),
+    /unsupported agentPresets API; list\(\)\[0\]\.trust/,
+  )
 })
 
 test('native rows are projected to immutable path-free DTOs without leaking source references or policy fields', async () => {
