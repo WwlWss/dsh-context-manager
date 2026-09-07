@@ -4,7 +4,7 @@ Modular preset, prompt, skill, transform, and presentation context manager for D
 
 ## Status
 
-The installable/test-gated DSH bundle foundation and the model-inert Settings-backed Host profile Domain are complete. The current compatibility branch adapts that foundation across the supported legacy and current DSH Settings API generations without adding model-visible behavior.
+The installable/test-gated DSH bundle foundation, the model-inert Settings-backed Host profile Domain, and the DSH Settings compatibility seam are complete. Milestone 3A is now in development: Context Manager can observe the optional native AgentPreset roster and resolve each usable profile's configured `basePreset` as resolved, missing, broken, or unavailable without changing any Agent composition.
 
 Context Manager is an editor, not a policy engine. It preserves explicit user intent, reports unresolved or malformed resources as diagnostics, and does not silently fallback, repair, normalize, reorder, or delete user-authored configuration.
 
@@ -41,7 +41,7 @@ A profile currently contains only state whose meaning is defined by the Domain: 
 
 The object-shaped binding is deliberate. Later versions can add sibling data such as placement, ordering, activation, or triggers, while `setSkillMode()` changes only the `.mode` leaf and preserves unknown siblings. Removing the whole binding is a separate explicit operation.
 
-The settings envelope is intentionally tolerant so one malformed profile payload cannot take every other profile offline. Context Manager separates stored payloads from parsed Domain profiles; later runtime/effective resolution remains a separate layer.
+The settings envelope is intentionally tolerant so one malformed profile payload cannot take every other profile offline. Context Manager separates stored payloads from parsed Domain profiles; runtime/effective resolution remains a separate layer.
 
 Structured creation/replacement validates the full current profile shape. Narrow edits such as one skill mode validate only the path they touch, so unrelated malformed fields do not block an explicit local repair. Every write is fenced to a DSH Settings revision, including calls that omit an explicit `expectedRevision`, which prevents a stale path check from being applied after another queued writer changed the profile.
 
@@ -49,9 +49,30 @@ DSH intentionally keeps a last-good resolved value when an externally edited Set
 
 The advanced stored-payload seam accepts Domain-invalid JSON-shaped content without auto-repair. It still refuses values DSH cannot preserve losslessly: `undefined`, and currently the JSON property key `__proto__` because DSH Settings has an upstream property-safe-construction limitation for that key. Names such as `constructor` and `prototype` remain valid.
 
+## Native AgentPreset observation
+
+Milestone 3A adds a separate read model over the native Host roster. It intentionally consumes only the stable public Host-service intersection that exists across the reviewed DSH lines: `defaultId`, `authorable`, and one `list()` call per aggregate snapshot.
+
+The read model keeps the configured profile string unchanged inside `basePreset.configuredId` and reports one of four states:
+
+- `resolved` — the exact configured id is present and native discovery did not mark it broken;
+- `missing` — the AgentPreset capability exists but the exact configured id is absent;
+- `broken` — the id exists and DSH discovery supplied a `broken` reason;
+- `unavailable` — the current composition has no `agentPresets` capability.
+
+There is no fallback to DSH's default preset. The native `defaultId` is roster metadata only. The projected roster is path-free and does not expose `order`, filesystem locations, or invented policy fields such as `editable`. Context Manager does not cache the roster across snapshots and does not call preset mount/recompose/standing APIs.
+
+The optional Host boundary is validated narrowly at runtime: absence maps to `unavailable`, while a present service missing `list()`, returning an incompatible minimum row shape, or exposing incompatible `defaultId`/`authorable` types fails loud. Unknown extra Host fields are ignored. CI separately compiles a minimum contract fixture against the published `@deepseek-ai/dsh-agent-presets` packages from both supported DSH generations, so upstream drift is detected without making that package a production dependency.
+
+Native roster discovery is intentionally unmemoized upstream. Treat the aggregate M3A snapshot as a control-plane read: future Remote/UI code must not poll it per render frame, token, Session event, or request hot path.
+
+This remains model-inert. Milestone 3A describes current native state; it does not change the preset used by an existing or future Agent.
+
 ## Important compatibility notes
 
 The currently tested Settings generations are the legacy `dsh-v0.1.1-rc.2` line and the latest installable `dsh-v0.1.2-rc.1` line. CI runs the full Domain/runtime regression suite against both public Settings shapes. The latest official repository/GitHub release is `dsh-v0.1.3-alpha.1`; it is source-reviewed until the corresponding umbrella package is installable. See [docs/compatibility.md](docs/compatibility.md) for the exact matrix.
+
+The M3A AgentPreset adapter does not import or bundle `@deepseek-ai/dsh-agent-presets`. The capability is optional and discovered through Cordis; the adapter deliberately models only the stable Host-service shape shared by the legacy, current installable, and source-forward lines. Adapter helper functions remain internal to the package root API so future DSH compatibility work can replace the seam without creating an accidental public contract.
 
 The shipped Minimal preset is intentionally restrictive: it uses a complete persona and disables runtime context. Context Manager must report those placement limitations honestly. Users who need to change Minimal's composition can create a DSH-native preset copy/modular variant; the shipped preset remains untouched.
 
@@ -67,7 +88,7 @@ DSH Settings revision fencing is an in-process guarantee. If multiple DSH proces
 
 1. **Complete** — Installable DSH bundle scaffold, build contract tests, and CI.
 2. **Complete** — Host-side Context Manager domain and settings-backed reusable profile model.
-3. **Next** — Native AgentPreset roster/configured-resolution integration, followed separately by effective Session/Agent identity.
+3. **In development — M3A** — Native AgentPreset roster plus configured -> resolved/missing/broken/unavailable observation. Effective Session/Agent identity remains a separate M3B; native authoring remains optional M3C.
 4. Modular system-prompt/runtime-context overlay model with capability-aware placement.
 5. Scoped skill policy model for Pinned / Auto / Manual / Off, with leakage and resume tests.
 6. Web client package and additive right-side Drawer.
@@ -92,7 +113,7 @@ pnpm install --frozen-lockfile
 pnpm run check
 ```
 
-`pnpm run check` performs type checking, a clean production build, and package/domain tests against the legacy development dependency set. CI additionally runs the same suite against the latest installable Settings generation.
+`pnpm run check` performs type checking, a clean production build, and package/domain/runtime-read-model tests against the legacy development dependency set. CI additionally runs the same suite against the latest installable Settings generation and verifies the native AgentPreset Host type contract against both published supported generations.
 
 Before changing runtime integration or adding a Web capability, read [docs/development-guide.md](docs/development-guide.md). It records the project's persistence, lifecycle, DSH-integration, transform, client, performance, and testing rules.
 

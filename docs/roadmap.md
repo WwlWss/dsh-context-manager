@@ -104,32 +104,35 @@ Exit criteria were met before merge:
 
 Goal: connect stored preset references to DSH's native preset domain without changing composition, while keeping roster/configured resolution separate from live/durable Session identity.
 
-The Settings compatibility work required before this milestone is tracked independently in the current compatibility PR: the same model-inert PR2 Domain is exercised against both the legacy `0.1.1-rc.2` Settings API generation and the latest installable `0.1.2-rc.1` generation. Source-forward review follows `dsh-v0.1.3-alpha.1` without pretending that unreleased npm packages are install-tested.
+The Settings compatibility prerequisite was completed in merged PR #3. The same model-inert PR2 Domain is exercised against both the legacy `0.1.1-rc.2` Settings API generation and the latest installable `0.1.2-rc.1` generation. Source-forward review follows `dsh-v0.1.3-alpha.1` without pretending that unreleased npm packages are install-tested.
 
 ### 3A — Native roster and configured -> resolved state
 
+**Status:** in development in PR #4.
+
 Host work:
 
-- add a narrow AgentPreset adapter using the public `ctx.agentPresets` service;
+- add a narrow AgentPreset adapter using the optional public `ctx.agentPresets` Host service;
 - list native preset ids and metadata;
-- read only the public structural representation actually needed by Context Manager;
+- read only the minimum public structural representation actually needed by Context Manager;
 - distinguish configured preset id from roster resolution;
 - add runtime diagnostics for missing/broken/unavailable preset references;
 - expose capability state when `agentPresets` is absent;
 - take one native roster snapshot per aggregate Context Manager resolution pass rather than rescanning for every profile;
-- keep returned Context Manager DTOs path-free and detached from DSH-native mutable/private representation.
+- keep returned Context Manager DTOs path-free and detached from DSH-native mutable/private representation;
+- validate the minimum Host contract at the runtime boundary while ignoring unrelated future fields;
+- keep adapter helpers private to the package implementation and export only stable read-model types plus the Host service.
 
 UI-independent output should distinguish facts such as:
 
 ```text
-configuredBasePreset = "foo"
-resolvedBasePreset = undefined
-status = missing
+basePreset.configuredId = "foo"
+basePreset.status = "missing"
 ```
 
 No fallback to `standard`.
 
-The first roster integration should be read-only/model-inert. It must not mount, recompose, or hot-switch an AgentPreset.
+The first roster integration is read-only/model-inert. It must not mount, recompose, or hot-switch an AgentPreset. Native roster discovery is intentionally unmemoized upstream; the M3A aggregate snapshot is therefore a control-plane read, not a render-frame or request-hot-path getter.
 
 ### 3B — Effective Session/Agent preset identity
 
@@ -139,7 +142,7 @@ Required distinction:
 
 ```text
 configured = what the Context Profile says
-resolved   = whether the configured ref exists/is healthy now
+resolved   = whether that reference exists/is healthy now
 effective  = what the live/durable Session or Agent actually runs
 ```
 
@@ -738,6 +741,8 @@ Do not introduce project/session persistence by stuffing additional pseudo-scope
 As scale increases, protect these paths:
 
 **Settings snapshot path** — metadata only; no large body reads or tokenization.
+
+**AgentPreset roster snapshot path** — control-plane only. Native `list()` intentionally re-reads preset roots and health, so aggregate preset snapshots must not be polled per render frame, token, Session event, or request hot path. Prefer explicit refresh or pull-on-change once a reliable invalidation signal exists.
 
 **Agent request path** — resolve only the effective profile/resources for that agent; avoid whole-library scans.
 
