@@ -4,6 +4,7 @@ import {
   buildPresetSnapshot,
   buildUnavailablePresetSnapshot,
   getAgentPresetsCapability,
+  observeAgentPresets,
   type ContextManagerPresetSnapshot,
 } from '../adapters/agent-presets.js'
 
@@ -39,17 +40,11 @@ export class ContextManagerPresetDirectory extends Service {
       return buildUnavailablePresetSnapshot(domain)
     }
 
-    // Read each live fact once for this aggregate observation. Settings and
-    // preset discovery do not share one transaction, so this is authoritative
-    // best-effort state rather than an atomic cross-subsystem snapshot.
-    const defaultId = agentPresets.defaultId
-    const authorable = agentPresets.authorable
-    const presets = await agentPresets.list()
-
-    return buildPresetSnapshot(domain, {
-      defaultId,
-      authorable,
-      presets,
-    })
+    // Settings and preset discovery do not share one transaction, so this is
+    // authoritative best-effort state rather than an atomic cross-subsystem
+    // snapshot. observeAgentPresets() reads list() exactly once and validates
+    // only the minimum Host contract M3A actually consumes.
+    const observation = await observeAgentPresets(agentPresets)
+    return buildPresetSnapshot(domain, observation)
   }
 }
