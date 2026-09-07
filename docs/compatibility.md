@@ -6,13 +6,13 @@ DeepSeek Harness evolves quickly. Context Manager separates **installable/tested
 
 | Track | DSH reference | How it is used |
 | --- | --- | --- |
-| Legacy Settings regression | `dsh-v0.1.1-rc.2` | The committed development dependency set. The full type/build/Domain suite exercises the legacy module-level `installSettingsSection(...)` API generation. |
-| Latest installable Settings/runtime | `dsh-v0.1.2-rc.1` | A dedicated CI lane replaces only the ephemeral test workspace's DSH-facing dependencies with the versions shipped by this DSH line and reruns the full type/build/Domain suite, exercising `settings.installSection(...)`. The bundle smoke also installs/composes the plugin with the published `@deepseek-ai/dsh@0.1.2-rc.1` CLI. |
+| Legacy Settings regression | `dsh-v0.1.1-rc.2` | The committed development dependency set. The full type/build/Domain suite exercises the legacy module-level `installSettingsSection(...)` API generation. AgentPreset source review confirms the M3A Host intersection `defaultId` / `authorable` / `list()` already exists here. |
+| Latest installable Settings/runtime | `dsh-v0.1.2-rc.1` | A dedicated CI lane replaces only the ephemeral test workspace's DSH-facing dependencies with the versions shipped by this DSH line and reruns the full type/build/Domain suite, exercising `settings.installSection(...)`. The bundle smoke also installs/composes the plugin with the published `@deepseek-ai/dsh@0.1.2-rc.1` CLI. This line also publishes the path-free native AgentPreset roster DTO. |
 | Latest official repository | `dsh-v0.1.3-alpha.1` / `d347e703...` | Source-forward architecture target. The GitHub release and repository carry this version, but the umbrella `@deepseek-ai/dsh@0.1.3-alpha.1` package is not currently available from npm, so this line is reviewed from official source rather than claimed as install-tested. |
 
 Support claims must name what was actually tested. A GitHub release/source tree and an installable npm package are deliberately not treated as the same thing.
 
-The `0.1.2-rc.1` DSH source line ships `@deepseek-ai/cordis@4.0.2`, `@deepseek-ai/dsh-settings@0.1.2-rc.1`, and `@deepseek-ai/schemastery@3.18.2`; the current-generation compatibility lane uses those exact versions. The ordinary development lockfile remains on the legacy generation so both public API shapes stay visible instead of silently moving the minimum test baseline.
+The `0.1.2-rc.1` DSH source line ships `@deepseek-ai/cordis@4.0.2`, `@deepseek-ai/dsh-settings@0.1.2-rc.1`, and `@deepseek-ai/schemastery@3.18.2`; the current-generation compatibility lane uses those exact versions. The ordinary development lockfile remains on the legacy generation so both public Settings API shapes stay visible instead of silently moving the minimum test baseline.
 
 ## Settings compatibility rule
 
@@ -50,20 +50,40 @@ Two Settings limits are intentionally not papered over by Context Manager:
 
 ## AgentPreset compatibility
 
-The public `ctx.agentPresets` roster remains the intended foundation for Milestone 3.
+Milestone 3A consumes the optional public Host capability exposed as `ctx.agentPresets`. It does **not** import or bundle `@deepseek-ai/dsh-agent-presets` in production.
 
-The latest installable line and the latest official source expose the core roster facts Context Manager needs for the first integration:
+The reason is compatibility rather than avoidance of the native domain. The stable Host-service intersection needed by M3A is already shared by all reviewed lines:
 
-- `list()`;
-- `defaultId`;
-- `authorable`;
-- preset identity/metadata including `id`, `trust`, optional `name`/`description`, and optional `broken` reason.
+- `defaultId` — current native default id;
+- `authorable` — whether the deployment has a user-authorable preset root;
+- `list()` — one unmemoized roster read returning Host rows with `id`, `trust`, optional `name` / `description`, optional `broken`, plus Host-only implementation fields such as the absolute composition `path`.
 
-Current official source also exposes path-free Remote roster data and richer composition inventory APIs. Context Manager should consume native public APIs instead of scanning preset directories or parsing `agent.cordis.yml` itself.
+That intersection exists in `dsh-v0.1.1-rc.2`, remains in the installable `dsh-v0.1.2-rc.1`, and remains in official `dsh-v0.1.3-alpha.1` source. Current source changed the service base class to `TypertRemoteService` and added richer Remote/structural features, but those changes do not alter the M3A Host reads.
 
-The first AgentPreset integration remains deliberately narrow: one native roster read per aggregate snapshot, configured -> resolved/missing/broken/unavailable diagnostics, no fallback to `standard`, and no mount/recompose side effects.
+The local structural interface in `src/adapters/agent-presets.ts` is therefore intentionally smaller than the native class. It prevents three unnecessary dependencies:
 
-Effective live/durable preset identity is a separate concern because Session APIs changed materially after the legacy line. Do not mix roster discovery with Session identity merely to keep one large PR.
+1. the legacy line does not export the newer path-free `AgentPresetRow` type, so importing that DTO would silently raise the baseline;
+2. `agentPresets` is an optional composition capability, so absence must yield `unavailable`, not a package-resolution/install failure;
+3. Context Manager needs no native constructor, filesystem helpers, Remote client, or mount machinery for read-only roster resolution.
+
+This is still a native-first design: DSH owns discovery, root precedence, health, defaults, and authorability. Context Manager merely consumes the public service result and projects it to its own path-free read model.
+
+### M3A rules
+
+- Perform **at most one** native `list()` per aggregate Context Manager preset snapshot.
+- Keep no roster cache across snapshots; native discovery is deliberately unmemoized so authored/deleted presets appear on the next read.
+- Preserve `profile.basePreset` exactly; never trim, lowercase, rewrite, or replace it with `defaultId`.
+- Distinguish `unavailable` (no capability) from `missing` (capability present, id absent) and `broken` (native discovery supplied a reason).
+- Project fields explicitly. Never spread the Host `AgentPreset` object, because that would leak absolute `path` and other implementation fields into a future Remote/UI contract.
+- `trust` is descriptive provenance, not an invented `editable` / `deletable` policy. Native authoring operations own those decisions.
+- Do not call `resolve()` once per profile: it re-enters unmemoized discovery and would turn N profiles into N root scans.
+- Do not call `mount()`, `recompose()`, `standingKeyFor()`, or any other composition-affecting API from M3A.
+- Do not catch a failing `list()` and label it `unavailable`; only `ctx.get('agentPresets') === undefined` means capability absence. A present native service that fails discovery must fail loud.
+- Treat the aggregate result as an authoritative best-effort observation, not an atomic transaction spanning Settings and the preset filesystem.
+
+The installable `0.1.2-rc.1` and current `0.1.3-alpha.1` source also provide a path-free native Remote roster (`AgentPresetRow` / `AgentPresetRoster`). Current source additionally provides `compositionInventory()`, which can read flattened preset composition without mounting an unmounted preset. Those are strong upstream signals for future work, but M3A deliberately does not depend on them because the legacy baseline does not expose the same contract.
+
+Effective live/durable preset identity is M3B, not M3A. Current DSH exposes `agentPreset: string | null` in Session projection state, while older lines used different Session helpers; keeping that concern separate avoids dragging the 0.1.3 SessionHandle/locking migration into a roster-only feature.
 
 ## System prompt and runtime-context guardrails
 
@@ -82,7 +102,7 @@ DSH remains the owner of the native Skill registry/providers. Context Manager's 
 
 Before claiming hard Manual/Off semantics, tests must cover scope precedence, same-name shadowing, provider invalidation, cold/resumed sessions, disposal, and invocation leakage. If the current DSH version cannot faithfully express the requested policy, the capability must be reported unavailable rather than simulated.
 
-These are future-runtime requirements; PR2/PR3 only persist skill binding intent.
+These are future-runtime requirements; the current build only persists skill binding intent.
 
 ## Session and model-visible Surface boundary
 
