@@ -3,7 +3,14 @@ import type { Context } from '@deepseek-ai/cordis'
 import { ContextManagerService } from './service/context-manager.js'
 import { ContextManagerPresetDirectory } from './service/preset-directory.js'
 
-export * from './adapters/agent-presets.js'
+export type {
+  BasePresetResolution,
+  ContextManagerPresetSnapshot,
+  ContextProfilePresetState,
+  NativePresetDirectory,
+  NativePresetRow,
+  NativePresetTrust,
+} from './adapters/agent-presets.js'
 export * from './domain/errors.js'
 export * from './domain/model.js'
 export * from './domain/schema.js'
