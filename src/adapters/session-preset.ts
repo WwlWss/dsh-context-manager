@@ -22,19 +22,13 @@ export type SessionPresetIdentity =
       readonly presetId: string | null
     }
 
-interface HostSessionHeader {
-  readonly agentPreset?: unknown
+interface HostSession {
+  readonly [key: string]: unknown
 }
 
 interface HostSessionEvent {
   readonly type?: unknown
   readonly data?: unknown
-}
-
-interface HostSession {
-  readonly header: HostSessionHeader
-  readonly events?: unknown
-  snapshotEvents?: () => unknown
 }
 
 interface SessionsCapability {
@@ -64,7 +58,7 @@ function getSessionsCapability(ctx: Context): SessionsCapability | undefined {
     throw unsupportedSessionsApi('service value must be an object')
   }
   const candidate = capability as Record<string, unknown>
-  if (typeof candidate.get !== 'function') {
+  if (typeof candidate.list !== 'function') {
     throw unsupportedSessionsApi('expected get()')
   }
   return capability as SessionsCapability
@@ -83,23 +77,6 @@ function getSessionProjectionsCapability(ctx: Context): SessionProjectionsCapabi
   return capability as SessionProjectionsCapability
 }
 
-function validateSession(value: unknown): HostSession {
-  if (typeof value !== 'object' || value === null) {
-    throw unsupportedSessionShape('live session must be an object')
-  }
-  const session = value as Record<string, unknown>
-  if (typeof session.header !== 'object' || session.header === null || Array.isArray(session.header)) {
-    throw unsupportedSessionShape('header must be an object')
-  }
-  if (session.snapshotEvents !== undefined && typeof session.snapshotEvents !== 'function') {
-    throw unsupportedSessionShape('snapshotEvents must be a function when present')
-  }
-  if (session.events !== undefined && !Array.isArray(session.events)) {
-    throw unsupportedSessionShape('events must be an array when present')
-  }
-  return value as HostSession
-}
-
 function readProjectedPreset(
   projections: SessionProjectionsCapability | undefined,
   session: HostSession,
@@ -112,14 +89,34 @@ function readProjectedPreset(
 }
 
 function readSessionEvents(session: HostSession): readonly HostSessionEvent[] {
-  const raw = session.snapshotEvents === undefined
-    ? session.events
-    : session.snapshotEvents()
+  const snapshotEvents = session.snapshotEvents
+  let raw: unknown
+  if (snapshotEvents === undefined) {
+    raw = session.events
+  } else {
+    if (typeof snapshotEvents !== 'function') {
+      throw unsupportedSessionShape('snapshotEvents must be a function when used')
+    }
+    raw = snapshotEvents.call(session)
+  }
 
   if (!Array.isArray(raw)) {
     throw unsupportedSessionShape('expected snapshotEvents() or events to provide an array')
   }
   return raw as readonly HostSessionEvent[]
+}
+
+function readCreationPreset(session: HostSession): string | null {
+  const header = session.header
+  if (typeof header !== 'object' || header === null || Array.isArray(header)) {
+    throw unsupportedSessionShape('header must be an object when log fallback is used')
+  }
+  const creationPreset = (header as Record<string, unknown>).agentPreset
+  if (creationPreset === undefined) return null
+  if (typeof creationPreset !== 'string') {
+    throw unsupportedSessionShape('header.agentPreset must be a string when present')
+  }
+  return creationPreset
 }
 
 function resolveRecordedPreset(session: HostSession): string | null {
@@ -143,12 +140,7 @@ function resolveRecordedPreset(session: HostSession): string | null {
     return preset
   }
 
-  const creationPreset = session.header.agentPreset
-  if (creationPreset === undefined) return null
-  if (typeof creationPreset !== 'string') {
-    throw unsupportedSessionShape('header.agentPreset must be a string when present')
-  }
-  return creationPreset
+  return readCreationPreset(session)
 }
 
 /**
@@ -157,8 +149,9 @@ function resolveRecordedPreset(session: HostSession): string | null {
  * Current DSH lines expose `agentPreset` as Session projection state. When the
  * projection key is genuinely absent, the adapter falls back to the older
  * public Session log representation: newest `agent-preset/selected` wins over
- * the immutable creation header. A malformed present capability fails loud;
- * it is never disguised as capability absence.
+ * the immutable creation header. Validation is path-local: fallback-only
+ * fields are inspected only when that fallback is actually needed. A malformed
+ * present capability fails loud; it is never disguised as capability absence.
  */
 export function observeSessionPresetIdentity(
   ctx: Context,
@@ -173,8 +166,11 @@ export function observeSessionPresetIdentity(
   if (found === undefined) {
     return Object.freeze({ status: 'not-live', sessionId })
   }
+  if (typeof found !== 'object' || found === null) {
+    throw unsupportedSessionShape('live session must be an object')
+  }
 
-  const session = validateSession(found)
+  const session = found as HostSession
   const projected = readProjectedPreset(getSessionProjectionsCapability(ctx), session)
   const presetId = projected === undefined ? resolveRecordedPreset(session) : projected
 
