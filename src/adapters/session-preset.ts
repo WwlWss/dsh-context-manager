@@ -58,7 +58,7 @@ function getSessionsCapability(ctx: Context): SessionsCapability | undefined {
     throw unsupportedSessionsApi('service value must be an object')
   }
   const candidate = capability as Record<string, unknown>
-  if (typeof candidate.list !== 'function') {
+  if (typeof candidate.get !== 'function') {
     throw unsupportedSessionsApi('expected get()')
   }
   return capability as SessionsCapability
