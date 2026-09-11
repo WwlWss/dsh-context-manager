@@ -102,61 +102,80 @@ Exit criteria were met before merge:
 
 ## Milestone 3 — Native AgentPreset discovery and runtime identity
 
-Goal: connect stored preset references to DSH's native preset domain without changing composition, while keeping roster/configured resolution separate from live/durable Session identity.
+Goal: connect stored preset references to DSH's native preset domain without changing composition, while keeping roster/configured resolution separate from live Session identity.
 
-The Settings compatibility prerequisite was completed in merged PR #3. The same model-inert PR2 Domain is exercised against both the legacy `0.1.1-rc.2` Settings API generation and the latest installable `0.1.2-rc.1` generation. Source-forward review follows `dsh-v0.1.3-alpha.1` without pretending that unreleased npm packages are install-tested.
+The Settings compatibility prerequisite was completed in merged PR #3. The compatibility matrix now retains the legacy `0.1.1-rc.2` generation, the prior-modern `0.1.2-rc.1` generation, and the latest installable `0.1.5-rc.1` generation. Source-forward review follows current official `master` separately from install-tested npm claims; see [compatibility.md](compatibility.md).
 
 ### 3A — Native roster and configured -> resolved state
 
-**Status:** in development in PR #4.
+**Status:** complete in merged PR #4.
 
-Host work:
+Delivered Host work:
 
-- add a narrow AgentPreset adapter using the optional public `ctx.agentPresets` Host service;
-- list native preset ids and metadata;
-- read only the minimum public structural representation actually needed by Context Manager;
-- distinguish configured preset id from roster resolution;
-- add runtime diagnostics for missing/broken/unavailable preset references;
-- expose capability state when `agentPresets` is absent;
-- take one native roster snapshot per aggregate Context Manager resolution pass rather than rescanning for every profile;
-- keep returned Context Manager DTOs path-free and detached from DSH-native mutable/private representation;
-- validate the minimum Host contract at the runtime boundary while ignoring unrelated future fields;
-- keep adapter helpers private to the package implementation and export only stable read-model types plus the Host service.
+- a narrow AgentPreset adapter using the optional public `ctx.agentPresets` Host service;
+- native preset ids and metadata;
+- only the minimum public structural representation actually needed by Context Manager;
+- configured preset id kept distinct from roster resolution;
+- runtime diagnostics for missing/broken/unavailable preset references;
+- explicit capability state when `agentPresets` is absent;
+- one native roster snapshot per aggregate Context Manager resolution pass rather than one scan per profile;
+- path-free Context Manager DTOs detached from DSH-native mutable/private representation;
+- minimum Host-contract runtime validation while ignoring unrelated future fields;
+- package-root exposure limited to stable read-model types plus the Host service, with adapter helpers kept internal.
 
-UI-independent output should distinguish facts such as:
+UI-independent output distinguishes facts such as:
 
 ```text
 basePreset.configuredId = "foo"
 basePreset.status = "missing"
 ```
 
-No fallback to `standard`.
+There is no fallback to `standard`.
 
-The first roster integration is read-only/model-inert. It must not mount, recompose, or hot-switch an AgentPreset. Native roster discovery is intentionally unmemoized upstream; the M3A aggregate snapshot is therefore a control-plane read, not a render-frame or request-hot-path getter.
+The roster integration remains read-only/model-inert. It does not mount, recompose, or hot-switch an AgentPreset. Native roster discovery is intentionally unmemoized upstream; the M3A aggregate snapshot is therefore a control-plane read, not a render-frame or request-hot-path getter.
 
-### 3B — Effective Session/Agent preset identity
+### 3B — Effective live Session preset identity
 
-Only after 3A is stable, add version-aware effective identity using the then-current public Session/projection lifecycle.
+**Status:** in development in PR #5.
 
-Required distinction:
+Purpose: add a Session-scoped read model for what a **currently live DSH Session records**, without creating a profile-to-Session binding and without taking over DSH Session lifecycle.
+
+Required distinction remains:
 
 ```text
 configured = what the Context Profile says
 resolved   = whether that reference exists/is healthy now
-effective  = what the live/durable Session or Agent actually runs
+effective  = what the live Session records as its AgentPreset identity
 ```
 
-Lifecycle tests:
+The implementation boundary is deliberately narrower than an independent persistent-session reader:
 
-- cold agent creation;
-- resumed session preset identity;
-- missing preset;
-- preset service detach/reload if the public service supports it;
-- session whose durable preset identity differs from newly configured profile intent.
+- use `ctx.sessions.get(sessionId)` only to find an already-published live Session;
+- prefer native `ctx.sessionProjections.stateOf(session, 'agentPreset')` on modern DSH;
+- fall back to the public Session event representation only when the `agentPreset` projection key is genuinely absent;
+- on the legacy line, newest `agent-preset/selected` wins over immutable creation-time `header.agentPreset`;
+- return `not-live` when the id is not in the live SessionStore rather than claiming the persisted identity does not exist;
+- keep `presetId` exact as `string | null`, with no normalization, roster health rewrite, or native-default substitution;
+- keep this read model separate from M3A's profile/roster aggregate service.
 
-Do not revive old `Session.events`/legacy persistence patterns merely to preserve an obsolete implementation plan. Current DSH has moved Session persistence toward lifecycle-owned `SessionHandle`s and newer projection/session APIs, so 3B must be designed against the current supported public seam.
+Lifecycle/compatibility tests cover:
 
-**Do not yet:** hot-switch the base preset of an already-running session unless DSH explicitly supports it.
+- no SessionStore capability;
+- a requested id that is not currently live;
+- native projection identity, including `null`;
+- legacy and modern log fallback paths;
+- newest selection winning over the creation header;
+- malformed present Host capabilities failing loud;
+- optional capability attach/detach without stale caching;
+- exact identity surviving independently from current profile intent or roster/default state;
+- actual published DSH Session objects on `0.1.1-rc.2`, `0.1.2-rc.1`, and `0.1.5-rc.1`;
+- actual modern `agentPresetProjectionDefinition` + `SessionProjectionRegistry` execution.
+
+M3B deliberately does **not** consume `SessionPersistence`, `SessionHandle`, or cold-session query APIs. DSH owns creation, resume, persistence, locking, and composition. A Session resumed by DSH becomes a normal live Session and is then observable through the same M3B read path. If a later product surface needs independent cold-archive inspection, design that capability against the then-current Session Query/persistence seam rather than extending M3B downward.
+
+M3B also does not call `list()`, `resolve()`, `mount()`, `recompose()`, `select()`, or otherwise affect AgentPreset composition. The current native `composedPreset(agent.ctx)` observation is useful as a settled-state lifecycle test oracle, but it is not a second public M3B field because live composition can transiently lead the durable selection record during a successful blank-session switch transaction.
+
+**Do not yet:** add profile ↔ Session bindings, expose Remote/UI contracts, inspect cold archives, or hot-switch an already-running conversation as a Context Manager operation.
 
 ### 3C — Optional native preset authoring
 
