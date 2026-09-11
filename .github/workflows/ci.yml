@@ -130,12 +130,69 @@ jobs:
             --target ES2024 \
             tests/agent-presets-upstream-contract.ts
 
+  session-preset-contract:
+    name: Session preset Host contract (${{ matrix.version }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - version: 0.1.1-rc.2
+            cordis: 4.0.1
+            fixture: legacy
+          - version: 0.1.2-rc.1
+            cordis: 4.0.2
+            fixture: current
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22.20.0
+
+      - name: Enable pinned pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.7.0 --activate
+
+      - name: Install project dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install the selected Session/AgentPreset generation in the ephemeral workspace
+        run: |
+          pnpm add --save-dev --save-exact \
+            @deepseek-ai/cordis@${{ matrix.cordis }} \
+            @deepseek-ai/dsh-session@${{ matrix.version }} \
+            @deepseek-ai/dsh-session-projection@${{ matrix.version }} \
+            @deepseek-ai/dsh-agent-presets@${{ matrix.version }}
+
+      - name: Compile only the public Host seam consumed by this generation
+        run: |
+          pnpm exec tsc \
+            --ignoreConfig \
+            --noEmit \
+            --strict \
+            --skipLibCheck \
+            --module NodeNext \
+            --moduleResolution NodeNext \
+            --target ES2024 \
+            tests/session-preset-${{ matrix.fixture }}-upstream-contract.ts
+
+      - name: Build and run the M3B behavior suite against this dependency generation
+        run: |
+          pnpm run build
+          node --test ./tests/session-preset.test.mjs
+
   package:
     name: verify packed bundle
     needs:
       - verify
       - settings-current
       - agent-presets-contract
+      - session-preset-contract
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
