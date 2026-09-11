@@ -39,7 +39,8 @@ test('built host entry exposes the model-inert Context Manager service contracts
   assert.equal(typeof entry.apply, 'function')
   assert.equal(typeof entry.ContextManagerService, 'function')
   assert.equal(typeof entry.ContextManagerPresetDirectory, 'function')
-  assert.equal(typeof entry.ContextManagerSessionPreset, 'function')
+  assert.equal(typeof entry.ContextManagerSessionPresetIdentity, 'function')
+  assert.equal(entry.ContextManagerSessionPreset, undefined)
   assert.equal(entry.CONTEXT_MANAGER_SETTINGS_NAMESPACE, 'dsh-context-manager')
 })
 
