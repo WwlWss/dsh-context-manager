@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { Context, Service } from '@deepseek-ai/cordis'
 import { Session, SessionId } from '@deepseek-ai/dsh-session'
 
-import { ContextManagerSessionPreset } from '../lib/index.js'
+import { ContextManagerSessionPresetIdentity } from '../lib/index.js'
 
 const agentPresetModule = await import('@deepseek-ai/dsh-agent-presets')
 
@@ -36,10 +36,10 @@ if ('agentPresetProjectionDefinition' in agentPresetModule) {
   )
 }
 
-const serviceFiber = ctx.plugin(ContextManagerSessionPreset)
+const serviceFiber = ctx.plugin(ContextManagerSessionPresetIdentity)
 await serviceFiber
 
-const result = ctx.dshContextSessionPreset.snapshot(session.id)
+const result = ctx.dshContextSessionPresetIdentity.snapshot(session.id)
 assert.deepEqual(result, {
   status: 'known',
   sessionId: session.id,
