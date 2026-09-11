@@ -145,7 +145,7 @@ A Session can therefore truthfully record `foo` even if the current native roste
 
 Production does not import or bundle `@deepseek-ai/dsh-session`, `@deepseek-ai/dsh-session-projection`, or `@deepseek-ai/dsh-agent-presets`. It discovers the optional Cordis capabilities structurally through `ctx.get(...)` and validates only the fields/methods it consumes.
 
-The separate `ContextManagerSessionPreset` Host service owns this read model. It is not added to `ContextManagerPresetDirectory` and it does not modify `ContextProfile`, because Session effective identity and profile configured/resolved state have different lifecycles and no authoritative binding exists yet.
+The separate `ContextManagerSessionPresetIdentity` Host service owns this read model. It is not added to `ContextManagerPresetDirectory` and it does not modify `ContextProfile`, because Session effective identity and profile configured/resolved state have different lifecycles and no authoritative binding exists yet.
 
 M3B must not call native `list()`, `resolve()`, `mount()`, `recompose()`, `select()`, or any other composition-affecting operation. Native default id is irrelevant to an already-recorded Session identity.
 
