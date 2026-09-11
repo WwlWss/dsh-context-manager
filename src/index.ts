@@ -2,7 +2,7 @@ import type { Context } from '@deepseek-ai/cordis'
 
 import { ContextManagerService } from './service/context-manager.js'
 import { ContextManagerPresetDirectory } from './service/preset-directory.js'
-import { ContextManagerSessionPreset } from './service/session-preset.js'
+import { ContextManagerSessionPresetIdentity } from './service/session-preset.js'
 
 export type {
   BasePresetResolution,
@@ -18,7 +18,7 @@ export * from './domain/model.js'
 export * from './domain/schema.js'
 export { ContextManagerService, CONTEXT_MANAGER_SETTINGS_NAMESPACE } from './service/context-manager.js'
 export { ContextManagerPresetDirectory } from './service/preset-directory.js'
-export { ContextManagerSessionPreset } from './service/session-preset.js'
+export { ContextManagerSessionPresetIdentity } from './service/session-preset.js'
 
 export const name = 'dsh-context-manager'
 
@@ -26,6 +26,6 @@ export const name = 'dsh-context-manager'
 export function apply(ctx: Context): void {
   ctx.plugin(ContextManagerService)
   ctx.plugin(ContextManagerPresetDirectory)
-  ctx.plugin(ContextManagerSessionPreset)
+  ctx.plugin(ContextManagerSessionPresetIdentity)
   ctx.logger('dsh-context-manager').info('Context Manager Host services loaded')
 }
