@@ -3,7 +3,7 @@ import { test } from 'node:test'
 
 import { Context, Service } from '@deepseek-ai/cordis'
 
-import { ContextManagerSessionPreset } from '../lib/index.js'
+import { ContextManagerSessionPresetIdentity } from '../lib/index.js'
 
 class FakeSessions extends Service {
   constructor(ctx, sessions = new Map()) {
@@ -29,7 +29,7 @@ class FakeSessionProjections extends Service {
 
 async function boot({ sessions, projection } = {}) {
   const ctx = new Context()
-  const serviceFiber = ctx.plugin(ContextManagerSessionPreset)
+  const serviceFiber = ctx.plugin(ContextManagerSessionPresetIdentity)
   await serviceFiber
 
   let sessionsFiber
@@ -46,7 +46,7 @@ async function boot({ sessions, projection } = {}) {
 
   return {
     ctx,
-    service: ctx.get('dshContextSessionPreset'),
+    service: ctx.get('dshContextSessionPresetIdentity'),
     serviceFiber,
     sessionsFiber,
     projectionFiber,
