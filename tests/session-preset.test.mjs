@@ -113,6 +113,18 @@ test('native Session projection is authoritative when registered', async () => {
   })
 })
 
+test('projection success does not validate fallback-only Session fields', async () => {
+  const session = {
+    header: 42,
+    snapshotEvents: 'future-nonfunction-shape',
+    events: { not: 'an array' },
+  }
+  const sessions = new Map([['session-a', session]])
+  const { service } = await boot({ sessions, projection: () => 'projected-preset' })
+
+  assert.equal(service.snapshot('session-a').presetId, 'projected-preset')
+})
+
 test('native null projection preserves the no-per-session-composition state', async () => {
   const sessions = new Map([['session-a', liveSession({ creationPreset: 'old' })]])
   const { service } = await boot({ sessions, projection: () => null })
@@ -135,6 +147,26 @@ test('an absent agentPreset projection key falls back to modern Session snapshot
   const { service } = await boot({ sessions, projection: () => undefined })
 
   assert.equal(service.snapshot('session-a').presetId, 'last')
+})
+
+test('fallback validates only the Session surface it actually consumes', async () => {
+  const sessions = new Map([[
+    'bad-snapshot',
+    { header: {}, snapshotEvents: 'not-a-function', events: [selected('ignored')] },
+  ], [
+    'bad-events',
+    { header: {}, events: { not: 'an array' } },
+  ]])
+  const { service } = await boot({ sessions, projection: () => undefined })
+
+  assert.throws(
+    () => service.snapshot('bad-snapshot'),
+    /snapshotEvents must be a function when used/,
+  )
+  assert.throws(
+    () => service.snapshot('bad-events'),
+    /expected snapshotEvents\(\) or events to provide an array/,
+  )
 })
 
 test('legacy Session.events fallback uses the newest selection and then creation header', async () => {
@@ -186,6 +218,20 @@ test('a malformed matching legacy selection event fails loud', async () => {
   assert.throws(
     () => service.snapshot('session-a'),
     /agent-preset\/selected agentPreset must be a string/,
+  )
+})
+
+test('a malformed fallback header fails only when no selection event supplies the answer', async () => {
+  const sessions = new Map([
+    ['selected', { header: 42, events: [selected('event-wins')] }],
+    ['header-only', { header: 42, events: [] }],
+  ])
+  const { service } = await boot({ sessions })
+
+  assert.equal(service.snapshot('selected').presetId, 'event-wins')
+  assert.throws(
+    () => service.snapshot('header-only'),
+    /header must be an object when log fallback is used/,
   )
 })
 
