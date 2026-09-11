@@ -7,7 +7,7 @@ import {
 
 declare module '@deepseek-ai/cordis' {
   interface Context {
-    dshContextSessionPreset: ContextManagerSessionPreset
+    dshContextSessionPresetIdentity: ContextManagerSessionPresetIdentity
   }
 }
 
@@ -20,11 +20,11 @@ declare module '@deepseek-ai/cordis' {
  * owns Session creation/resume and composition; M3B only observes the live
  * Session after those lifecycle operations have published it.
  */
-export class ContextManagerSessionPreset extends Service {
+export class ContextManagerSessionPresetIdentity extends Service {
   private readonly ownerCtx: Context
 
   constructor(ctx: Context) {
-    super(ctx, 'dshContextSessionPreset')
+    super(ctx, 'dshContextSessionPresetIdentity')
     this.ownerCtx = ctx
   }
 
