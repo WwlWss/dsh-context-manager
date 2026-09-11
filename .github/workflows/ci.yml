@@ -181,10 +181,11 @@ jobs:
             --target ES2024 \
             tests/session-preset-${{ matrix.fixture }}-upstream-contract.ts
 
-      - name: Build and run the M3B behavior suite against this dependency generation
+      - name: Build and run M3B compatibility behavior against this dependency generation
         run: |
           pnpm run build
           node --test ./tests/session-preset.test.mjs
+          node ./tests/session-preset-upstream-runtime.mjs
 
   package:
     name: verify packed bundle
