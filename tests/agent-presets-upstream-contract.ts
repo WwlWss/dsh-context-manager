@@ -33,8 +33,17 @@ type StableHostService = NativeAgentPresets extends {
   ? true
   : false
 
+type StableAuthoringHost = NativeAgentPresets extends {
+  read(id: string): Promise<string>
+  copy(from: string, id: string, name?: string): Promise<void>
+  remove(id: string): Promise<void>
+}
+  ? true
+  : false
+
 type _AssertPresetTrust = Assert<ExactPresetTrust>
 type _AssertRosterRow = Assert<StableRosterRow>
 type _AssertHostService = Assert<StableHostService>
+type _AssertAuthoringHost = Assert<StableAuthoringHost>
 
 export {}
