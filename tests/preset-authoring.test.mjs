@@ -28,13 +28,13 @@ class FakeAgentPresets extends Service {
   copy(from, id, name) {
     this.state.calls.push(['copy', from, id, name])
     if (this.state.copyError !== undefined) throw this.state.copyError
-    return Promise.resolve()
+    return Promise.resolve(this.state.copyValue)
   }
 
   remove(id) {
     this.state.calls.push(['remove', id])
     if (this.state.removeError !== undefined) throw this.state.removeError
-    return Promise.resolve()
+    return Promise.resolve(this.state.removeValue)
   }
 
   list() {
@@ -129,6 +129,8 @@ function nativeState(overrides = {}) {
   return {
     calls: [],
     readValue: '- name: example\n',
+    copyValue: undefined,
+    removeValue: undefined,
     ...overrides,
   }
 }
@@ -204,6 +206,17 @@ test('copy delegates exact authored strings and preserves an omitted display nam
     ['copy', ' Source-ID ', ' Target-ID ', '  Display Name  '],
     ['copy', 'standard', 'mine', undefined],
   ])
+})
+
+test('native copy and remove success payloads stay internal to DSH', async () => {
+  const state = nativeState({
+    copyValue: { id: 'mine', trust: 'user' },
+    removeValue: { removed: true },
+  })
+  const { authoring } = await boot(state)
+
+  assert.equal(await authoring.copy('standard', 'mine'), undefined)
+  assert.equal(await authoring.remove('mine'), undefined)
 })
 
 test('remove delegates the exact id and does not inspect trust or roster state first', async () => {
