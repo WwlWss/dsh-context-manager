@@ -11,6 +11,7 @@ export type ContextManagerErrorCode =
   | 'persistence-not-ready'
   | 'persistence-read-only'
   | 'persistence-document-invalid'
+  | 'preset-authoring-unavailable'
   | 'invalid-schema-version'
   | 'unsupported-schema-version'
 

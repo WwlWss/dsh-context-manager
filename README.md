@@ -4,7 +4,7 @@ Modular preset, prompt, skill, transform, and presentation context manager for D
 
 ## Status
 
-The installable/test-gated DSH bundle foundation, the model-inert Settings-backed Host profile Domain, and the DSH Settings compatibility seam are complete. Milestone 3A is now in development: Context Manager can observe the optional native AgentPreset roster and resolve each usable profile's configured `basePreset` as resolved, missing, broken, or unavailable without changing any Agent composition.
+The installable/test-gated DSH bundle foundation, the Settings-backed Host profile Domain, the DSH Settings compatibility seam, native AgentPreset roster/configured resolution (M3A), and live Session effective AgentPreset identity observation (M3B) are complete. Milestone 3C is now in development in PR #6: Context Manager adds a narrow Host bridge to DSH-owned native AgentPreset `read`, copy-only authoring, and removal without introducing a second preset store or rewriting shipped presets.
 
 Context Manager is an editor, not a policy engine. It preserves explicit user intent, reports unresolved or malformed resources as diagnostics, and does not silently fallback, repair, normalize, reorder, or delete user-authored configuration.
 
@@ -13,7 +13,7 @@ The plugin is deliberately additive: installing it must not rewrite or replace D
 ## Design goals
 
 - Treat DSH's native agent presets as locked base compositions and layer Context Manager policy on top.
-- Reuse DSH's native preset roster/Remote APIs instead of scanning DSH package directories.
+- Reuse DSH's native preset roster and authoring Host APIs instead of scanning or mutating DSH package directories directly.
 - Add modular prompt/context definitions through DSH prompt assembly rather than replacing the agent loop.
 - Preserve DSH's skill registry and providers; apply managed visibility/invocation policy by scope when possible.
 - Provide four skill states: Pinned, Auto, Manual, and Off.
@@ -24,7 +24,7 @@ The plugin is deliberately additive: installing it must not rewrite or replace D
 - Expose advanced stored-payload editing where DSH storage integrity can still be guaranteed.
 - Render the Web UI as an additive right-side Drawer through the shell overlay, without taking over the single-occupant `details` slot.
 - Keep browser presentation separated from Host filesystem/state through DSH's Host -> Remote -> Client -> UI architecture.
-- Make uninstall/disable restore stock DSH behavior without migration or repair work.
+- Make uninstall/disable restore stock DSH behavior without migration or repair work. Explicit user-authored native presets remain DSH resources and are not deleted on plugin uninstall.
 
 Project documentation:
 
@@ -49,9 +49,9 @@ DSH intentionally keeps a last-good resolved value when an externally edited Set
 
 The advanced stored-payload seam accepts Domain-invalid JSON-shaped content without auto-repair. It still refuses values DSH cannot preserve losslessly: `undefined`, and currently the JSON property key `__proto__` because DSH Settings has an upstream property-safe-construction limitation for that key. Names such as `constructor` and `prototype` remain valid.
 
-## Native AgentPreset observation
+## Native AgentPreset observation and authoring
 
-Milestone 3A adds a separate read model over the native Host roster. It intentionally consumes only the stable public Host-service intersection that exists across the reviewed DSH lines: `defaultId`, `authorable`, and one `list()` call per aggregate snapshot.
+Milestone 3A adds a separate read model over the native Host roster. It intentionally consumes only the stable public Host-service intersection shared by the supported DSH lines: `defaultId`, `authorable`, and one `list()` call per aggregate snapshot.
 
 The read model keeps the configured profile string unchanged inside `basePreset.configuredId` and reports one of four states:
 
@@ -62,19 +62,25 @@ The read model keeps the configured profile string unchanged inside `basePreset.
 
 There is no fallback to DSH's default preset. The native `defaultId` is roster metadata only. The projected roster is path-free and does not expose `order`, filesystem locations, or invented policy fields such as `editable`. Context Manager does not cache the roster across snapshots and does not call preset mount/recompose/standing APIs.
 
-The optional Host boundary is validated narrowly at runtime: absence maps to `unavailable`, while a present service missing `list()`, returning an incompatible minimum row shape, or exposing incompatible `defaultId`/`authorable` types fails loud. Unknown extra Host fields are ignored. CI separately compiles a minimum contract fixture against the published `@deepseek-ai/dsh-agent-presets` packages from both supported DSH generations, so upstream drift is detected without making that package a production dependency.
+Milestone 3B separately observes the effective AgentPreset identity recorded by a currently live DSH Session. Configured profile intent, current roster resolution, and live Session identity remain separate facts; deleting or losing a native preset can therefore make a profile `missing` while an already-running Session still records that exact preset id.
 
-Native roster discovery is intentionally unmemoized upstream. Treat the aggregate M3A snapshot as a control-plane read: future Remote/UI code must not poll it per render frame, token, Session event, or request hot path.
+Milestone 3C bridges DSH-native authoring without taking ownership of preset storage. The Host service delegates exact `read(id)`, `copy(from, id, name?)`, and `remove(id)` operations to the optional native `ctx.agentPresets` service at call time. It does not preflight the roster, normalize ids/names, parse composition YAML, expose filesystem paths, or import `@deepseek-ai/dsh-agent-presets` in production.
 
-This remains model-inert. Milestone 3A describes current native state; it does not change the preset used by an existing or future Agent.
+Native authoring is deliberately copy-only. A new user preset is a DSH-owned snapshot copy of an existing preset's complete directory; it is not an inheriting child of the source. Shipped presets remain read-only, and `trust: "user"` is provenance rather than a guarantee that a row is removable. DSH's native operation remains the authority for writable-root ownership, id containment, collisions, default cleanup, and standing-mount lifecycle.
+
+Deleting a native preset never repairs or rewrites Context Manager profile references. A profile that still names the deleted id becomes `missing` on the next M3A snapshot. Existing Sessions remain DSH-owned and may continue running the composition they already mounted.
 
 ## Important compatibility notes
 
-The currently tested Settings generations are the legacy `dsh-v0.1.1-rc.2` line and the latest installable `dsh-v0.1.2-rc.1` line. CI runs the full Domain/runtime regression suite against both public Settings shapes. The latest official repository/GitHub release is `dsh-v0.1.3-alpha.1`; it is source-reviewed until the corresponding umbrella package is installable. See [docs/compatibility.md](docs/compatibility.md) for the exact matrix.
+The install-tested compatibility matrix keeps four published DSH lines under regression: legacy `0.1.1-rc.2`, prior-modern `0.1.2-rc.1`, the `0.1.5-rc.1` line, and the newer published `0.1.5-rc.2` line that matches the currently reviewed AgentPreset generation on official `master`. Source review of the exact official repository commit remains a separate claim from package testing. See [docs/compatibility.md](docs/compatibility.md) for the exact matrix.
 
-The M3A AgentPreset adapter does not import or bundle `@deepseek-ai/dsh-agent-presets`. The capability is optional and discovered through Cordis; the adapter deliberately models only the stable Host-service shape shared by the legacy, current installable, and source-forward lines. Adapter helper functions remain internal to the package root API so future DSH compatibility work can replace the seam without creating an accidental public contract.
+The M3A/M3C AgentPreset adapters do not import or bundle `@deepseek-ai/dsh-agent-presets`. The capability is optional and discovered through Cordis. CI temporarily installs exact published AgentPreset packages to compile the minimum public Host contract, runs the structural bridge behavior suite, and then mounts the real published `AgentPresets` service against temporary roots to execute an actual `copy -> read -> remove` cycle through Context Manager on every supported AgentPreset generation.
 
-The shipped Minimal preset is intentionally restrictive: it uses a complete persona and disables runtime context. Context Manager must report those placement limitations honestly. Users who need to change Minimal's composition can create a DSH-native preset copy/modular variant; the shipped preset remains untouched.
+The compile contract deliberately fixes only semantics production consumes. `read()` must remain asynchronously string-valued. `copy()` and `remove()` must remain asynchronous with the same input shape, but their native success payload may be enriched by DSH because Context Manager intentionally discards that payload and exposes `void`. This prevents an incidental upstream DTO from becoming part of Context Manager's public API.
+
+The packaged plugin is also installed into a clean consumer with strict peer-dependency checking against `@deepseek-ai/dsh-settings@0.1.5-rc.2`, and the full DSH bundle composition smoke runs on `0.1.2-rc.1`, `0.1.5-rc.1`, and `0.1.5-rc.2`.
+
+The shipped Minimal preset is intentionally restrictive: it uses a complete persona and disables runtime context. Context Manager must report those placement limitations honestly. Users who need to change Minimal's native composition can make a DSH-native user preset copy; the shipped preset remains untouched.
 
 SillyTavern-style arbitrary historical `depth=N` insertion is not treated as equivalent to DSH prompt placement. History replacement/shadowing is a separate future capability: it may be implemented only through a public DSH Session/Surface seam whose exact current contract is verified when that milestone begins. Context Manager must not treat conceptual support for replacement as permission to bind to obsolete Session APIs.
 
@@ -82,20 +88,20 @@ Display-only regex behavior is a different client concern. Stock DSH assistant M
 
 Future HTML/JavaScript helper rendering must run in an isolated browser runtime with an explicit capability bridge for any DSH interaction. This keeps arbitrary user-enabled scripts possible without granting model output ambient authority over the parent DSH application.
 
-DSH Settings revision fencing is an in-process guarantee. If multiple DSH processes share one settings provider/document, cross-process convergence remains provider-defined; Context Manager does not add a second locking system on top of DSH.
+DSH Settings revision fencing is an in-process guarantee. If multiple DSH processes share one settings provider/document, cross-process convergence remains provider-defined; Context Manager does not add a second locking system on top of DSH. Native AgentPreset filesystem authoring likewise remains owned by DSH. Context Manager deliberately does not add a local mutex and then claim global serialization across Context Manager, the stock DSH authoring UI, other plugins/processes, and manual filesystem writers. Concurrent native-write correctness belongs at the DSH `AgentPresets` authoring transaction boundary.
 
 ## Planned milestones
 
 1. **Complete** — Installable DSH bundle scaffold, build contract tests, and CI.
 2. **Complete** — Host-side Context Manager domain and settings-backed reusable profile model.
-3. **In development — M3A** — Native AgentPreset roster plus configured -> resolved/missing/broken/unavailable observation. Effective Session/Agent identity remains a separate M3B; native authoring remains optional M3C.
+3. **M3A complete / M3B complete / M3C in development** — Native AgentPreset roster resolution, live Session effective identity, and DSH-owned copy-only native preset authoring bridge.
 4. Modular system-prompt/runtime-context overlay model with capability-aware placement.
 5. Scoped skill policy model for Pinned / Auto / Manual / Off, with leakage and resume tests.
-6. Web client package and additive right-side Drawer.
-7. Preset / Skills / Preview UI, including final-context diagnostics.
-8. Project and Session overrides without mutating shipped preset files.
-9. Transformation pipeline: prompt/source transforms, durable history-Surface transforms, display regex, and isolated renderer/helper bindings.
-10. Compatibility/regression tests across supported DSH releases and all shipped presets.
+6. Host Remote API for browser-safe Domain/runtime views and explicit mutations.
+7. Web client package and additive right-side Drawer.
+8. Preset / Prompt / Skill editor and effective-context preview.
+9. Project and Session bindings without mutating shipped preset files.
+10. Transform/resource milestones, history-Surface transforms, display transforms, renderer/helper runtime, import/export, and advanced inspection follow in the detailed roadmap.
 
 The detailed dependency-ordered implementation plan lives in [docs/roadmap.md](docs/roadmap.md).
 
@@ -113,7 +119,7 @@ pnpm install --frozen-lockfile
 pnpm run check
 ```
 
-`pnpm run check` performs type checking, a clean production build, and package/domain/runtime-read-model tests against the legacy development dependency set. CI additionally runs the same suite against the latest installable Settings generation and verifies the native AgentPreset Host type contract against both published supported generations.
+`pnpm run check` performs type checking, a clean production build, and package/domain/runtime tests against the legacy development dependency set. CI additionally runs modern Settings regressions through `0.1.5-rc.2`, four published AgentPreset Host-contract plus real-native-runtime lanes, four Session preset identity lanes, a strict packed-package peer installation check, and bundle composition smoke tests against `0.1.2-rc.1`, `0.1.5-rc.1`, and `0.1.5-rc.2`.
 
 Before changing runtime integration or adding a Web capability, read [docs/development-guide.md](docs/development-guide.md). It records the project's persistence, lifecycle, DSH-integration, transform, client, performance, and testing rules.
 
