@@ -2,10 +2,15 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
 import { Context, Service } from '@deepseek-ai/cordis'
+import { SettingsProvider } from '@deepseek-ai/dsh-settings'
 
 import {
+  CONTEXT_MANAGER_SETTINGS_NAMESPACE,
   ContextManagerError,
   ContextManagerPresetAuthoring,
+  ContextManagerPresetDirectory,
+  ContextManagerService,
+  ContextManagerSessionPresetIdentity,
 } from '../lib/index.js'
 
 class FakeAgentPresets extends Service {
@@ -46,6 +51,77 @@ class FakeAgentPresets extends Service {
 
   select() {
     throw new Error('M3C bridge must not select presets for sessions')
+  }
+}
+
+class MemorySettings extends SettingsProvider {
+  constructor(ctx, doc = {}) {
+    super(ctx)
+    this.doc = structuredClone(doc)
+  }
+
+  get writable() {
+    return true
+  }
+
+  async load() {
+    return structuredClone(this.doc)
+  }
+
+  async persist(ns, section) {
+    this.doc[ns] = structuredClone(section)
+  }
+}
+
+class MutableAgentPresets extends Service {
+  constructor(ctx, state) {
+    super(ctx, 'agentPresets')
+    this.state = state
+  }
+
+  get defaultId() {
+    return this.state.defaultId
+  }
+
+  get authorable() {
+    return true
+  }
+
+  async list() {
+    return this.state.presets
+  }
+
+  async read(id) {
+    return `composition:${id}`
+  }
+
+  async copy(from, id, name) {
+    if (this.state.presets.some(preset => preset.id === id)) {
+      throw new Error(`preset ${id} already exists`)
+    }
+    this.state.presets.push({
+      id,
+      trust: 'user',
+      ...(name === undefined ? {} : { name }),
+      description: `copied from ${from}`,
+    })
+  }
+
+  async remove(id) {
+    const index = this.state.presets.findIndex(preset => preset.id === id)
+    if (index === -1) throw new Error(`preset ${id} not found`)
+    this.state.presets.splice(index, 1)
+  }
+}
+
+class FakeSessions extends Service {
+  constructor(ctx, sessions) {
+    super(ctx, 'sessions')
+    this.sessions = sessions
+  }
+
+  get(id) {
+    return this.sessions.get(id)
   }
 }
 
@@ -262,4 +338,63 @@ test('technical JavaScript type boundaries reject non-string inputs without call
   await assert.rejects(authoring.copy('standard', 'mine', 123), /preset display name must be a string/)
   await assert.rejects(authoring.remove(123), /preset id must be a string/)
   assert.deepEqual(state.calls, [])
+})
+
+test('deleting a native preset leaves configured profile intent and live Session identity independent', async () => {
+  const ctx = new Context()
+  const settingsDoc = {
+    [CONTEXT_MANAGER_SETTINGS_NAMESPACE]: {
+      schemaVersion: 1,
+      profiles: {
+        roleplay: {
+          name: 'Roleplay',
+          basePreset: 'my-preset',
+          skills: {},
+        },
+      },
+    },
+  }
+  const native = {
+    defaultId: 'standard',
+    presets: [
+      { id: 'standard', trust: 'system' },
+      { id: 'my-preset', trust: 'user' },
+    ],
+  }
+  const sessions = new Map([
+    ['session-1', {
+      header: { agentPreset: 'my-preset' },
+      events: [],
+    }],
+  ])
+
+  await ctx.plugin(MemorySettings, settingsDoc)
+  await ctx.plugin(ContextManagerService)
+  await ctx.plugin(ContextManagerPresetDirectory)
+  await ctx.plugin(ContextManagerSessionPresetIdentity)
+  await ctx.plugin(ContextManagerPresetAuthoring)
+  await ctx.plugin(MutableAgentPresets, native)
+  await ctx.plugin(FakeSessions, sessions)
+
+  let snapshot = await ctx.dshContextPresetDirectory.snapshot()
+  assert.equal(snapshot.profiles.roleplay.basePreset.status, 'resolved')
+  assert.deepEqual(ctx.dshContextSessionPresetIdentity.snapshot('session-1'), {
+    status: 'known',
+    sessionId: 'session-1',
+    presetId: 'my-preset',
+  })
+
+  await ctx.dshContextPresetAuthoring.remove('my-preset')
+
+  snapshot = await ctx.dshContextPresetDirectory.snapshot()
+  assert.deepEqual(snapshot.profiles.roleplay.basePreset, {
+    status: 'missing',
+    configuredId: 'my-preset',
+  })
+  assert.equal(ctx.dshContextManager.snapshot().profiles.roleplay.basePreset, 'my-preset')
+  assert.deepEqual(ctx.dshContextSessionPresetIdentity.snapshot('session-1'), {
+    status: 'known',
+    sessionId: 'session-1',
+    presetId: 'my-preset',
+  })
 })
