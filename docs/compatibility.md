@@ -1,17 +1,18 @@
 # DSH compatibility
 
-DeepSeek Harness evolves quickly. Context Manager separates **installable/tested package compatibility** from **source-forward review against the latest official repository** so the plugin can follow upstream architecture without pretending an unpublished source state is already runnable in CI.
+DeepSeek Harness evolves quickly. Context Manager separates **installable/tested package compatibility** from **source-forward review against the latest official repository** so the plugin can follow upstream architecture without confusing source review with package/runtime evidence.
 
 ## Current compatibility matrix
 
 | Track | DSH reference | How it is used |
 | --- | --- | --- |
-| Legacy regression | `dsh-v0.1.1-rc.2` | The committed development dependency set. The full type/build/Domain suite exercises the legacy module-level `installSettingsSection(...)` generation. Focused published-package lanes exercise the M3A roster seam, the M3B legacy live-Session identity path through `Session.events`, and the M3C Host `read/copy/remove` authoring contract. |
-| Prior modern regression | `dsh-v0.1.2-rc.1` | Dedicated ephemeral CI keeps the first modern Settings generation and native Session `agentPreset` projection under regression. The full Settings suite, AgentPreset M3A/M3C contract and M3C behavior suite, M3B contract/runtime smoke, and bundle composition smoke all run here. |
-| Latest installable runtime | `dsh-v0.1.5-rc.1` | The latest published umbrella DSH line is tested independently from the frozen development lock. CI reruns the modern Settings suite, AgentPreset M3A/M3C contract and M3C behavior suite, M3B Session contract/runtime smoke, and full bundle composition smoke against this release. |
-| Latest official repository | `master` / `c291e796...` | Source-forward architecture target reviewed from official source. At this commit the AgentPreset package source identifies itself as `0.1.5-rc.2`; it preserves the same M3B projection/consumer pattern and the same copy-only native authoring model. This exact source commit is reviewed, not falsely described as an install-tested npm release. |
+| Legacy regression | `dsh-v0.1.1-rc.2` | The committed development dependency set. The full type/build/Domain suite exercises the legacy module-level `installSettingsSection(...)` generation. Focused published-package lanes exercise the M3A roster seam, the M3B legacy live-Session identity path through `Session.events`, and the M3C Host `read/copy/remove` authoring contract plus a real native authoring cycle. |
+| Prior modern regression | `dsh-v0.1.2-rc.1` | Dedicated ephemeral CI keeps the first modern Settings generation and native Session `agentPreset` projection under regression. The full Settings suite, AgentPreset M3A/M3C declaration/behavior/native-runtime checks, M3B contract/runtime smoke, and bundle composition smoke all run here. |
+| 0.1.5 published regression | `dsh-v0.1.5-rc.1` | Retained because it remains an important published/default-install line. CI reruns modern Settings, AgentPreset M3A/M3C declaration/behavior/native-runtime checks, M3B Session contract/runtime smoke, and full bundle composition smoke against it. |
+| Newest reviewed published line | `dsh-v0.1.5-rc.2` | Install-tested forward line matching the AgentPreset generation currently present on official `master`. CI runs modern Settings, M3A/M3C compile and real-native authoring, M3B projection/runtime, strict packed-package peer installation, and full DSH bundle composition against this generation where applicable. |
+| Latest official repository | `master` / `c291e796...` | Source-forward architecture target reviewed from official source. At this commit the AgentPreset package identifies itself as `0.1.5-rc.2` and preserves the same M3B projection/consumer pattern and copy-only native authoring model. Source review remains a separate assertion even when the same package generation is also install-tested. |
 
-Support claims must name what was actually tested. A GitHub source tree and an installable npm package are deliberately not treated as the same thing.
+Support claims must name what was actually tested. A GitHub source tree and an installable npm package remain distinct evidence even when their package version currently matches.
 
 The modern published lines used by CI ship `@deepseek-ai/cordis@4.0.2` and `@deepseek-ai/schemastery@3.18.2`; compatibility lanes use those public package generations while the ordinary development lockfile remains on the legacy generation. Keeping the frozen legacy lock means both Settings API shapes and both M3B Session-read branches remain visible instead of silently raising the minimum baseline.
 
@@ -22,7 +23,7 @@ Context Manager owns the `dsh-context-manager` Settings namespace and never read
 The Settings public surface changed between the legacy and modern lines:
 
 - `0.1.1-rc.2` exported `settingsNamespace()` and a module-level `installSettingsSection()` helper.
-- `0.1.2-rc.1+`, including `0.1.5-rc.1` and current source, validates namespace strings in the Settings service and exposes the optional-consumer lifecycle as `settings.installSection(owner, ns, schema, entry, hooks)`.
+- `0.1.2-rc.1+`, including `0.1.5-rc.1`, `0.1.5-rc.2`, and current source, validates namespace strings in the Settings service and exposes the optional-consumer lifecycle as `settings.installSection(owner, ns, schema, entry, hooks)`.
 
 `src/adapters/settings.ts` owns the narrow version seam:
 
@@ -48,6 +49,8 @@ Two Settings limits are intentionally not papered over by Context Manager:
 1. namespace write serialization/revision fencing is an in-process guarantee; cross-process convergence remains provider-defined;
 2. Context Manager does not reach into provider internals to repair malformed storage or strengthen lifecycle guarantees beyond the public service contract.
 
+The package peer declaration explicitly opts into the supported `0.1.5` prerelease series with `^0.1.5-rc.1`. This is necessary because prerelease semver ranges do not implicitly opt into a different `major.minor.patch` prerelease tuple. CI verifies the built tarball by installing it in a fresh consumer with `--strict-peer-dependencies` against `@deepseek-ai/dsh-settings@0.1.5-rc.2`; compatibility is therefore checked using the package manager's real peer-resolution rules rather than a string assertion.
+
 ## AgentPreset compatibility
 
 Milestones 3A and 3C consume the optional public Host capability exposed as `ctx.agentPresets`. Production does **not** import or bundle `@deepseek-ai/dsh-agent-presets`.
@@ -60,9 +63,11 @@ The stable Host-service intersection shared by all supported published lines and
 
 and the M3C authoring methods:
 
-- `read(id): Promise<string>` — exact native composition text;
-- `copy(from, id, name?): Promise<void>` — DSH-owned whole-preset copy into its writable user root;
-- `remove(id): Promise<void>` — DSH-owned removal of a locally authorable preset.
+- `read(id)` — asynchronous exact native composition text;
+- `copy(from, id, name?)` — asynchronous DSH-owned whole-preset copy into its writable user root;
+- `remove(id)` — asynchronous DSH-owned removal of a locally authorable preset.
+
+Current published DSH declarations return `Promise<void>` from `copy()` and `remove()`, but Context Manager deliberately does **not** make that success payload part of its compatibility contract. Production only awaits completion and exposes `void`; CI therefore requires `Promise<unknown>` for those two operations while keeping their input signatures strict. A future DSH version may enrich the resolved success value without forcing a Context Manager compatibility break. `read()` remains strict `Promise<string>` because Context Manager consumes its resolved content.
 
 The local structural interfaces are intentionally smaller than the native class. They prevent unnecessary coupling to package-root types, constructors, filesystem helpers, Remote clients, mount internals, and newer DTOs that did not exist on the legacy line.
 
@@ -80,23 +85,31 @@ The structural seam is intentionally loose at package-resolution time but not un
 
 A widening of a field whose semantics Context Manager actually consumes, such as a new `trust` category, intentionally fails loud until reviewed. Pure additive metadata does not.
 
-### AgentPreset upstream contract lane
+### AgentPreset upstream contract and runtime lanes
 
-Runtime structural typing by itself would not make TypeScript notice an upstream declaration change. CI therefore has a compile-only contract fixture against the supported published native package versions:
+Runtime structural typing by itself would not make TypeScript notice an upstream declaration change. CI therefore has a compile contract fixture against:
 
 - `@deepseek-ai/dsh-agent-presets@0.1.1-rc.2`;
 - `@deepseek-ai/dsh-agent-presets@0.1.2-rc.1`;
-- `@deepseek-ai/dsh-agent-presets@0.1.5-rc.1`.
+- `@deepseek-ai/dsh-agent-presets@0.1.5-rc.1`;
+- `@deepseek-ai/dsh-agent-presets@0.1.5-rc.2`.
 
-The fixture loads the native package's public Cordis module augmentation and derives the consumed capability from `Context['agentPresets']`. It asserts the actual Host seam still provides the M3A roster fields/methods and the M3C `read/copy/remove` signatures. The check deliberately does not depend on package-root named exports such as `AgentPresets`, `AgentPreset`, or `PresetTrust`, because production does not consume those names. The package is installed only in the disposable CI workspace and remains absent from Context Manager's committed peer/dev/runtime dependency surface.
+The fixture loads the native package's public Cordis module augmentation and derives the consumed capability from `Context['agentPresets']`. It asserts the actual Host seam still provides the M3A roster fields/methods and the M3C operation signatures. For M3C, the exact input vocabulary and Promise completion boundary are pinned while `copy/remove` success payloads are deliberately allowed to widen because production ignores them. The check does not depend on package-root class identity or native implementation helpers.
 
-The same AgentPreset matrix builds the production plugin and executes `preset-authoring.test.mjs`, so M3C's structural bridge behavior runs under each selected dependency generation rather than existing only as a compile assertion.
+Each AgentPreset lane then performs two runtime layers:
 
-This creates a deliberate split:
+1. `preset-authoring.test.mjs` runs the structural bridge tests, including exact argument preservation, path-local validation, attach/detach behavior, native error identity, and intentional suppression of native success payloads;
+2. `preset-authoring-upstream-runtime.mjs` mounts the real published `AgentPresets` service with explicit temporary system/user roots and executes an actual Context Manager `copy -> read -> native roster observation -> remove` cycle.
+
+The native runtime smoke uses a minimal empty composition and disables derived real user/shipped roots where the generation supports those switches. Its purpose is to prove the bridge crosses the real Cordis/native service boundary, not to duplicate DSH's own tests for permissions, metadata rewriting, symlink handling, collision rollback, or root ownership.
+
+This creates a deliberate evidence stack:
 
 ```text
 production runtime: loose package coupling + narrow runtime validation
-CI compatibility:   strong compile-time check against supported native packages
+CI declaration:    minimum public TypeScript contract
+CI bridge tests:   Context Manager semantics with controlled fakes
+CI native smoke:   real published AgentPresets + temporary filesystem roots
 ```
 
 ### M3A rules
@@ -116,7 +129,7 @@ CI compatibility:   strong compile-time check against supported native packages
 
 ### M3C native authoring compatibility
 
-M3C uses only the Host methods that existed unchanged across the three supported published lines. It deliberately does not call the newer Remote authoring facade even though modern DSH exposes one, because the legacy-compatible Host intersection is sufficient and keeps browser transport out of the Host plugin.
+M3C uses only the Host methods that existed unchanged across the four install-tested published lines. It deliberately does not call the newer Remote authoring facade even though modern DSH exposes one, because the legacy-compatible Host intersection is sufficient and keeps browser transport out of the Host plugin.
 
 The bridge is path-local:
 
@@ -125,9 +138,10 @@ The bridge is path-local:
 - `remove()` validates only native `remove()`;
 - every operation resolves `ctx.get('agentPresets')` at call time, so optional capability attach/detach cannot leave a stale cached service;
 - ids and display names are passed exactly as authored; Context Manager does not trim, lowercase, pre-validate DSH's preset-id regex, or substitute defaults;
-- native failures propagate without message parsing or legacy/modern error translation.
+- native failures propagate without message parsing or legacy/modern error translation;
+- native `copy/remove` success payloads are intentionally discarded, keeping DSH DTO evolution outside Context Manager's API.
 
-This last rule matters because `0.1.1-rc.2` reports dedicated Error subclasses such as `PresetExistsError`/`PresetNotWritableError`, while modern DSH maps corresponding refusals to stable `RemoteError` codes. M3C does not make legacy message text part of its own contract. A future browser Remote layer may define a transport-level normalization only when that layer is implemented.
+This error rule matters because `0.1.1-rc.2` reports dedicated Error subclasses such as `PresetExistsError`/`PresetNotWritableError`, while modern DSH maps corresponding refusals to stable `RemoteError` codes. M3C does not make legacy message text part of its own contract. A future browser Remote layer may define a transport-level normalization only when that layer is implemented.
 
 Native `copy()` and `remove()` are the transaction boundaries. Context Manager must not call exported lower-level helpers such as `copyComposition()` or `deleteComposition()` because that would bypass DSH-owned roster collision policy, standing-mount invalidation, and native-default cleanup.
 
@@ -141,7 +155,13 @@ M3A resolved state       = missing
 M3B live Session preset  = "my-preset"
 ```
 
-No Context Manager mutex is claimed to serialize other DSH processes, the stock DSH authoring UI, or manual filesystem writers. The consumer bridge relies on the native operation's own collision/backstop behavior rather than adding a partial lock that cannot cover the real writer set.
+### Native authoring concurrency boundary
+
+Context Manager does not claim to serialize the complete set of native AgentPreset writers. A Context Manager-local mutex could only coordinate Context Manager calls; it could not serialize the stock DSH authoring UI, another plugin/process, or a manual filesystem writer. Adding such a mutex would therefore provide a misleading partial guarantee.
+
+Current DSH authoring source uses native collision checks/backstops and rollback. Source review also shows that global same-id cross-writer serialization is not a public consumer contract. Concurrent native-write correctness belongs in DSH's `AgentPresets` authoring transaction. If upstream needs stronger same-id ownership/cleanup semantics, that should be implemented and regression-tested there rather than reproduced by Context Manager.
+
+A future Context Manager UI may suppress duplicate clicks while one explicit mutation is pending, but that is UX duplicate suppression, not a cross-writer transaction guarantee.
 
 ## M3B Session preset identity compatibility
 
@@ -160,7 +180,7 @@ effective recorded Session preset identity
 The read seam changed:
 
 - `0.1.1-rc.2` exposes the immutable creation header and legacy public `Session.events`; M3B folds the small public record locally.
-- `0.1.2-rc.1`, `0.1.5-rc.1`, and current source expose native `agentPreset: string | null` Session projection state. M3B prefers `ctx.sessionProjections.stateOf(session, 'agentPreset')`.
+- `0.1.2-rc.1`, `0.1.5-rc.1`, `0.1.5-rc.2`, and current source expose native `agentPreset: string | null` Session projection state. M3B prefers `ctx.sessionProjections.stateOf(session, 'agentPreset')`.
 - if the projection capability/key is genuinely absent, M3B may fall back to the public Session log representation (`snapshotEvents()` on modern Sessions, legacy `events` on the old line).
 - if a present projection returns a value other than `string`, `null`, or absent, M3B fails loud instead of hiding an incompatible Host API behind the fallback.
 
@@ -186,11 +206,12 @@ CI executes both declaration contracts and runtime behavior against:
 
 - `0.1.1-rc.2` — legacy `Session.events` branch;
 - `0.1.2-rc.1` — native Session projection branch and prior-modern regression;
-- `0.1.5-rc.1` — native Session projection branch on the latest installable DSH line.
+- `0.1.5-rc.1` — native Session projection branch on the retained 0.1.5 published line;
+- `0.1.5-rc.2` — native Session projection branch on the newest reviewed published line.
 
 The runtime smoke creates an actual published-package `Session`, appends an actual `agent-preset/selected` record, and on modern lines registers the actual native `agentPresetProjectionDefinition` with the actual `SessionProjectionRegistry`. This ensures the compatibility branches production relies on are executed rather than merely simulated by structural fakes.
 
-Current official source at `c291e796...` was re-reviewed after it advanced during M3B development. It still defines the same `string | null` AgentPreset projection and first-party Session Controller still reads it through `stateOf(session, 'agentPreset')`, so no additional source-forward adapter is needed.
+Current official source at `c291e796...` was re-reviewed during M3C. It still defines the same `string | null` AgentPreset projection and first-party Session Controller reads it through `stateOf(session, 'agentPreset')`, so no additional source-forward adapter is needed.
 
 ## System prompt and runtime-context guardrails
 
@@ -201,7 +222,7 @@ Future prompt work must continue to use DSH-owned prompt/runtime-context composi
 - arbitrary SillyTavern numeric historical `depth=N` insertion is not equivalent to system-prompt placement and must not be faked through a different seam;
 - any future adapter must be rechecked against the then-current installable and source-forward DSH contracts before it ships.
 
-These are architecture constraints, not claims that prompt overlays are implemented in the current model-inert build.
+These are architecture constraints, not claims that prompt overlays are implemented in the current build.
 
 ## Skills guardrails
 
@@ -254,13 +275,14 @@ A user must be able to switch official DSH <-> patched DSH without installing a 
 When a PR begins using a new DSH seam:
 
 1. identify the public package/service/Remote/Slot contract that owns the behavior;
-2. compare the latest installable DSH package with the latest official repository source;
+2. compare the newest relevant installable DSH package(s) with the latest official repository source;
 3. add a focused adapter only for an actual signature/semantic difference;
 4. never import production code from DSH `src/` internals;
 5. add a focused runtime/contract test that actually executes every supported compatibility branch relied on by production code;
-6. use bundle smoke tests for installation/composition claims, not as a substitute for runtime API tests;
-7. use source-forward review for unreleased repository changes and do not label them install-tested until packages exist;
-8. keep unsupported/missing optional capabilities explicit instead of simulating them;
-9. update this document when the minimum tested DSH contract changes.
+6. use real published-service smoke tests for mutation boundaries where structural fakes alone cannot prove integration;
+7. use bundle smoke tests for installation/composition claims, not as a substitute for runtime API tests;
+8. use source-forward review for repository changes and keep that evidence distinct from package testing;
+9. keep unsupported/missing optional capabilities explicit instead of simulating them;
+10. update this document when the minimum tested DSH contract changes.
 
 The compatibility objective is **one plugin codebase across supported official DSH lines and compatible forks**, not one plugin version per host build.
