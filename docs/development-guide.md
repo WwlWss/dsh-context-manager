@@ -24,7 +24,7 @@ That has concrete implementation consequences:
 
 DSH evolves quickly. Before changing an integration, inspect the public documentation and the exact supported source line rather than coding from memory.
 
-Current reviewed references are recorded in [compatibility.md](compatibility.md). The committed legacy regression baseline is `dsh-v0.1.1-rc.2`; the latest installable runtime line is `dsh-v0.1.2-rc.1`; and the current source-forward target is `dsh-v0.1.3-alpha.1` / `d347e703...`. Treat those tracks separately: install-tested package compatibility and source review are not interchangeable claims.
+Current reviewed references are recorded in [compatibility.md](compatibility.md). The committed legacy regression baseline is `dsh-v0.1.1-rc.2`; the prior-modern regression line is `dsh-v0.1.2-rc.1`; the latest installable runtime line is `dsh-v0.1.5-rc.1`; and the current source-forward target reviewed for M3B/M3C is official `master` at `c291e796...`. Treat those tracks separately: install-tested package compatibility and source review are not interchangeable claims.
 
 For the corresponding feature, read these upstream documents first:
 
@@ -223,21 +223,32 @@ Do not catch broad programming/configuration errors solely to keep a fiber ACTIV
 
 ## 9. Agent presets
 
-DSH owns native AgentPreset composition and the durable preset identity associated with a session.
+DSH owns native AgentPreset discovery, storage, composition, authoring mechanics, standing mounts, defaults, and the durable preset identity associated with a Session.
 
 Context Manager may:
 
 - list/read the native preset roster through the public preset service;
 - store unresolved preset references as user intent;
+- observe a live Session's recorded effective preset identity;
 - show a locked structural view of shipped presets;
-- create DSH-native copies when the user explicitly asks to author a modified composition.
+- when the user explicitly requests it, delegate native `read(id)`, copy-only `copy(from, id, name?)`, and `remove(id)` operations to DSH.
 
 Context Manager must not:
 
-- scan DSH package directories to rediscover presets;
+- scan DSH package or preset directories to rediscover presets;
+- construct or accept arbitrary native preset filesystem paths;
+- call lower-level authoring helpers such as `copyComposition()` or `deleteComposition()` in place of the public `AgentPresets` service operation;
 - rewrite shipped preset files;
+- invent blank preset creation, overwrite, implicit rename, or browser YAML write semantics that DSH does not expose;
+- infer removability/editability from `trust`; `trust: "user"` is provenance, and native `remove()` owns the real writable-root decision;
+- normalize ids or names before native authoring calls;
+- cascade native preset deletion into Context Manager profile repair/fallback;
 - represent every Cordis row inside a preset as an independent prompt toggle;
 - pretend an already-running session can freely hot-swap its native base preset when DSH locks that composition.
+
+Treat `AgentPresets.copy()` and `AgentPresets.remove()` as DSH transaction boundaries. They own collision handling, filesystem containment/root policy, standing-mount invalidation, and native-default cleanup. A Context Manager authoring adapter should resolve the optional `agentPresets` service at each call, validate only the operation-specific method/result shape it consumes, and propagate native failures rather than parsing legacy error messages.
+
+Native preset authoring is a persistent user action. Unloading Context Manager removes its services/overlays but does not delete DSH-native user presets the user explicitly created through it.
 
 Runtime state must distinguish at least:
 
@@ -247,7 +258,7 @@ resolved   = whether that reference exists/is healthy in the current native rost
 effective  = what a live or durable Session/Agent is actually using
 ```
 
-Do not force those into one adapter. Roster/configured resolution should land before effective Session identity because the latter follows different lifecycle/version seams.
+Do not force those into one adapter. Roster/configured resolution, native authoring, and effective Session identity follow different lifecycle/compatibility seams and remain separate services.
 
 ## 10. Prompt and runtime-context modules
 
@@ -414,7 +425,7 @@ Use a real `SettingsProvider` subclass and cover:
 
 ### Runtime adapter tests
 
-For every DSH subsystem adapter, test both capability presence and absence. Runtime claims need cold/resume/disposal coverage where lifecycle can change semantics.
+For every DSH subsystem adapter, test both capability presence and absence. Runtime claims need cold/resume/disposal coverage where lifecycle can change semantics. Validate only the Host surface each path consumes, and add cross-layer tests whenever one explicit mutation is expected to change resolved state without rewriting Stored or Effective state.
 
 ### Web tests
 
@@ -422,15 +433,17 @@ When the client face exists, add package-contract checks for `./client` plus foc
 
 ### Compatibility tests
 
-CI deliberately uses two Settings test generations rather than one broad semver install:
+CI deliberately separates compatibility concerns instead of relying on one broad semver install:
 
-1. the committed/frozen development dependency set remains on the legacy `0.1.1-rc.2` Settings generation and runs the normal Windows/Linux Node 22/24 suite;
-2. a focused Linux compatibility lane installs the exact DSH-facing versions shipped by `dsh-v0.1.2-rc.1` (`@deepseek-ai/cordis@4.0.2`, `@deepseek-ai/dsh-settings@0.1.2-rc.1`, `@deepseek-ai/schemastery@3.18.2`), asserts that the module-level legacy helper is absent and `SettingsProvider.installSection()` is present, then reruns the complete type/build/Domain suite;
-3. the DSH CLI bundle smoke separately proves package installation/config composition on `@deepseek-ai/dsh@0.1.2-rc.1`.
+1. the committed/frozen development dependency set remains on legacy `0.1.1-rc.2` Settings and runs the normal Windows/Linux Node 22/24 suite;
+2. focused modern Settings lanes install exact `0.1.2-rc.1` and `0.1.5-rc.1` Settings generations with the matching modern Cordis/Schemastery packages and rerun the full type/build/Domain regression suite;
+3. the AgentPreset Host contract lane installs exact `@deepseek-ai/dsh-agent-presets` versions `0.1.1-rc.2`, `0.1.2-rc.1`, and `0.1.5-rc.1`, compiles the actual public Cordis service seam, then builds and runs M3C authoring behavior against each generation;
+4. the Session preset lane executes the legacy event branch and modern projection branch against the same three DSH generations, including actual published Session/projection objects;
+5. DSH CLI bundle smoke proves package installation/config composition on both `@deepseek-ai/dsh@0.1.2-rc.1` and `@deepseek-ai/dsh@0.1.5-rc.1`.
 
-This separation prevents two common false positives: compiling only against the newest declarations while accidentally breaking the minimum line, or passing `--dump-config` while never executing the new runtime adapter branch.
+This separation prevents common false positives: compiling only against newest declarations while accidentally breaking the minimum line, passing `--dump-config` while never executing a runtime adapter branch, or testing structural fakes without proving the published Host declaration still matches the consumed seam.
 
-Do not mutate the committed lockfile just to test the current generation. The current-generation lane changes only its disposable CI workspace. Do not add every DSH release to the OS/Node matrix; add a focused compatibility lane only when a public contract used by production code actually changes.
+Do not mutate the committed lockfile just to test a newer generation. Compatibility lanes change only their disposable CI workspace. Do not add every DSH release to the OS/Node matrix; add a focused compatibility lane when a public contract used by production code actually changes or when a maintained intermediate generation provides meaningful regression value.
 
 A source-forward review of DSH `master` is design evidence, not a support claim. An unreleased source tree does not justify widening peer ranges or claiming install-tested support.
 
@@ -453,7 +466,7 @@ For each feature PR:
 Before merge, verify:
 
 - no shipped DSH preset/provider/file is rewritten;
-- uninstall/disposal restores stock behavior;
+- uninstall/disposal restores stock behavior, while explicit DSH-native resources the user authored through Context Manager are not treated as disposable plugin-owned state;
 - unknown user data survives unrelated edits;
 - stale writes fail rather than retry silently;
 - Host-only values cannot leak over a wire surface;
@@ -477,7 +490,7 @@ pnpm install --frozen-lockfile
 pnpm run check
 ```
 
-`pnpm run check` performs type checking, a clean production build, and the package/domain test suite on the committed legacy dependency set. CI adds the current Settings-generation compatibility lane described above.
+`pnpm run check` performs type checking, a clean production build, and the package/domain/runtime test suite on the committed legacy dependency set. CI adds the modern Settings lanes, three-generation AgentPreset and Session compatibility lanes, packed-bundle verification, and published DSH bundle smoke described above.
 
 The git-install `prepare` path intentionally emits only the runtime JavaScript needed for installation. Declaration generation and full type checking remain development/CI responsibilities.
 
