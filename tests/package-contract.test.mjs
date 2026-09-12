@@ -33,26 +33,35 @@ test('bundle patch inserts only the namespaced context-manager row', async () =>
   assert.doesNotMatch(patch, /^- id:/m)
 })
 
-test('built host entry exposes both model-inert Context Manager service contracts', async () => {
+test('built host entry exposes the model-inert Context Manager service contracts', async () => {
   const entry = await import(pathToFileURL(fromRoot(packageJson.main)).href)
   assert.equal(entry.name, 'dsh-context-manager')
   assert.equal(typeof entry.apply, 'function')
   assert.equal(typeof entry.ContextManagerService, 'function')
   assert.equal(typeof entry.ContextManagerPresetDirectory, 'function')
+  assert.equal(typeof entry.ContextManagerSessionPresetIdentity, 'function')
+  assert.equal(entry.ContextManagerSessionPreset, undefined)
   assert.equal(entry.CONTEXT_MANAGER_SETTINGS_NAMESPACE, 'dsh-context-manager')
 })
 
-test('AgentPreset adapter helpers stay internal to the root package API', async () => {
+test('adapter mechanics stay internal to the root package API', async () => {
   const entry = await import(pathToFileURL(fromRoot(packageJson.main)).href)
   assert.equal(entry.getAgentPresetsCapability, undefined)
   assert.equal(entry.observeAgentPresets, undefined)
   assert.equal(entry.buildPresetSnapshot, undefined)
   assert.equal(entry.buildUnavailablePresetSnapshot, undefined)
+  assert.equal(entry.observeSessionPresetIdentity, undefined)
 })
 
-test('built host entry does not import or bundle the optional DSH AgentPreset package', async () => {
+test('built host entry does not import or bundle optional DSH runtime packages', async () => {
   const built = await readFile(fromRoot(packageJson.main), 'utf8')
   assert.doesNotMatch(built, /@deepseek-ai\/dsh-agent-presets/)
+  assert.doesNotMatch(built, /@deepseek-ai\/dsh-session(?:['"/])/)
+  assert.doesNotMatch(built, /@deepseek-ai\/dsh-session-projection/)
   assert.equal(packageJson.peerDependencies?.['@deepseek-ai/dsh-agent-presets'], undefined)
   assert.equal(packageJson.devDependencies?.['@deepseek-ai/dsh-agent-presets'], undefined)
+  assert.equal(packageJson.peerDependencies?.['@deepseek-ai/dsh-session'], undefined)
+  assert.equal(packageJson.devDependencies?.['@deepseek-ai/dsh-session'], undefined)
+  assert.equal(packageJson.peerDependencies?.['@deepseek-ai/dsh-session-projection'], undefined)
+  assert.equal(packageJson.devDependencies?.['@deepseek-ai/dsh-session-projection'], undefined)
 })

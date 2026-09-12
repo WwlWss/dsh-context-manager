@@ -1,33 +1,33 @@
 # DSH compatibility
 
-DeepSeek Harness evolves quickly. Context Manager separates **installable/tested package compatibility** from **source-forward review against the latest official repository** so the plugin can follow upstream architecture without pretending an unpublished package is already runnable in CI.
+DeepSeek Harness evolves quickly. Context Manager separates **installable/tested package compatibility** from **source-forward review against the latest official repository** so the plugin can follow upstream architecture without pretending an unpublished source state is already runnable in CI.
 
 ## Current compatibility matrix
 
 | Track | DSH reference | How it is used |
 | --- | --- | --- |
-| Legacy Settings regression | `dsh-v0.1.1-rc.2` | The committed development dependency set. The full type/build/Domain suite exercises the legacy module-level `installSettingsSection(...)` API generation. AgentPreset source review and a focused published-package type-contract lane verify the M3A Host intersection `defaultId` / `authorable` / `list()` here. |
-| Latest installable Settings/runtime | `dsh-v0.1.2-rc.1` | A dedicated CI lane replaces only the ephemeral test workspace's DSH-facing dependencies with the versions shipped by this DSH line and reruns the full type/build/Domain suite, exercising `settings.installSection(...)`. The bundle smoke also installs/composes the plugin with the published `@deepseek-ai/dsh@0.1.2-rc.1` CLI. A separate AgentPreset contract lane compiles against the published `@deepseek-ai/dsh-agent-presets@0.1.2-rc.1`; this line also publishes the path-free native AgentPreset roster DTO. |
-| Latest official repository | `dsh-v0.1.3-alpha.1` / `d347e703...` | Source-forward architecture target. The GitHub release and repository carry this version, but the umbrella `@deepseek-ai/dsh@0.1.3-alpha.1` package is not currently available from npm, so this line is reviewed from official source rather than claimed as install-tested. |
+| Legacy regression | `dsh-v0.1.1-rc.2` | The committed development dependency set. The full type/build/Domain suite exercises the legacy module-level `installSettingsSection(...)` generation. Focused published-package contract/runtime lanes also exercise the M3A AgentPreset roster seam and M3B legacy live-Session identity through `Session.events`. |
+| Prior modern regression | `dsh-v0.1.2-rc.1` | Dedicated ephemeral CI keeps the first modern Settings generation and native Session `agentPreset` projection under regression. The full Settings suite, AgentPreset contract, M3B contract/runtime smoke, and bundle composition smoke all run here. |
+| Latest installable runtime | `dsh-v0.1.5-rc.1` | The latest published umbrella DSH line is tested independently from the frozen development lock. CI reruns the modern Settings suite, AgentPreset contract, M3B Session contract/runtime smoke, and full bundle composition smoke against this release. |
+| Latest official repository | `master` / `c291e796...` | Source-forward architecture target reviewed from official source. At this commit the AgentPreset package source identifies itself as `0.1.5-rc.2`; it preserves the same M3B `agentPreset: string | null` Session projection and `stateOf(session, 'agentPreset')` consumer pattern. This exact source commit is reviewed, not falsely described as an install-tested npm release. |
 
-Support claims must name what was actually tested. A GitHub release/source tree and an installable npm package are deliberately not treated as the same thing.
+Support claims must name what was actually tested. A GitHub source tree and an installable npm package are deliberately not treated as the same thing.
 
-The `0.1.2-rc.1` DSH source line ships `@deepseek-ai/cordis@4.0.2`, `@deepseek-ai/dsh-settings@0.1.2-rc.1`, and `@deepseek-ai/schemastery@3.18.2`; the current-generation compatibility lane uses those exact versions. The ordinary development lockfile remains on the legacy generation so both public Settings API shapes stay visible instead of silently moving the minimum test baseline.
+The modern published lines used by CI ship `@deepseek-ai/cordis@4.0.2` and `@deepseek-ai/schemastery@3.18.2`; compatibility lanes use those public package generations while the ordinary development lockfile remains on the legacy generation. Keeping the frozen legacy lock means both Settings API shapes and both M3B Session-read branches remain visible instead of silently raising the minimum baseline.
 
 ## Settings compatibility rule
 
 Context Manager owns the `dsh-context-manager` Settings namespace and never reads or writes DSH settings files directly.
 
-The Settings public surface changed between the legacy and current lines:
+The Settings public surface changed between the legacy and modern lines:
 
 - `0.1.1-rc.2` exported `settingsNamespace()` and a module-level `installSettingsSection()` helper.
-- `0.1.2-rc.1+` validates namespace strings in the Settings service and exposes the optional-consumer lifecycle as `settings.installSection(owner, ns, schema, entry, hooks)`.
-- the latest official `0.1.3-alpha.1` source still uses the `settings.installSection(...)` shape.
+- `0.1.2-rc.1+`, including `0.1.5-rc.1` and current source, validates namespace strings in the Settings service and exposes the optional-consumer lifecycle as `settings.installSection(owner, ns, schema, entry, hooks)`.
 
 `src/adapters/settings.ts` owns the narrow version seam:
 
 1. if the legacy module-level `installSettingsSection(...)` export exists, delegate to it;
-2. otherwise attach to the optional Settings service and require the current `settings.installSection(...)` method;
+2. otherwise attach to the optional Settings service and require the modern `settings.installSection(...)` method;
 3. keep the namespace value local and stable instead of importing the removed `settingsNamespace()` helper;
 4. never reimplement DSH's detach/unload policy when one of its native public helpers is available;
 5. never inspect a fork identity or import DSH implementation internals.
@@ -52,13 +52,11 @@ Two Settings limits are intentionally not papered over by Context Manager:
 
 Milestone 3A consumes the optional public Host capability exposed as `ctx.agentPresets`. It does **not** import or bundle `@deepseek-ai/dsh-agent-presets` in production.
 
-The reason is compatibility rather than avoidance of the native domain. The stable Host-service intersection needed by M3A is already shared by all reviewed lines:
+The reason is compatibility rather than avoidance of the native domain. The stable Host-service intersection needed by M3A is shared by all supported published lines and remains present in current official source:
 
 - `defaultId` — current native default id;
 - `authorable` — whether the deployment has a user-authorable preset root;
 - `list()` — one unmemoized roster read returning Host rows with `id`, `trust`, optional `name` / `description`, optional `broken`, plus Host-only implementation fields such as the absolute composition `path`.
-
-That intersection exists in `dsh-v0.1.1-rc.2`, remains in the installable `dsh-v0.1.2-rc.1`, and remains in official `dsh-v0.1.3-alpha.1` source. Current source changed the service base class to `TypertRemoteService` and added richer Remote/structural features, but those changes do not alter the M3A Host reads.
 
 The local structural interface in `src/adapters/agent-presets.ts` is intentionally smaller than the native class. It prevents three unnecessary dependencies:
 
@@ -82,10 +80,11 @@ A widening of a field whose semantics Context Manager actually consumes, such as
 
 ### M3A upstream contract lane
 
-Runtime structural typing by itself would not make TypeScript notice an upstream declaration change. CI therefore has a separate compile-only contract fixture against the published native package versions:
+Runtime structural typing by itself would not make TypeScript notice an upstream declaration change. CI therefore has a separate compile-only contract fixture against the supported published native package versions:
 
 - `@deepseek-ai/dsh-agent-presets@0.1.1-rc.2`;
-- `@deepseek-ai/dsh-agent-presets@0.1.2-rc.1`.
+- `@deepseek-ai/dsh-agent-presets@0.1.2-rc.1`;
+- `@deepseek-ai/dsh-agent-presets@0.1.5-rc.1`.
 
 The fixture loads the native package's public Cordis module augmentation and derives the consumed capability from `Context['agentPresets']`. It then asserts that this actual Host seam still provides `defaultId`, `authorable`, `list()`, the minimum roster-row shape, and the exact currently supported `trust` union. The check deliberately does not depend on package-root named exports such as `AgentPresets`, `AgentPreset`, or `PresetTrust`, because production does not consume those names. The package is installed only in the disposable CI workspace. It remains absent from Context Manager's committed peer/dev/runtime dependency surface.
 
@@ -111,9 +110,56 @@ CI compatibility:   strong compile-time check against supported native packages
 - Treat the aggregate snapshot as a control-plane read. Native roster discovery is filesystem-backed and intentionally unmemoized, so future Remote/UI code must not poll it per render frame, token, Session event, or request hot path.
 - Keep adapter mechanics private to the package. The root package exports stable read-model types and `ContextManagerPresetDirectory`, not discovery/validation/builder helpers.
 
-The installable `0.1.2-rc.1` and current `0.1.3-alpha.1` source also provide a path-free native Remote roster (`AgentPresetRow` / `AgentPresetRoster`). Current source additionally provides `compositionInventory()`, which can read flattened preset composition without mounting an unmounted preset. Those are strong upstream signals for future work, but M3A deliberately does not depend on them because the legacy baseline does not expose the same contract.
+Modern published DSH and current source also provide a path-free native Remote roster (`AgentPresetRow` / `AgentPresetRoster`) and richer structural/authoring operations. Those are strong upstream signals for future work, but M3A deliberately stays on the smaller legacy-compatible Host intersection.
 
-Effective live/durable preset identity is M3B, not M3A. Current DSH exposes `agentPreset: string | null` in Session projection state, while older lines used different Session helpers; keeping that concern separate avoids dragging the 0.1.3 SessionHandle/locking migration into a roster-only feature.
+## M3B Session preset identity compatibility
+
+Milestone 3B observes the AgentPreset identity recorded by a **currently live** DSH Session. It deliberately does not open Session persistence, acquire `SessionHandle`s, resume cold Sessions, or inspect archive storage. DSH owns creation, persistence, resume, and Agent composition; Context Manager observes the Session only after DSH has published it through the live SessionStore.
+
+The public semantic rule is shared across the supported lines:
+
+```text
+creation header agentPreset
+        ↓
+newest committed agent-preset/selected event wins
+        ↓
+effective recorded Session preset identity
+```
+
+The read seam changed:
+
+- `0.1.1-rc.2` exposes the immutable creation header and legacy public `Session.events`; M3B folds the small public record locally.
+- `0.1.2-rc.1`, `0.1.5-rc.1`, and current source expose native `agentPreset: string | null` Session projection state. M3B prefers `ctx.sessionProjections.stateOf(session, 'agentPreset')`.
+- if the projection capability/key is genuinely absent, M3B may fall back to the public Session log representation (`snapshotEvents()` on modern Sessions, legacy `events` on the old line).
+- if a present projection returns a value other than `string`, `null`, or absent, M3B fails loud instead of hiding an incompatible Host API behind the fallback.
+
+`SessionPresetIdentity` is intentionally independent from M3A profile resolution:
+
+- `unavailable` means the live SessionStore capability itself is absent;
+- `not-live` means the requested id is not currently published in that SessionStore; it does **not** claim that no persisted Session with that id exists;
+- `known.presetId` is exact `string | null`, with no trimming, normalization, roster lookup, default substitution, or health rewrite.
+
+A Session can therefore truthfully record `foo` even if the current native roster no longer contains `foo`, and changing a Context Profile's configured base preset does not rewrite an existing Session's identity.
+
+### M3B package and runtime boundary
+
+Production does not import or bundle `@deepseek-ai/dsh-session`, `@deepseek-ai/dsh-session-projection`, or `@deepseek-ai/dsh-agent-presets`. It discovers the optional Cordis capabilities structurally through `ctx.get(...)` and validates only the fields/methods it consumes.
+
+The separate `ContextManagerSessionPresetIdentity` Host service owns this read model. It is not added to `ContextManagerPresetDirectory` and it does not modify `ContextProfile`, because Session effective identity and profile configured/resolved state have different lifecycles and no authoritative binding exists yet.
+
+M3B must not call native `list()`, `resolve()`, `mount()`, `recompose()`, `select()`, or any other composition-affecting operation. Native default id is irrelevant to an already-recorded Session identity.
+
+### M3B compatibility lanes
+
+CI executes both declaration contracts and runtime behavior against:
+
+- `0.1.1-rc.2` — legacy `Session.events` branch;
+- `0.1.2-rc.1` — native Session projection branch and prior-modern regression;
+- `0.1.5-rc.1` — native Session projection branch on the latest installable DSH line.
+
+The runtime smoke creates an actual published-package `Session`, appends an actual `agent-preset/selected` record, and on modern lines registers the actual native `agentPresetProjectionDefinition` with the actual `SessionProjectionRegistry`. This ensures the compatibility branches production relies on are executed rather than merely simulated by structural fakes.
+
+Current official source at `c291e796...` was re-reviewed after it advanced during M3B development. It still defines the same `string | null` AgentPreset projection and first-party Session Controller still reads it through `stateOf(session, 'agentPreset')`, so no additional source-forward adapter is needed.
 
 ## System prompt and runtime-context guardrails
 
@@ -136,14 +182,16 @@ These are future-runtime requirements; the current build only persists skill bin
 
 ## Session and model-visible Surface boundary
 
-`0.1.2` and the latest `0.1.3-alpha.1` source substantially changed Session APIs:
+Modern DSH substantially changed Session APIs relative to the legacy line:
 
-- eager `Session.events` access moved toward `seq`, `eventAt()`, and `snapshotEvents()`;
-- Session persistence is lifecycle-owned through `SessionHandle` in the new source line;
-- `agentLoop.create()` became asynchronous there;
-- Session format v2 introduced generation migration and durable assistant settlements.
+- eager `Session.events` access moved to bounded/snapshot-oriented APIs such as `snapshotEvents()`;
+- current Session persistence is lifecycle-owned through `SessionHandle` rather than being a loose read/write helper;
+- Agent creation/resume and maintenance semantics are owned by DSH lifecycle services;
+- the Session format and projection/cache machinery have continued to evolve.
 
-The latest official source still defines model-visible Surface replacement as `SurfaceOp: { op: 'replace', start, end }`, requires the replacing event to account for the shadowed source events, and uses that primitive in built-in compaction. That makes replacement/shadowing a valid architectural foundation, but it does **not** mean Context Manager already has a verified public lifecycle/maintenance hook for arbitrary history transforms.
+M3B intentionally stays above that persistence seam. The `SessionHandle` migration matters only if a later Context Manager capability independently inspects a cold stored Session. Such a capability must be designed against the then-current Session Query/persistence contract rather than extending M3B's live-session reader downward.
+
+The latest official source still defines model-visible Surface replacement and uses replacement/shadowing in built-in maintenance such as compaction. That remains a valid architectural foundation for later history transforms, but it does **not** mean Context Manager already has a verified public lifecycle/maintenance hook for arbitrary history transforms.
 
 Therefore future history work must verify the complete current public extension path — Session ownership/locking, maintenance serialization, replacement commit rules, replay/resume, and coexistence with compaction — before implementation. Do not revive an old direct-Session pattern merely because the low-level Surface primitive still exists.
 
@@ -166,7 +214,7 @@ As with the prompt and Skill sections, these are maintained architectural guardr
 
 Context Manager must never depend on private fixes in `WwlWss/deepseek-harness`.
 
-In particular, the local Win32 directory-picker safety patch and any future Session/projection performance patch are DSH-fork implementation changes. Context Manager may rely on public capability values and semantics, but never on their private implementation or event/broadcast frequency.
+In particular, local Win32 safety patches and any future Session/projection performance patch are DSH-fork implementation changes. Context Manager may rely on public capability values and semantics, but never on their private implementation or event/broadcast frequency.
 
 A user must be able to switch official DSH <-> patched DSH without installing a different Context Manager build.
 
