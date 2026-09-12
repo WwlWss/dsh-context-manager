@@ -137,6 +137,11 @@ jobs:
             --target ES2024 \
             tests/agent-presets-upstream-contract.ts
 
+      - name: Build and run M3C compatibility behavior against this dependency generation
+        run: |
+          pnpm run build
+          node --test ./tests/preset-authoring.test.mjs
+
   session-preset-contract:
     name: Session preset Host contract (${{ matrix.version }})
     strategy:
