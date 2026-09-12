@@ -134,6 +134,7 @@ jobs:
         run: |
           pnpm add --save-dev --save-exact \
             @deepseek-ai/cordis@${{ matrix.cordis }} \
+            @deepseek-ai/cordis-plugin-loader@1.0.3 \
             @deepseek-ai/dsh-agent-presets@${{ matrix.version }} \
             @deepseek-ai/dsh-session-projection@${{ matrix.version }}
 
