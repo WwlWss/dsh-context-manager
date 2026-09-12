@@ -72,9 +72,13 @@ Deleting a native preset never repairs or rewrites Context Manager profile refer
 
 ## Important compatibility notes
 
-The install-tested compatibility matrix keeps three published DSH lines under regression: legacy `0.1.1-rc.2`, prior-modern `0.1.2-rc.1`, and latest installable `0.1.5-rc.1`. Current official `master` is source-reviewed separately from install-tested npm claims. See [docs/compatibility.md](docs/compatibility.md) for the exact matrix.
+The install-tested compatibility matrix keeps four published DSH lines under regression: legacy `0.1.1-rc.2`, prior-modern `0.1.2-rc.1`, the `0.1.5-rc.1` line, and the newer published `0.1.5-rc.2` line that matches the currently reviewed AgentPreset generation on official `master`. Source review of the exact official repository commit remains a separate claim from package testing. See [docs/compatibility.md](docs/compatibility.md) for the exact matrix.
 
-The M3A/M3C AgentPreset adapters do not import or bundle `@deepseek-ai/dsh-agent-presets`. The capability is optional and discovered through Cordis. CI temporarily installs exact published AgentPreset packages only to compile the minimum public Host contract; M3C additionally runs its bridge behavior suite inside each AgentPreset compatibility lane.
+The M3A/M3C AgentPreset adapters do not import or bundle `@deepseek-ai/dsh-agent-presets`. The capability is optional and discovered through Cordis. CI temporarily installs exact published AgentPreset packages to compile the minimum public Host contract, runs the structural bridge behavior suite, and then mounts the real published `AgentPresets` service against temporary roots to execute an actual `copy -> read -> remove` cycle through Context Manager on every supported AgentPreset generation.
+
+The compile contract deliberately fixes only semantics production consumes. `read()` must remain asynchronously string-valued. `copy()` and `remove()` must remain asynchronous with the same input shape, but their native success payload may be enriched by DSH because Context Manager intentionally discards that payload and exposes `void`. This prevents an incidental upstream DTO from becoming part of Context Manager's public API.
+
+The packaged plugin is also installed into a clean consumer with strict peer-dependency checking against `@deepseek-ai/dsh-settings@0.1.5-rc.2`, and the full DSH bundle composition smoke runs on `0.1.2-rc.1`, `0.1.5-rc.1`, and `0.1.5-rc.2`.
 
 The shipped Minimal preset is intentionally restrictive: it uses a complete persona and disables runtime context. Context Manager must report those placement limitations honestly. Users who need to change Minimal's native composition can make a DSH-native user preset copy; the shipped preset remains untouched.
 
@@ -84,7 +88,7 @@ Display-only regex behavior is a different client concern. Stock DSH assistant M
 
 Future HTML/JavaScript helper rendering must run in an isolated browser runtime with an explicit capability bridge for any DSH interaction. This keeps arbitrary user-enabled scripts possible without granting model output ambient authority over the parent DSH application.
 
-DSH Settings revision fencing is an in-process guarantee. If multiple DSH processes share one settings provider/document, cross-process convergence remains provider-defined; Context Manager does not add a second locking system on top of DSH. Native AgentPreset filesystem authoring likewise remains owned by DSH; Context Manager does not invent a partial cross-process mutex around it.
+DSH Settings revision fencing is an in-process guarantee. If multiple DSH processes share one settings provider/document, cross-process convergence remains provider-defined; Context Manager does not add a second locking system on top of DSH. Native AgentPreset filesystem authoring likewise remains owned by DSH. Context Manager deliberately does not add a local mutex and then claim global serialization across Context Manager, the stock DSH authoring UI, other plugins/processes, and manual filesystem writers. Concurrent native-write correctness belongs at the DSH `AgentPresets` authoring transaction boundary.
 
 ## Planned milestones
 
@@ -115,7 +119,7 @@ pnpm install --frozen-lockfile
 pnpm run check
 ```
 
-`pnpm run check` performs type checking, a clean production build, and package/domain/runtime tests against the legacy development dependency set. CI additionally runs modern Settings regressions, three published AgentPreset Host-contract lanes, three Session preset identity lanes, and bundle composition smoke tests against the prior-modern and latest installable DSH releases.
+`pnpm run check` performs type checking, a clean production build, and package/domain/runtime tests against the legacy development dependency set. CI additionally runs modern Settings regressions through `0.1.5-rc.2`, four published AgentPreset Host-contract plus real-native-runtime lanes, four Session preset identity lanes, a strict packed-package peer installation check, and bundle composition smoke tests against `0.1.2-rc.1`, `0.1.5-rc.1`, and `0.1.5-rc.2`.
 
 Before changing runtime integration or adding a Web capability, read [docs/development-guide.md](docs/development-guide.md). It records the project's persistence, lifecycle, DSH-integration, transform, client, performance, and testing rules.
 
