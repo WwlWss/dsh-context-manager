@@ -100,11 +100,11 @@ Exit criteria were met before merge:
 
 ---
 
-## Milestone 3 — Native AgentPreset discovery and runtime identity
+## Milestone 3 — Native AgentPreset discovery, runtime identity, and authoring
 
-Goal: connect stored preset references to DSH's native preset domain without changing composition, while keeping roster/configured resolution separate from live Session identity.
+Goal: connect stored preset references to DSH's native preset domain, observe the identity a live Session actually records, and provide a narrow bridge to DSH-owned native preset authoring without creating a second preset store or changing existing Session composition.
 
-The Settings compatibility prerequisite was completed in merged PR #3. The compatibility matrix now retains the legacy `0.1.1-rc.2` generation, the prior-modern `0.1.2-rc.1` generation, and the latest installable `0.1.5-rc.1` generation. Source-forward review follows current official `master` separately from install-tested npm claims; see [compatibility.md](compatibility.md).
+The Settings compatibility prerequisite was completed in merged PR #3. The compatibility matrix retains the legacy `0.1.1-rc.2` generation, the prior-modern `0.1.2-rc.1` generation, and the latest installable `0.1.5-rc.1` generation. Source-forward review follows current official `master` separately from install-tested npm claims; see [compatibility.md](compatibility.md).
 
 ### 3A — Native roster and configured -> resolved state
 
@@ -136,7 +136,7 @@ The roster integration remains read-only/model-inert. It does not mount, recompo
 
 ### 3B — Effective live Session preset identity
 
-**Status:** in development in PR #5.
+**Status:** complete in merged PR #5.
 
 Purpose: add a Session-scoped read model for what a **currently live DSH Session records**, without creating a profile-to-Session binding and without taking over DSH Session lifecycle.
 
@@ -175,16 +175,35 @@ M3B deliberately does **not** consume `SessionPersistence`, `SessionHandle`, or 
 
 M3B also does not call `list()`, `resolve()`, `mount()`, `recompose()`, `select()`, or otherwise affect AgentPreset composition. The current native `composedPreset(agent.ctx)` observation is useful as a settled-state lifecycle test oracle, but it is not a second public M3B field because live composition can transiently lead the durable selection record during a successful blank-session switch transaction.
 
-**Do not yet:** add profile ↔ Session bindings, expose Remote/UI contracts, inspect cold archives, or hot-switch an already-running conversation as a Context Manager operation.
+### 3C — Native AgentPreset authoring bridge
 
-### 3C — Optional native preset authoring
+**Status:** in development in PR #6.
 
-Keep authoring separate from discovery/identity unless the implementation remains trivially small.
+Purpose: expose the DSH-owned native preset authoring operations needed by Context Manager without duplicating native storage, filesystem rules, or composition lifecycle.
 
+Production boundary:
+
+- discover optional `ctx.agentPresets` structurally at each operation call;
+- delegate exact `read(id)`, `copy(from, id, name?)`, and `remove(id)` Host calls;
+- keep production free of imports from `@deepseek-ai/dsh-agent-presets`;
+- validate only the operation-specific method/result shape being consumed;
+- propagate native operation failures without parsing legacy error messages or inventing stronger policy;
+- keep `ContextManagerPresetDirectory` read-only and expose authoring through a separate Host service.
+
+Native ownership rules:
+
+- authoring is copy-only: no blank preset creation, YAML write API, overwrite, or implicit rename;
 - shipped presets remain locked;
-- if native DSH copy/create APIs are available and tested, expose an explicit "copy as user preset" Host operation;
-- never rewrite a shipped preset in place;
-- do not infer editability only from `trust`; use the public authoring capability/operation contract.
+- DSH chooses the writable root, validates ids, checks roster/on-disk collisions, copies the entire preset directory, rewrites native metadata, and invalidates its own standing-mount cache;
+- DSH owns removal, including writable-root ownership checks, standing-mount state, and native-default cleanup;
+- `trust: "user"` remains provenance, not an invented `editable` or `deletable` permission;
+- Context Manager never accepts or constructs arbitrary native preset filesystem paths.
+
+State separation remains strict. Copy/remove are native resource operations and do not mutate Context Manager profiles. If a profile still references a removed preset, M3A reports the exact configured id as `missing`; if a live Session already recorded that preset, M3B continues to report that effective identity. Diagnostics do not become repair operations.
+
+Compatibility tests must exercise the same Host contract on `0.1.1-rc.2`, `0.1.2-rc.1`, and `0.1.5-rc.1`, including optional capability attach/detach, exact argument preservation, path-local validation, native-error propagation, and configured/resolved/effective independence after removal.
+
+M3C does **not** expose Remote/UI authoring yet. Opening the authored preset directory is a later client/Remote concern and should reuse the then-current DSH public opener rather than adding a Context Manager filesystem target API.
 
 ---
 
