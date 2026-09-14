@@ -1,9 +1,10 @@
 import { defineConfig } from 'tsdown'
 
-const hostPackages = new Set([
+const externalPackages = new Set([
   '@deepseek-ai/cordis',
   '@deepseek-ai/dsh-settings',
   '@deepseek-ai/schemastery',
+  'zod',
 ])
 
 export default defineConfig({
@@ -16,6 +17,6 @@ export default defineConfig({
   dts: true,
   clean: true,
   deps: {
-    neverBundle: specifier => hostPackages.has(specifier),
+    neverBundle: specifier => externalPackages.has(specifier),
   },
 })
