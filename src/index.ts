@@ -19,10 +19,14 @@ export * from './domain/errors.js'
 export * from './domain/model.js'
 export * from './domain/schema.js'
 export type {
+  InvalidPromptResourceSummary,
+  PromptMutationReceipt,
   PromptResource,
   PromptResourceId,
   PromptResourceInput,
+  PromptResourceListItem,
   PromptResourceSnapshot,
+  UsablePromptResourceSummary,
 } from './library/prompt-library.js'
 export { ContextManagerService, CONTEXT_MANAGER_SETTINGS_NAMESPACE } from './service/context-manager.js'
 export { ContextManagerPresetAuthoring } from './service/preset-authoring.js'
@@ -32,7 +36,6 @@ export { ContextManagerSessionPresetIdentity } from './service/session-preset.js
 
 export const name = 'dsh-context-manager'
 
-/** Mount Context Manager Host services into the plugin's Cordis fiber. */
 export function apply(ctx: Context): void {
   ctx.plugin(ContextManagerService)
   ctx.plugin(ContextManagerPresetDirectory)
