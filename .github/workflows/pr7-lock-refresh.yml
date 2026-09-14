@@ -40,4 +40,6 @@ jobs:
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
           git add pnpm-lock.yaml
           git commit -m 'build: refresh lockfile for M4A'
+          git fetch origin ${{ github.head_ref }}
+          git rebase origin/${{ github.head_ref }}
           git push origin HEAD:${{ github.head_ref }}
