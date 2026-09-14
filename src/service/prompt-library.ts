@@ -35,10 +35,7 @@ function snapshotOf(id: PromptResourceId, resource: PromptResource): PromptResou
   })
 }
 
-/**
- * Durable, model-inert prompt body library over DSH storage-domain.
- * M4A owns no PromptBinding and registers nothing with systemPrompt.
- */
+/** Durable, model-inert prompt body library over DSH storage-domain. */
 export class ContextManagerPromptLibrary extends Service {
   static inject = ['storageDomain']
 
@@ -72,10 +69,7 @@ export class ContextManagerPromptLibrary extends Service {
     return snapshotOf(id, this.requireResource(id))
   }
 
-  async createPrompt(
-    id: PromptResourceId,
-    input: PromptResourceInput,
-  ): Promise<PromptResourceSnapshot> {
+  async createPrompt(id: PromptResourceId, input: PromptResourceInput): Promise<PromptResourceSnapshot> {
     if (typeof id !== 'string') throw invalidPromptResource(new TypeError('prompt resource id must be a string'))
     const parsed = this.parseInput(input)
     return await this.enqueueOperation(async () => {
@@ -92,36 +86,17 @@ export class ContextManagerPromptLibrary extends Service {
     })
   }
 
-  async replacePrompt(
-    id: PromptResourceId,
-    input: PromptResourceInput,
-    expectedRevision: number,
-  ): Promise<PromptResourceSnapshot> {
+  async replacePrompt(id: PromptResourceId, input: PromptResourceInput, expectedRevision: number): Promise<PromptResourceSnapshot> {
     const parsed = this.parseInput(input)
     return await this.updateResource(id, expectedRevision, (current) => {
       const { description: _previousDescription, ...rest } = current
       return parsed.description === undefined
-        ? {
-            ...rest,
-            name: parsed.name,
-            content: parsed.content,
-            revision: current.revision + 1,
-          }
-        : {
-            ...rest,
-            name: parsed.name,
-            description: parsed.description,
-            content: parsed.content,
-            revision: current.revision + 1,
-          }
+        ? { ...rest, name: parsed.name, content: parsed.content, revision: current.revision + 1 }
+        : { ...rest, name: parsed.name, description: parsed.description, content: parsed.content, revision: current.revision + 1 }
     })
   }
 
-  async setPromptName(
-    id: PromptResourceId,
-    name: string,
-    expectedRevision: number,
-  ): Promise<PromptResourceSnapshot> {
+  async setPromptName(id: PromptResourceId, name: string, expectedRevision: number): Promise<PromptResourceSnapshot> {
     if (typeof name !== 'string') throw invalidPromptResource(new TypeError('prompt name must be a string'))
     return await this.updateResource(id, expectedRevision, current => ({
       ...current,
@@ -130,11 +105,7 @@ export class ContextManagerPromptLibrary extends Service {
     }))
   }
 
-  async setPromptDescription(
-    id: PromptResourceId,
-    description: string | undefined,
-    expectedRevision: number,
-  ): Promise<PromptResourceSnapshot> {
+  async setPromptDescription(id: PromptResourceId, description: string | undefined, expectedRevision: number): Promise<PromptResourceSnapshot> {
     if (description !== undefined && typeof description !== 'string') {
       throw invalidPromptResource(new TypeError('prompt description must be a string when present'))
     }
@@ -146,11 +117,7 @@ export class ContextManagerPromptLibrary extends Service {
     })
   }
 
-  async setPromptContent(
-    id: PromptResourceId,
-    content: string,
-    expectedRevision: number,
-  ): Promise<PromptResourceSnapshot> {
+  async setPromptContent(id: PromptResourceId, content: string, expectedRevision: number): Promise<PromptResourceSnapshot> {
     if (typeof content !== 'string') throw invalidPromptResource(new TypeError('prompt content must be a string'))
     return await this.updateResource(id, expectedRevision, current => ({
       ...current,
@@ -201,11 +168,7 @@ export class ContextManagerPromptLibrary extends Service {
     )
   }
 
-  private assertRevision(
-    id: PromptResourceId,
-    current: PromptResource,
-    expectedRevision: number,
-  ): void {
+  private assertRevision(id: PromptResourceId, current: PromptResource, expectedRevision: number): void {
     if (!Number.isInteger(expectedRevision) || expectedRevision < 1) {
       throw new ContextManagerError(
         'invalid-prompt-resource',
@@ -225,13 +188,15 @@ export class ContextManagerPromptLibrary extends Service {
     expectedRevision: number,
     update: (current: PromptResource) => PromptResource,
   ): Promise<PromptResourceSnapshot> {
-    const table = this.requireTable()
-    if (table.get(id) === undefined) throw this.notFound(id)
-    const next = await table.update(id, (current) => {
-      this.assertRevision(id, current, expectedRevision)
-      return update(current)
+    return await this.enqueueOperation(async () => {
+      const table = this.requireTable()
+      if (table.get(id) === undefined) throw this.notFound(id)
+      const next = await table.update(id, (current) => {
+        this.assertRevision(id, current, expectedRevision)
+        return update(current)
+      })
+      return snapshotOf(id, next)
     })
-    return snapshotOf(id, next)
   }
 
   private enqueueOperation<T>(operation: () => Promise<T>): Promise<T> {
