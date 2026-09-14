@@ -39,9 +39,6 @@
     "url": "https://github.com/WwlWss/dsh-context-manager/issues"
   },
   "homepage": "https://github.com/WwlWss/dsh-context-manager#readme",
-  "dependencies": {
-    "zod": "^4.4.3"
-  },
   "peerDependencies": {
     "@deepseek-ai/cordis": "^4.0.1",
     "@deepseek-ai/dsh-settings": "^0.1.1-rc.2 || ^0.1.2-rc.1 || ^0.1.5-rc.1",
