@@ -9,10 +9,13 @@ import {
   PROMPT_LIBRARY_DOMAIN_SPEC,
   PROMPT_LIBRARY_TABLE_NAME,
   PROMPT_RESOURCE_INPUT_SCHEMA,
+  PROMPT_RESOURCE_SCHEMA,
   type PromptResource,
   type PromptResourceId,
   type PromptResourceInput,
+  type PromptResourceListItem,
   type PromptResourceSnapshot,
+  type StoredPromptPayload,
 } from '../library/prompt-library.js'
 
 declare module '@deepseek-ai/cordis' {
@@ -35,11 +38,10 @@ function snapshotOf(id: PromptResourceId, resource: PromptResource): PromptResou
   })
 }
 
-/** Durable, model-inert prompt body library over DSH storage-domain. */
 export class ContextManagerPromptLibrary extends Service {
   static inject = ['storageDomain']
 
-  private table?: PromptStorageTable<PromptResourceId, PromptResource>
+  private table?: PromptStorageTable<PromptResourceId, StoredPromptPayload>
   private operationTail: Promise<void> = Promise.resolve()
 
   constructor(ctx: Context) {
@@ -47,7 +49,7 @@ export class ContextManagerPromptLibrary extends Service {
   }
 
   protected async [Service.init](): Promise<void> {
-    const storage = await openPromptStorage<PromptResourceId, PromptResource>(
+    const storage = await openPromptStorage<PromptResourceId, StoredPromptPayload>(
       this.ctx,
       PROMPT_LIBRARY_DOMAIN_SPEC,
       PROMPT_LIBRARY_TABLE_NAME,
@@ -59,14 +61,32 @@ export class ContextManagerPromptLibrary extends Service {
     }, 'dshContextPromptLibrary.domainClose')
   }
 
-  list(): readonly PromptResourceSnapshot[] {
+  list(): readonly PromptResourceListItem[] {
     return Object.freeze(
-      [...this.requireTable().entries()].map(([id, resource]) => snapshotOf(id, resource)),
+      [...this.requireTable().entries()].map(([id, raw]) => {
+        const parsed = PROMPT_RESOURCE_SCHEMA.safeParse(raw)
+        if (!parsed.success) {
+          return Object.freeze({ status: 'invalid' as const, id, message: parsed.error.message })
+        }
+        const resource = parsed.data
+        return Object.freeze({
+          status: 'usable' as const,
+          id,
+          name: resource.name,
+          ...(resource.description === undefined ? {} : { description: resource.description }),
+          revision: resource.revision,
+        })
+      }),
     )
   }
 
   get(id: PromptResourceId): PromptResourceSnapshot {
-    return snapshotOf(id, this.requireResource(id))
+    const raw = this.requireStored(id)
+    try {
+      return snapshotOf(id, PROMPT_RESOURCE_SCHEMA.parse(raw))
+    } catch (error) {
+      throw invalidPromptResource(error)
+    }
   }
 
   async createPrompt(id: PromptResourceId, input: PromptResourceInput): Promise<PromptResourceSnapshot> {
@@ -131,7 +151,8 @@ export class ContextManagerPromptLibrary extends Service {
       const table = this.requireTable()
       const current = table.get(id)
       if (current === undefined) throw this.notFound(id)
-      this.assertRevision(id, current, expectedRevision)
+      const parsed = this.parseStored(current)
+      this.assertRevision(id, parsed, expectedRevision)
       const deleted = await table.delete(id)
       if (!deleted) throw this.notFound(id)
     })
@@ -145,7 +166,15 @@ export class ContextManagerPromptLibrary extends Service {
     }
   }
 
-  private requireTable(): PromptStorageTable<PromptResourceId, PromptResource> {
+  private parseStored(raw: StoredPromptPayload): PromptResource {
+    try {
+      return PROMPT_RESOURCE_SCHEMA.parse(raw)
+    } catch (error) {
+      throw invalidPromptResource(error)
+    }
+  }
+
+  private requireTable(): PromptStorageTable<PromptResourceId, StoredPromptPayload> {
     if (this.table === undefined) {
       throw new ContextManagerError(
         'prompt-library-not-ready',
@@ -155,7 +184,7 @@ export class ContextManagerPromptLibrary extends Service {
     return this.table
   }
 
-  private requireResource(id: PromptResourceId): PromptResource {
+  private requireStored(id: PromptResourceId): StoredPromptPayload {
     const resource = this.requireTable().get(id)
     if (resource === undefined) throw this.notFound(id)
     return resource
@@ -191,11 +220,12 @@ export class ContextManagerPromptLibrary extends Service {
     return await this.enqueueOperation(async () => {
       const table = this.requireTable()
       if (table.get(id) === undefined) throw this.notFound(id)
-      const next = await table.update(id, (current) => {
+      const next = await table.update(id, (raw) => {
+        const current = this.parseStored(raw)
         this.assertRevision(id, current, expectedRevision)
         return update(current)
       })
-      return snapshotOf(id, next)
+      return snapshotOf(id, this.parseStored(next))
     })
   }
 
