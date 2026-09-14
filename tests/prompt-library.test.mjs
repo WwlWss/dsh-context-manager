@@ -266,7 +266,9 @@ test('malformed present storageDomain fails loud instead of becoming unavailable
   try {
     await ctx.plugin(MalformedStorageDomain)
     await assert.rejects(
-      ctx.plugin(ContextManagerPromptLibrary),
+      async () => {
+        await ctx.plugin(ContextManagerPromptLibrary)
+      },
       error => error instanceof TypeError && /storageDomain table\.entries\(\)/.test(error.message),
     )
   } finally {
