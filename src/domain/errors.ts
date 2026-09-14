@@ -16,6 +16,7 @@ export type ContextManagerErrorCode =
   | 'prompt-resource-exists'
   | 'prompt-resource-not-found'
   | 'prompt-resource-conflict'
+  | 'prompt-resource-path-not-editable'
   | 'invalid-prompt-resource'
   | 'invalid-schema-version'
   | 'unsupported-schema-version'
