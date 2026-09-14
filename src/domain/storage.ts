@@ -1,5 +1,6 @@
 import { ContextManagerError } from './errors.js'
 
+/** Whether a value is a plain data object rather than an array/class instance. */
 export function isPlainObject(value: unknown): value is Record<string, unknown> {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return false
   const proto = Object.getPrototypeOf(value)
@@ -7,7 +8,9 @@ export function isPlainObject(value: unknown): value is Record<string, unknown> 
 }
 
 function childPath(path: string, key: string | number): string {
-  return typeof key === 'number' ? `${path}[${String(key)}]` : `${path}[${JSON.stringify(key)}]`
+  return typeof key === 'number'
+    ? `${path}[${String(key)}]`
+    : `${path}[${JSON.stringify(key)}]`
 }
 
 export function assertJsonDataShape(value: unknown): void {
@@ -38,6 +41,13 @@ export function assertJsonDataShape(value: unknown): void {
   visit(value, '$')
 }
 
+/**
+ * Context Manager's narrow preflight for a profile payload before handing the
+ * write to native DSH Settings. DSH remains the authoritative JSON-shape
+ * validator; this helper only rejects cases where the current Settings
+ * implementation would accept an operation but cannot preserve the newly
+ * supplied payload semantics losslessly.
+ */
 export function assertStoredProfilePayloadSafe(value: unknown): void {
   if (value === undefined) {
     throw new ContextManagerError(
@@ -64,6 +74,8 @@ export function assertStoredProfilePayloadSafe(value: unknown): void {
       return
     }
 
+    // Non-plain objects and cycles remain native DSH Settings concerns. Do not
+    // grow a competing JSON validator in Context Manager.
     if (!isPlainObject(current)) return
 
     for (const [key, entry] of Object.entries(current)) {
@@ -71,7 +83,7 @@ export function assertStoredProfilePayloadSafe(value: unknown): void {
       if (key === ['__', 'proto', '__'].join('')) {
         throw new ContextManagerError(
           'unsafe-path-key',
-          `profile payload contains a DSH-unsafe property key at ${nextPath}`,
+          `profile payload contains the DSH-unsafe property key "${key}" at ${nextPath}`,
         )
       }
       visit(entry, nextPath)

@@ -78,3 +78,37 @@ test('prompt service releases an opened native domain when adapter validation fa
     await ctx.fiber.dispose()
   }
 })
+
+class InvalidTableAndCloseStorageDomain extends Service {
+  constructor(ctx, state) { super(ctx, 'storageDomain'); this.state = state }
+  async open() {
+    const state = this.state
+    return {
+      table() { return { get() {} } },
+      async close() { state.closeCount += 1; throw state.closeError },
+    }
+  }
+}
+
+test('adapter reports both validation and cleanup failures without hiding either cause', async () => {
+  const closeError = new Error('close failed')
+  const state = { closeCount: 0, closeError }
+  const ctx = new Context()
+  try {
+    await ctx.plugin(InvalidTableAndCloseStorageDomain, state)
+    await assert.rejects(
+      async () => { await ctx.plugin(ContextManagerPromptLibrary) },
+      error => {
+        assert.ok(error instanceof AggregateError)
+        assert.match(error.message, /validation and cleanup both failed/)
+        assert.equal(error.errors.length, 2)
+        assert.match(error.errors[0].message, /storageDomain table\.entries\(\)/)
+        assert.equal(error.errors[1], closeError)
+        return true
+      },
+    )
+    assert.equal(state.closeCount, 1)
+  } finally {
+    await ctx.fiber.dispose()
+  }
+})
