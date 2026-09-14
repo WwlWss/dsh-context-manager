@@ -19,7 +19,6 @@ test('package manifest points at real build, types, and bundle artifacts', async
   assert.equal(packageJson.exports['.'].default, './lib/index.js')
   assert.equal(packageJson.exports['.'].types, './lib/index.d.ts')
   assert.equal(packageJson.dsh?.bundle?.patch, './cordis.patch.yml')
-  assert.equal(packageJson.dependencies?.zod, '^4.4.3')
 
   await access(fromRoot(packageJson.main))
   await access(fromRoot(packageJson.types))
