@@ -30,7 +30,7 @@ interface PromptResource {
 
 `content` is stored literally: no trimming, newline normalization, template escaping, tag parsing, or other repair. Empty text is valid. M4A does not interpret `{{...}}`; DSH template semantics become relevant only when a later runtime milestone contributes the resource to `systemPrompt`.
 
-The Zod record schema must use `passthrough()`. DSH storage-domain stores the result of `schema.parse(raw)` as the authoritative in-memory record, so a stripping object schema would erase unknown future siblings during the next narrow update. Unknown fields are therefore preserved across reopen and structured edits.
+The Zod record schema uses `passthrough()`. DSH storage-domain stores the result of `schema.parse(raw)` as the authoritative in-memory record, so a stripping object schema would erase unknown future siblings during the next narrow update. Unknown fields are therefore preserved across reopen and structured edits.
 
 ## Host service
 
@@ -51,7 +51,7 @@ There is intentionally no generic `save()` mutation.
 
 `createPrompt()` requires the exact stable id supplied by the caller and starts `revision` at `1`. A duplicate id rejects rather than overwriting. Later import/export can therefore preserve resource identities instead of forcing Host-generated replacements.
 
-Every subsequent mutation requires an exact positive `expectedRevision`. The comparison happens in the storage-domain read-modify-write slot for updates; stale writes reject with a Context Manager conflict error and are never retried, merged, or normalized automatically. Create/delete check-then-write sequences are serialized inside the service. Cross-process concurrency remains owned by the configured DSH storage provider; Context Manager does not add a process-local lock and claim distributed safety.
+Every subsequent mutation requires an exact positive `expectedRevision`. All Context Manager writes first pass through one service-owned operation chain. Native table `update()` then performs the revision comparison inside storage-domain's serialized read-modify-write slot. Stale writes reject with a Context Manager conflict error and are never retried, merged, or normalized automatically. Cross-process concurrency remains owned by the configured DSH storage provider; Context Manager does not add a second filesystem or distributed locking protocol.
 
 Structured replace/edit operations preserve unknown durable siblings. Clearing `description` removes only that known field. M4A does not add an advanced raw-resource overwrite API.
 
@@ -72,16 +72,16 @@ M4A uses only the public storage-domain intersection present across the explicit
 
 It does not consume newer optional DomainSpec features such as `layout`, `compatibleVersions`, or `invalidRecords`.
 
-The compatibility job must compile this minimum seam and run a real Host smoke with native `Storage`, `StorageJson`, and `StorageDomain` on every supported generation.
+The compatibility job compiles the minimum public `DomainSpec` seam and runs a real Host smoke with native `Storage`, `StorageJson`, and `StorageDomain` on every supported generation.
 
 ## Required regression coverage
 
 Unit-level service tests cover exact ids/text, duplicate create, revision conflicts, narrow edits, structured replace, description deletion, preservation of unknown siblings, detached reads, explicit delete, malformed structured input, malformed-present storage capability, and lifecycle close/reopen.
 
-The real JSON-medium smoke must additionally prove:
+The real native-storage smoke additionally proves:
 
 1. prompt text containing leading/trailing whitespace, CRLF and LF, CJK, emoji, `{{variable}}`, and `{{unknown}}` survives create → close → reopen byte-for-byte as a string;
-2. a future unknown field injected into the real durable JSON record survives reopen plus a normal `setPromptContent()` write;
-3. the service can be unloaded and reopened against the same storage root.
+2. a future unknown field added through the already-open native storage-domain record survives close → reopen plus a normal `setPromptContent()` write;
+3. the service can be unloaded and reopened against the same JSON storage root.
 
 M4A's exit criterion is durable, lossless prompt-body CRUD with revision fencing on all supported DSH storage generations, while Agent/model behavior remains identical to stock DSH.
