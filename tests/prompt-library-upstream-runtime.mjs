@@ -32,10 +32,10 @@ try {
       name: '  exact display name  ',
       description: '',
       content: initialContent,
+      authoredExtension: { retained: true },
     })
-    assert.equal(created.id, id)
-    assert.equal(created.resource.content, initialContent)
-    assert.equal(created.resource.revision, 1)
+    assert.deepEqual(created, { id, revision: 1 })
+    assert.equal(first.library.get(id).resource.content, initialContent)
 
     const nativeDomain = first.ctx.storageDomain.get(unitName)
     assert.ok(nativeDomain)
@@ -43,6 +43,11 @@ try {
       ...current,
       futureField: { opaque: ['keep', 1, { nested: true }] },
     }))
+    await nativeDomain.table('resources').put('malformed', {
+      name: 123,
+      content: 'kept for diagnostics',
+      revision: 3,
+    })
   } finally {
     await first.ctx.fiber.dispose()
   }
@@ -54,16 +59,15 @@ try {
     assert.equal(reopened.resource.description, '')
     assert.equal(reopened.resource.content, initialContent)
     assert.equal(reopened.resource.revision, 1)
-    assert.deepEqual(reopened.resource.futureField, {
-      opaque: ['keep', 1, { nested: true }],
-    })
+    assert.deepEqual(reopened.resource.authoredExtension, { retained: true })
+    assert.deepEqual(reopened.resource.futureField, { opaque: ['keep', 1, { nested: true }] })
+    assert.equal(second.library.list().find(item => item.id === 'malformed').status, 'invalid')
 
     const updated = await second.library.setPromptContent(id, changedContent, 1)
-    assert.equal(updated.resource.content, changedContent)
-    assert.equal(updated.resource.revision, 2)
-    assert.deepEqual(updated.resource.futureField, {
-      opaque: ['keep', 1, { nested: true }],
-    })
+    assert.deepEqual(updated, { id, revision: 2 })
+    const afterUpdate = second.library.get(id).resource
+    assert.equal(afterUpdate.content, changedContent)
+    assert.deepEqual(afterUpdate.futureField, { opaque: ['keep', 1, { nested: true }] })
   } finally {
     await second.ctx.fiber.dispose()
   }
@@ -73,9 +77,8 @@ try {
     const reopened = third.library.get(id)
     assert.equal(reopened.resource.content, changedContent)
     assert.equal(reopened.resource.revision, 2)
-    assert.deepEqual(reopened.resource.futureField, {
-      opaque: ['keep', 1, { nested: true }],
-    })
+    assert.deepEqual(reopened.resource.futureField, { opaque: ['keep', 1, { nested: true }] })
+    assert.equal(third.library.list().find(item => item.id === 'malformed').status, 'invalid')
   } finally {
     await third.ctx.fiber.dispose()
   }
