@@ -1,4 +1,4 @@
-import { Context, Service } from '@deepseek-ai/cordis'
+import { Service, type Context } from '@deepseek-ai/cordis'
 
 import {
   openPromptStorage,
