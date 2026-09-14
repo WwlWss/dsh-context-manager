@@ -4,6 +4,7 @@ const hostPackages = new Set([
   '@deepseek-ai/cordis',
   '@deepseek-ai/dsh-settings',
   '@deepseek-ai/schemastery',
+  'zod',
 ])
 
 export default defineConfig({
