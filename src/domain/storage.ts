@@ -11,19 +11,29 @@ function childPath(path: string, key: string | number): string {
 }
 
 export function assertJsonDataShape(value: unknown): void {
+  const active = new WeakSet<object>()
   const visit = (current: unknown, path: string): void => {
     if (current === null || typeof current === 'string' || typeof current === 'boolean') return
     if (typeof current === 'number') {
-      if (!Number.isFinite(current)) throw new TypeError(`non-finite number at ${path} cannot be stored as JSON data`)
+      if (!Number.isFinite(current) || Object.is(current, -0)) throw new TypeError(`number at ${path} cannot round-trip through JSON losslessly`)
       return
     }
     if (typeof current !== 'object') throw new TypeError(`value at ${path} is not JSON data`)
-    if (Array.isArray(current)) {
-      current.forEach((entry, index) => visit(entry, childPath(path, index)))
-      return
+    if (active.has(current)) throw new TypeError(`ancestor reference at ${path} is not JSON data`)
+    active.add(current)
+    try {
+      if (Array.isArray(current)) {
+        for (let index = 0; index < current.length; index += 1) {
+          if (!Object.hasOwn(current, index)) throw new TypeError(`sparse array at ${path} cannot round-trip through JSON losslessly`)
+          visit(current[index], childPath(path, index))
+        }
+        return
+      }
+      if (!isPlainObject(current)) throw new TypeError(`non-plain object at ${path} is not JSON data`)
+      for (const [key, entry] of Object.entries(current)) visit(entry, childPath(path, key))
+    } finally {
+      active.delete(current)
     }
-    if (!isPlainObject(current)) throw new TypeError(`non-plain object at ${path} is not JSON data`)
-    for (const [key, entry] of Object.entries(current)) visit(entry, childPath(path, key))
   }
   visit(value, '$')
 }
