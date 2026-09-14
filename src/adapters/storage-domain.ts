@@ -36,39 +36,28 @@ function requireMethod(object: Record<string, unknown>, name: string, owner: str
   return method
 }
 
-/**
- * Open exactly one Context Manager domain through the required public DSH
- * storageDomain seam. No backend, path, or provider internals cross this adapter.
- */
 export async function openPromptStorage<K extends string, V>(
   ctx: Context,
   spec: PromptStorageDomainSpec<V>,
   tableName: string,
 ): Promise<PromptStorageHandle<K, V>> {
-  const capability = requireObject(
-    ctx.get('storageDomain') as unknown,
-    'service value must be an object',
-  )
+  const capability = requireObject(ctx.get('storageDomain') as unknown, 'service value must be an object')
   const open = requireMethod(capability, 'open', 'storageDomain')
-  const nativeDomain = requireObject(
-    await open.call(capability, spec),
-    'storageDomain.open() must resolve to an object',
-  )
-  const tableMethod = requireMethod(nativeDomain, 'table', 'storageDomain domain')
+  const nativeDomain = requireObject(await open.call(capability, spec), 'storageDomain.open() must resolve to an object')
   const closeMethod = requireMethod(nativeDomain, 'close', 'storageDomain domain')
-  const nativeTable = requireObject(
-    tableMethod.call(nativeDomain, tableName),
-    'storageDomain domain.table() must return an object',
-  )
 
-  for (const method of ['get', 'entries', 'put', 'delete', 'update']) {
-    requireMethod(nativeTable, method, 'storageDomain table')
+  let nativeTable: Record<string, unknown>
+  try {
+    const tableMethod = requireMethod(nativeDomain, 'table', 'storageDomain domain')
+    nativeTable = requireObject(tableMethod.call(nativeDomain, tableName), 'storageDomain domain.table() must return an object')
+    for (const method of ['get', 'entries', 'put', 'delete', 'update']) requireMethod(nativeTable, method, 'storageDomain table')
+  } catch (error) {
+    await closeMethod.call(nativeDomain)
+    throw error
   }
 
   return {
     table: nativeTable as unknown as PromptStorageTable<K, V>,
-    async close() {
-      await closeMethod.call(nativeDomain)
-    },
+    async close() { await closeMethod.call(nativeDomain) },
   }
 }
