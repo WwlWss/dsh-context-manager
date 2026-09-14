@@ -3,6 +3,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import { ContextManagerService } from './service/context-manager.js'
 import { ContextManagerPresetAuthoring } from './service/preset-authoring.js'
 import { ContextManagerPresetDirectory } from './service/preset-directory.js'
+import { ContextManagerPromptLibrary } from './service/prompt-library.js'
 import { ContextManagerSessionPresetIdentity } from './service/session-preset.js'
 
 export type {
@@ -17,18 +18,29 @@ export type { SessionPresetIdentity } from './adapters/session-preset.js'
 export * from './domain/errors.js'
 export * from './domain/model.js'
 export * from './domain/schema.js'
+export type {
+  InvalidPromptResourceSummary,
+  PromptMutationReceipt,
+  PromptResource,
+  PromptResourceId,
+  PromptResourceInput,
+  PromptResourceListItem,
+  PromptResourceSnapshot,
+  UsablePromptResourceSummary,
+} from './library/prompt-library.js'
 export { ContextManagerService, CONTEXT_MANAGER_SETTINGS_NAMESPACE } from './service/context-manager.js'
 export { ContextManagerPresetAuthoring } from './service/preset-authoring.js'
 export { ContextManagerPresetDirectory } from './service/preset-directory.js'
+export { ContextManagerPromptLibrary } from './service/prompt-library.js'
 export { ContextManagerSessionPresetIdentity } from './service/session-preset.js'
 
 export const name = 'dsh-context-manager'
 
-/** Mount Context Manager Host services into the plugin's Cordis fiber. */
 export function apply(ctx: Context): void {
   ctx.plugin(ContextManagerService)
   ctx.plugin(ContextManagerPresetDirectory)
   ctx.plugin(ContextManagerSessionPresetIdentity)
   ctx.plugin(ContextManagerPresetAuthoring)
+  ctx.plugin(ContextManagerPromptLibrary)
   ctx.logger('dsh-context-manager').info('Context Manager Host services loaded')
 }

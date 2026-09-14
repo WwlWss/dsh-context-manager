@@ -1,4 +1,5 @@
 import { ContextManagerError } from './errors.js'
+export { assertJsonDataShape } from './json-data.js'
 
 /** Whether a value is a plain data object rather than an array/class instance. */
 export function isPlainObject(value: unknown): value is Record<string, unknown> {
