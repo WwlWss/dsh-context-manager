@@ -10,6 +10,7 @@ import * as StorageJson from '@deepseek-ai/dsh-storage-json'
 
 import { ContextManagerPromptLibrary } from '../lib/index.js'
 
+const unitName = 'dsh_context_manager_prompts'
 const root = await mkdtemp(join(tmpdir(), 'dsh-context-manager-m4a-'))
 const id = '  Prompt 日本語  '
 const initialContent = '  leading\r\n中文\n日本語 😀 {{variable}} {{unknown}}\ntrailing  '
@@ -35,6 +36,13 @@ try {
     assert.equal(created.id, id)
     assert.equal(created.resource.content, initialContent)
     assert.equal(created.resource.revision, 1)
+
+    const nativeDomain = first.ctx.storageDomain.get(unitName)
+    assert.ok(nativeDomain)
+    await nativeDomain.table('resources').update(id, current => ({
+      ...current,
+      futureField: { opaque: ['keep', 1, { nested: true }] },
+    }))
   } finally {
     await first.ctx.fiber.dispose()
   }
@@ -46,10 +54,16 @@ try {
     assert.equal(reopened.resource.description, '')
     assert.equal(reopened.resource.content, initialContent)
     assert.equal(reopened.resource.revision, 1)
+    assert.deepEqual(reopened.resource.futureField, {
+      opaque: ['keep', 1, { nested: true }],
+    })
 
     const updated = await second.library.setPromptContent(id, changedContent, 1)
     assert.equal(updated.resource.content, changedContent)
     assert.equal(updated.resource.revision, 2)
+    assert.deepEqual(updated.resource.futureField, {
+      opaque: ['keep', 1, { nested: true }],
+    })
   } finally {
     await second.ctx.fiber.dispose()
   }
@@ -59,6 +73,9 @@ try {
     const reopened = third.library.get(id)
     assert.equal(reopened.resource.content, changedContent)
     assert.equal(reopened.resource.revision, 2)
+    assert.deepEqual(reopened.resource.futureField, {
+      opaque: ['keep', 1, { nested: true }],
+    })
   } finally {
     await third.ctx.fiber.dispose()
   }
