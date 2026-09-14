@@ -4,19 +4,27 @@ M4A is deliberately model-inert. It introduces durable reusable prompt bodies an
 
 ## Host boundary
 
-Use DSH's public `storageDomain` capability. Context Manager does not read or write `$DSH_HOME` directly and does not own a second JSON/file-lock protocol. The Prompt Library service is dependency-gated on `storageDomain`; if that Host capability is absent, only this feature stays inactive while the existing profile/preset/session services remain available. There is no fallback to Settings.
+Use DSH's public `storageDomain` capability. Context Manager does not read or write `$DSH_HOME` directly and does not own a second JSON/file-lock protocol. Production code consumes only `storageDomain.open()`, domain `table()` / `close()`, and table `get()` / `entries()` / `put()` / `delete()` / `update()`.
 
-Production code consumes the minimum structural public seam only: `storageDomain.open()`, domain `table()` / `close()`, and table `get()` / `entries()` / `put()` / `delete()` / `update()`. It does not import DSH implementation packages or expose backend paths.
-
-## Durable domain
+## Stored payload versus Domain view
 
 Domain name: `dsh_context_manager_prompts`  
 Domain version: `1`  
 Table: `resources`
 
-The table key is the stable `PromptResourceId`; it is independent from the display name and never becomes a filesystem path.
+The table key is the exact stable `PromptResourceId`. It is independent from display name and remains arbitrary authored text.
 
-A durable resource has these currently known fields:
+Storage and current Domain validity are intentionally separate:
+
+```text
+StoredPromptPayload (opaque JSON record)
+        ↓ per-resource parse
+PromptResource | invalid-resource summary
+```
+
+The storage-domain record schema accepts the opaque stored payload. `PromptResource` parsing happens independently for each record. A future or malformed resource therefore cannot make the entire authoritative library fail to open; usable siblings remain available and the malformed id remains visible through `list()` diagnostics.
+
+The current usable Domain shape is:
 
 ```ts
 interface PromptResource {
@@ -28,60 +36,69 @@ interface PromptResource {
 }
 ```
 
-`content` is stored literally: no trimming, newline normalization, template escaping, tag parsing, or other repair. Empty text is valid. M4A does not interpret `{{...}}`; DSH template semantics become relevant only when a later runtime milestone contributes the resource to `systemPrompt`.
+`content` is literal. There is no trimming, newline normalization, template parsing, fallback, repair, or sorting.
 
-The Zod record schema uses `passthrough()`. DSH storage-domain stores the result of `schema.parse(raw)` as the authoritative in-memory record, so a stripping object schema would erase unknown future siblings during the next narrow update. Unknown fields are therefore preserved across reopen and structured edits.
+## Structured authoring and unknown fields
+
+`createPrompt()` and `replacePrompt()` validate the known authoring fields while preserving caller-supplied JSON-shaped extension fields. `revision` is library-owned and an authored `revision` is rejected explicitly rather than silently overwritten.
+
+Structured writes preflight extension data so values that JSON persistence would silently change, such as `undefined`, non-finite numbers, or class instances, are rejected before the durable write. Storage-specific authoring does not inherit the Settings-specific property-path restriction; valid JSON property names are not cosmetically banned.
+
+`replacePrompt()` merges extension fields conservatively: existing unknown siblings survive when omitted, newly authored unknown siblings are accepted, and an explicitly supplied new unknown value replaces the old sibling with the same key. Known fields and the new library-owned revision are written last.
 
 ## Host service
 
-`ctx.dshContextPromptLibrary` exposes explicit resource operations:
+`ctx.dshContextPromptLibrary` exposes:
 
 ```text
-list()
-get(id)
-createPrompt(id, input)
-replacePrompt(id, input, expectedRevision)
-setPromptName(id, name, expectedRevision)
-setPromptDescription(id, description | undefined, expectedRevision)
-setPromptContent(id, content, expectedRevision)
+list() -> metadata/diagnostic summaries only
+get(id) -> detached full usable resource
+createPrompt(id, input) -> mutation receipt
+replacePrompt(id, input, expectedRevision) -> mutation receipt
+setPromptName(id, name, expectedRevision) -> mutation receipt
+setPromptDescription(id, description | undefined, expectedRevision) -> mutation receipt
+setPromptContent(id, content, expectedRevision) -> mutation receipt
 deletePrompt(id, expectedRevision)
 ```
 
-There is intentionally no generic `save()` mutation.
+There is no generic `save()` mutation and no raw-resource overwrite API in M4A.
 
-`createPrompt()` requires the exact stable id supplied by the caller and starts `revision` at `1`. A duplicate id rejects rather than overwriting. Later import/export can therefore preserve resource identities instead of forcing Host-generated replacements.
+`list()` deliberately excludes `content` and arbitrary extension payloads so future Remote/UI directory reads do not clone or transport every prompt body. Targeted `get(id)` returns the complete detached usable body.
 
-Every subsequent mutation requires an exact positive `expectedRevision`. All Context Manager writes first pass through one service-owned operation chain. Native table `update()` then performs the revision comparison inside storage-domain's serialized read-modify-write slot. Stale writes reject with a Context Manager conflict error and are never retried, merged, or normalized automatically. Cross-process concurrency remains owned by the configured DSH storage provider; Context Manager does not add a second filesystem or distributed locking protocol.
+Mutations return only `{ id, revision }`. A successful durable path-local repair therefore cannot be reported as a failed mutation merely because unrelated fields still fail the complete current Domain parser.
 
-Structured replace/edit operations preserve unknown durable siblings. Clearing `description` removes only that known field. M4A does not add an advanced raw-resource overwrite API.
+## Revision fencing and path-local repair
 
-Reads are detached snapshots. DSH table values are authoritative in-memory objects and must not be mutated in place, so callers never receive the live stored object.
+Create starts at revision `1`. Every later mutation requires an exact positive `expectedRevision`. All Context Manager writes pass through one service-owned operation chain; native `table.update()` performs read-modify-write in DSH's serialized domain write slot.
 
-## Lifecycle
+Leaf setters require only an object-shaped stored record, a usable revision fence, and validity of the requested new leaf. They do not require unrelated current fields to parse first. This lets a user repair one malformed known field without replacing unrelated stored intent. A malformed or missing revision rejects with `prompt-resource-path-not-editable` because a safe compare-and-set cannot be performed.
 
-The service opens one domain during its Cordis initialization and owns `domain.close()` through its plugin effect. Unload/HMR therefore releases the domain so a replacement Context Manager fiber can reopen the same durable unit. No watcher or filesystem polling is added.
+## Lifecycle and adapter cleanup
 
-## Compatibility contract
+The service opens one domain during Cordis initialization and owns `domain.close()` through its plugin effect. The storage adapter validates the returned public capability before exposing it. If `open()` succeeded but later capability validation fails, the already-owned native domain is closed before the validation error is rethrown; the successful path registers exactly one normal lifecycle close.
 
-M4A uses only the public storage-domain intersection present across the explicitly supported DSH generations:
+## Backend/layout decision
+
+M4A intentionally keeps the common legacy-compatible DomainSpec and does not request `layout: 'per-record'`.
+
+Two constraints make that deliberate:
+
+1. `layout` is not in the oldest supported public DomainSpec generation;
+2. current JSON per-record storage turns record keys into path-safe names, while `PromptResourceId` intentionally remains arbitrary authored text.
+
+The JSON single layout can rewrite the whole unit on one write. Large/frequently edited libraries should use DSH provider routing to a backend such as SQLite rather than forcing Context Manager to invent a second storage protocol. A future JSON per-record design would require an internal path-safe storage key plus an explicit storage-version migration; it must not silently narrow external PromptResourceId.
+
+## Compatibility and regression contract
+
+Supported generations remain:
 
 - `0.1.1-rc.2`
 - `0.1.2-rc.1`
 - `0.1.5-rc.1`
 - `0.1.5-rc.2`
 
-It does not consume newer optional DomainSpec features such as `layout`, `compatibleVersions`, or `invalidRecords`.
+Compatibility evidence must compile the public DomainSpec fixture and run the real Storage/StorageJson/StorageDomain reopen smoke for every generation. The smoke proves exact prompt text and unknown fields survive reopen, one malformed stored resource does not brick the library, and a normal path-local update preserves unknown durable siblings.
 
-The compatibility job compiles the minimum public `DomainSpec` seam and runs a real Host smoke with native `Storage`, `StorageJson`, and `StorageDomain` on every supported generation.
+Unit tests additionally cover metadata-only list reads, malformed-resource diagnostics, path-local repair, unusable revision fences, caller extension preservation, reserved revision rejection, JSON-shape preflight, detached targeted reads, explicit delete, and lifecycle close/reopen.
 
-## Required regression coverage
-
-Unit-level service tests cover exact ids/text, duplicate create, revision conflicts, narrow edits, structured replace, description deletion, preservation of unknown siblings, detached reads, explicit delete, malformed structured input, malformed-present storage capability, and lifecycle close/reopen.
-
-The real native-storage smoke additionally proves:
-
-1. prompt text containing leading/trailing whitespace, CRLF and LF, CJK, emoji, `{{variable}}`, and `{{unknown}}` survives create → close → reopen byte-for-byte as a string;
-2. a future unknown field added through the already-open native storage-domain record survives close → reopen plus a normal `setPromptContent()` write;
-3. the service can be unloaded and reopened against the same JSON storage root.
-
-M4A's exit criterion is durable, lossless prompt-body CRUD with revision fencing on all supported DSH storage generations, while Agent/model behavior remains identical to stock DSH.
+M4A's exit criterion is durable and tolerant prompt-body CRUD with revision fencing on all supported DSH storage generations while Agent/model behavior remains identical to stock DSH.
