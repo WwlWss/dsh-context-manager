@@ -104,7 +104,7 @@ Exit criteria were met before merge:
 
 Goal: connect stored preset references to DSH's native preset domain, observe the identity a live Session actually records, and provide a narrow bridge to DSH-owned native preset authoring without creating a second preset store or changing existing Session composition.
 
-The Settings compatibility prerequisite was completed in merged PR #3. The compatibility matrix retains the legacy `0.1.1-rc.2` generation, the prior-modern `0.1.2-rc.1` generation, and the latest installable `0.1.5-rc.1` generation. Source-forward review follows current official `master` separately from install-tested npm claims; see [compatibility.md](compatibility.md).
+The Settings compatibility prerequisite was completed in merged PR #3. The compatibility matrix retains the legacy `0.1.1-rc.2` generation, the prior-modern `0.1.2-rc.1` generation, and both install-tested `0.1.5-rc.1` / `0.1.5-rc.2` generations. Source-forward review follows current official `master` separately from install-tested npm claims; see [compatibility.md](compatibility.md).
 
 ### 3A — Native roster and configured -> resolved state
 
@@ -138,7 +138,7 @@ The roster integration remains read-only/model-inert. It does not mount, recompo
 
 **Status:** complete in merged PR #5.
 
-Purpose: add a Session-scoped read model for what a **currently live DSH Session records**, without creating a profile-to-Session binding and without taking over DSH Session lifecycle.
+Purpose: add a Session-scoped read model for what a **currently live** DSH Session records, without creating a profile-to-Session binding and without taking over DSH Session lifecycle.
 
 Required distinction remains:
 
@@ -168,7 +168,7 @@ Lifecycle/compatibility tests cover:
 - malformed present Host capabilities failing loud;
 - optional capability attach/detach without stale caching;
 - exact identity surviving independently from current profile intent or roster/default state;
-- actual published DSH Session objects on `0.1.1-rc.2`, `0.1.2-rc.1`, and `0.1.5-rc.1`;
+- actual published DSH Session objects on `0.1.1-rc.2`, `0.1.2-rc.1`, `0.1.5-rc.1`, and `0.1.5-rc.2`;
 - actual modern `agentPresetProjectionDefinition` + `SessionProjectionRegistry` execution.
 
 M3B deliberately does **not** consume `SessionPersistence`, `SessionHandle`, or cold-session query APIs. DSH owns creation, resume, persistence, locking, and composition. A Session resumed by DSH becomes a normal live Session and is then observable through the same M3B read path. If a later product surface needs independent cold-archive inspection, design that capability against the then-current Session Query/persistence seam rather than extending M3B downward.
@@ -177,7 +177,7 @@ M3B also does not call `list()`, `resolve()`, `mount()`, `recompose()`, `select(
 
 ### 3C — Native AgentPreset authoring bridge
 
-**Status:** in development in PR #6.
+**Status:** complete in merged PR #6.
 
 Purpose: expose the DSH-owned native preset authoring operations needed by Context Manager without duplicating native storage, filesystem rules, or composition lifecycle.
 
@@ -201,7 +201,7 @@ Native ownership rules:
 
 State separation remains strict. Copy/remove are native resource operations and do not mutate Context Manager profiles. If a profile still references a removed preset, M3A reports the exact configured id as `missing`; if a live Session already recorded that preset, M3B continues to report that effective identity. Diagnostics do not become repair operations.
 
-Compatibility tests must exercise the same Host contract on `0.1.1-rc.2`, `0.1.2-rc.1`, and `0.1.5-rc.1`, including optional capability attach/detach, exact argument preservation, path-local validation, native-error propagation, and configured/resolved/effective independence after removal.
+Compatibility tests exercise the same Host contract on `0.1.1-rc.2`, `0.1.2-rc.1`, `0.1.5-rc.1`, and `0.1.5-rc.2`, including exact argument preservation, operation-local validation, native-error propagation, a real native copy/read/remove cycle, and configured/resolved/effective independence after removal.
 
 M3C does **not** expose Remote/UI authoring yet. Opening the authored preset directory is a later client/Remote concern and should reuse the then-current DSH public opener rather than adding a Context Manager filesystem target API.
 
@@ -211,32 +211,31 @@ M3C does **not** expose Remote/UI authoring yet. Opening the authored preset dir
 
 Goal: introduce real modular prompt resources and placement without building the Web editor yet.
 
-### 4A. Content library seam
+### 4A. Storage-backed Prompt Library
 
-Large content should not live directly inside the Settings profile namespace.
+**Status:** complete in merged PR #7.
 
-Introduce a content-library abstraction for resources such as:
+Purpose: keep large reusable prompt bodies out of the Settings profile namespace while preserving the Stored -> Domain separation established by M2.
 
-```text
-prompts/
-skill overrides or authored skill resources/
-transforms/
-renderers/
-helper scripts/
-```
+Delivered:
 
-Settings stores references and small binding metadata; the library stores bodies.
+- native DSH `storageDomain` persistence under a Context Manager-owned prompt domain;
+- stable caller-authored resource ids separate from display names;
+- opaque Stored payloads with per-resource `PromptResource` parsing, so one malformed/future record does not take the whole library offline;
+- metadata/diagnostic-only `list()` and targeted `get(id)` for full detached prompt bodies;
+- exact prompt text round-tripping with no trim, newline normalization, or template interpretation;
+- explicit create/replace/delete plus path-local name/description/content mutations;
+- resource-local positive-integer revisions, stale-write rejection, and small mutation receipts;
+- structured writes that preserve unknown JSON-shaped extension fields while keeping `revision` library-owned;
+- lossless JSON-shape preflight before structured writes;
+- all Context Manager writes serialized through one operation chain, with native Storage Domain update semantics remaining the durable transaction boundary;
+- malformed-resource diagnostics and explicit path-not-editable failures instead of silent repair;
+- adapter validation and cleanup through the public `storageDomain` seam only;
+- four-generation compile/runtime coverage on `0.1.1-rc.2`, `0.1.2-rc.1`, `0.1.5-rc.1`, and `0.1.5-rc.2`.
 
-Requirements:
+M4A remains model-inert. It does not add PromptBinding, register `systemPrompt`, change any Agent/Session behavior, fall back to Settings for bodies, or access `$DSH_HOME`/backend paths directly.
 
-- stable resource ids separate from display names;
-- explicit create/replace/delete operations;
-- lossless text storage;
-- version/revision strategy appropriate to the backend;
-- no implicit deletion of dangling profile references;
-- provider abstraction if storage may later vary.
-
-Do not over-generalize before at least prompt and transform resources reveal the common shape.
+The library deliberately keeps the legacy-compatible single-domain layout. Current JSON `per-record` layout is not requested because the oldest supported Storage contract has no layout field and modern JSON per-record keys impose a path-safe vocabulary that would conflict with arbitrary authored PromptResource ids. Large-library provider/layout migration remains a later Storage concern, not a reason to narrow ids now.
 
 ### 4B. PromptBinding
 
@@ -779,6 +778,8 @@ Do not introduce project/session persistence by stuffing additional pseudo-scope
 As scale increases, protect these paths:
 
 **Settings snapshot path** — metadata only; no large body reads or tokenization.
+
+**Prompt library listing path** — metadata/diagnostics only; prompt bodies are fetched by targeted resource id and are not copied into ordinary library snapshots.
 
 **AgentPreset roster snapshot path** — control-plane only. Native `list()` intentionally re-reads preset roots and health, so aggregate preset snapshots must not be polled per render frame, token, Session event, or request hot path. Prefer explicit refresh or pull-on-change once a reliable invalidation signal exists.
 
