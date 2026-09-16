@@ -22,7 +22,9 @@ test('storage adapter releases an acquired domain after table contract rejection
   const state = { closed: 0 }
   try {
     await ctx.plugin(StorageDomainFixture, state)
-    await assert.rejects(() => ctx.plugin(ContextManagerPromptLibrary))
+    await assert.rejects(async () => {
+      await ctx.plugin(ContextManagerPromptLibrary)
+    })
     assert.equal(state.closed, 1)
   } finally {
     await ctx.fiber.dispose()
