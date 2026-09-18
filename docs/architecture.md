@@ -106,7 +106,7 @@ Runtime-context modules should use DSH runtime-context contributions where the a
 
 Runtime profile selection and DSH registration ownership are different concepts.
 
-The global `defaultProfileId` is only the farthest fallback **selection source** for an effective profile. It must never be implemented as a global `systemPrompt` registration. Every Context Manager prompt/context contribution is Agent-scoped from the first runtime implementation.
+The global `defaultProfileId` is only the farthest fallback **selection source** for an effective profile. It must never be implemented as a global `systemPrompt` registration. Every Context Manager prompt/context contribution is Agent-scoped from the first runtime implementation. Provider registration captures the owning Agent in its closure; the public prompt `AssembleContext` is an assembly-scoped context/signal carrier and must not be treated as if it exposed `context.agent`.
 
 Conceptually:
 
@@ -129,7 +129,9 @@ M4 initially has only the global-default source. Future Workspace/Session bindin
 
 The exact live effective preset identity is the runtime compatibility fence. A roster result of `missing` does not by itself invalidate an already-running Agent: if that Agent/Session still records the same preset id named by the profile, the overlay may remain effective. Conversely, a healthy roster entry does not justify applying a profile to an Agent whose effective preset identity is different.
 
-On mismatch Context Manager contributes nothing and reports a diagnostic. It must not search for a different profile, fall back to the native default preset, mutate `basePreset`, or mount/recompose the Agent.
+On mismatch Context Manager contributes nothing and reports a diagnostic. It must not search for a different profile, fall back to the native default preset, mutate `basePreset`, or mount/recompose/select the Agent.
+
+DSH `0.1.6-alpha.2` adds a native live AgentPreset selection path. Context Manager observes that change; it does not own it. A native `A -> B` switch must make an A-bound profile ineligible on the next assembly, and a later `B -> A` switch may make it eligible again. No Context Manager provider re-registration or stored-profile mutation is required.
 
 ### Native placement capability is runtime state
 
