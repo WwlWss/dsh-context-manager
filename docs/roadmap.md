@@ -319,11 +319,13 @@ Hard runtime invariants:
 - mismatch produces a runtime diagnostic and **no** Context Manager prompt contribution;
 - do not search for another matching profile, substitute DSH's native default, or rewrite the stored reference;
 - roster health is not the match authority for an already-running Agent. If a live Session still records a deleted native preset and the profile names that exact preset, the overlay remains eligible;
-- runtime contributions resolve current bindings/resources on prompt assembly rather than capturing a permanent profile at Agent creation;
+- runtime contributions resolve current bindings/resources and the current live preset identity on every prompt assembly rather than capturing a permanent profile or preset identity at Agent creation;
+- native DSH preset switching is an external runtime fact: if DSH changes a live Agent from preset A to B, the next assembly must re-evaluate the exact `basePreset` fence without Context Manager calling `select()`/`recompose()` itself;
+- provider closures capture their owning Agent when registered. Do not expect `AssembleContext` to carry an Agent object; on the reviewed 0.1.6 source its public identity is assembly scope/signal, not Agent ownership;
 - HMR/unload must remove every Context Manager registration from already-live Agents and leave stock DSH behavior;
 - reload must attach idempotently to Agents that already existed before the plugin reloaded.
 
-Prefer a small fixed set of aggregate Agent-scoped providers (one per supported system anchor plus one runtime-context provider) over one native registration per PromptResource. Resolve the selected profile/resources once per DSH assembly and share that result across the providers; per-assembly memoization is allowed, cross-step state caching is not authoritative.
+Prefer a small fixed set of aggregate Agent-scoped providers (one per supported system anchor plus one runtime-context provider) over one native registration per PromptResource. Resolve the selected profile/resources once per DSH assembly and share that result across the providers; per-assembly memoization keyed by the public `AssembleContext` object is allowed, cross-step state caching is not authoritative. The owning Agent must come from the Agent-scoped registration closure, not from an assumed `context.agent` field.
 
 Runtime/effective output must distinguish at least:
 
@@ -341,6 +343,7 @@ Tests before M4 is complete:
 
 - all shipped native presets plus a copied/custom composition with equivalent suppression behavior;
 - exact base-preset match and mismatch with no fallback;
+- native live preset switch `A -> B -> A`: matching overlay active on A, absent with `base-preset-mismatch` on B, and active again after returning to A, without provider re-registration or Context Manager-driven switching;
 - deleted native preset + still-live matching Session identity;
 - stable local ordering and deterministic tie breaking;
 - PromptResource edit/reorder reflected on the next model step without duplicate registrations;
