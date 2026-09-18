@@ -239,7 +239,9 @@ The library deliberately keeps the legacy-compatible single-domain layout. Curre
 
 ### 4B. PromptBinding
 
-Introduce object-shaped bindings from the beginning, for example conceptually:
+**Status:** next.
+
+Add object-shaped profile bindings from the beginning, conceptually:
 
 ```ts
 interface PromptBinding {
@@ -249,36 +251,109 @@ interface PromptBinding {
 }
 ```
 
-Unknown siblings must survive narrow edits.
-
-### 4C. DSH system-prompt adapter
-
-Use public `ctx.systemPrompt` section/context registration.
-
-Implement finite stable Context Manager anchors, for example:
+The stored placement vocabulary is semantic Context Manager state, not a native DSH numeric order. The first supported vocabulary is expected to remain finite, for example:
 
 ```text
 before-persona
 after-persona
-before-tools
-after-tools
+before-tool-guidance
+after-tool-guidance
 runtime-context
 ```
 
-The exact mapping must be derived from the supported DSH section/order contract, not copied from SillyTavern names.
+Rules:
 
-Runtime output must report insertion capability and actual effective order.
+- unknown binding siblings survive every narrow edit;
+- adding a binding is an explicit operation that supplies the complete current binding shape;
+- changing enabled/placement/order edits only that leaf;
+- removing the whole binding is a separate explicit operation;
+- missing PromptResource references remain stored intent and become diagnostics rather than auto-repair;
+- no runtime health, effective order, suppression state, token count, or native section identity is persisted in the binding;
+- M4B remains model-inert. Persisting a PromptBinding does not register a system-prompt section or runtime-context contribution.
 
-Special-case capability diagnostics are required for native compositions such as Minimal where complete persona/runtime-context suppression prevents the requested placement.
+### 4C1. DSH system-prompt placement compatibility adapter
 
-Tests:
+Purpose: map the stable Context Manager placement vocabulary onto the public DSH system-prompt/runtime-context ordering contract without leaking DSH generation-specific numeric order into stored data.
 
-- all shipped native presets;
-- stable local ordering;
+Use only public `ctx.systemPrompt` section/context contracts. Keep generation-specific order mapping in one adapter rather than scattering numeric constants through Domain, service, Remote, or UI code.
+
+The adapter must distinguish **system-prompt sections** from **runtime-context snapshots**. `before-tool-guidance` / `after-tool-guidance` refer to textual native tool-guidance sections; they do not claim ordering relative to the separate native tool-schema sequence.
+
+Compatibility behavior:
+
+- derive each supported generation's mapping from its tested public section/order contract;
+- use capability/public-shape detection rather than fork identity or package-version string branching where practical;
+- fail loud when a present Host contract is incompatible instead of silently choosing a nearby order;
+- report placement capability separately from user configuration;
+- do not register Agent contributions yet in this submilestone.
+
+Special composition constraints, including complete-persona or runtime-context suppression, must remain observable runtime facts. Do not hard-code `presetId === "minimal"`; copied/custom presets may have the same native composition constraints.
+
+### 4C2. Agent-scoped Prompt Runtime
+
+Purpose: make PromptBindings model-effective for the first time while preserving future Workspace/Session binding extensibility.
+
+Introduce one conceptual runtime selection boundary:
+
+```text
+EffectiveProfileResolver
+        │
+        ├─ Session binding       ← M9 later
+        ├─ Workspace binding     ← M9 later
+        └─ Global default        ← M4C2 fallback
+                ↓
+         candidate Profile
+                ↓
+ Profile.basePreset == live effective AgentPreset?
+                ↓
+          usable / mismatch
+```
+
+M4C2 implements only the global-default source. The resolver abstraction must nevertheless be kept separate from prompt registration so M9 can add nearer binding sources without rewriting the prompt runtime.
+
+Hard runtime invariants:
+
+- `defaultProfileId` selects a candidate profile; it never means "register this profile globally";
+- every Context Manager prompt/context contribution is owned by the **Agent scope**, even while global default is the only selection source;
+- a candidate profile contributes only when its exact `basePreset` matches the live Agent/Session effective preset identity;
+- mismatch produces a runtime diagnostic and **no** Context Manager prompt contribution;
+- do not search for another matching profile, substitute DSH's native default, or rewrite the stored reference;
+- roster health is not the match authority for an already-running Agent. If a live Session still records a deleted native preset and the profile names that exact preset, the overlay remains eligible;
+- runtime contributions resolve current bindings/resources on prompt assembly rather than capturing a permanent profile at Agent creation;
+- HMR/unload must remove every Context Manager registration from already-live Agents and leave stock DSH behavior;
+- reload must attach idempotently to Agents that already existed before the plugin reloaded.
+
+Prefer a small fixed set of aggregate Agent-scoped providers (one per supported system anchor plus one runtime-context provider) over one native registration per PromptResource. Resolve the selected profile/resources once per DSH assembly and share that result across the providers; per-assembly memoization is allowed, cross-step state caching is not authoritative.
+
+Runtime/effective output must distinguish at least:
+
+```text
+no-default-profile
+profile-unusable
+preset-identity-unavailable
+base-preset-mismatch
+active
+```
+
+and per-binding states such as disabled, missing-resource, eligible, effective, or suppressed by the native composition.
+
+Tests before M4 is complete:
+
+- all shipped native presets plus a copied/custom composition with equivalent suppression behavior;
+- exact base-preset match and mismatch with no fallback;
+- deleted native preset + still-live matching Session identity;
+- stable local ordering and deterministic tie breaking;
+- PromptResource edit/reorder reflected on the next model step without duplicate registrations;
 - enable/disable lifecycle;
-- unload/HMR cleanup;
-- cold/resume behavior;
+- default-profile change reflected on the next model step without creating a Session binding;
+- unload/HMR cleanup and reload of already-live Agents;
+- cold/resume behavior consistent with the then-current effective-profile fallback;
+- runtime-context snapshot behavior when content is unchanged versus changed;
+- native template-variable errors propagate without rewriting stored PromptResource text;
+- a real DSH Agent/recording-model E2E proving the model request sees the same runtime resolution used by preview/diagnostics;
 - no modification of native preset files.
+
+M4 is complete only after M4C2 proves real model-visible behavior. M4A/M4B alone remain model-inert.
 
 ---
 
