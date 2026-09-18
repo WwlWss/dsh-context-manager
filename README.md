@@ -4,7 +4,7 @@ Modular preset, prompt, skill, transform, and presentation context manager for D
 
 ## Status
 
-The installable/test-gated DSH bundle foundation, the Settings-backed Host profile Domain, the DSH Settings compatibility seam, native AgentPreset roster/configured resolution (M3A), and live Session effective AgentPreset identity observation (M3B) are complete. Milestone 3C is now in development in PR #6: Context Manager adds a narrow Host bridge to DSH-owned native AgentPreset `read`, copy-only authoring, and removal without introducing a second preset store or rewriting shipped presets.
+The installable/test-gated DSH bundle foundation, the Settings-backed Host profile Domain, the DSH Settings compatibility seam, native AgentPreset roster/configured resolution (M3A), live Session effective AgentPreset identity observation (M3B), native AgentPreset authoring bridge (M3C), and the storage-backed Prompt Library (M4A) are complete. The next implementation milestone is M4B: PromptBinding Domain state. Context Manager is still model-inert at this point; prompt resources exist durably, but no Context Manager prompt is contributed to a model request until the later M4C runtime milestone.
 
 Context Manager is an editor, not a policy engine. It preserves explicit user intent, reports unresolved or malformed resources as diagnostics, and does not silently fallback, repair, normalize, reorder, or delete user-authored configuration.
 
@@ -94,8 +94,8 @@ DSH Settings revision fencing is an in-process guarantee. If multiple DSH proces
 
 1. **Complete** — Installable DSH bundle scaffold, build contract tests, and CI.
 2. **Complete** — Host-side Context Manager domain and settings-backed reusable profile model.
-3. **M3A complete / M3B complete / M3C in development** — Native AgentPreset roster resolution, live Session effective identity, and DSH-owned copy-only native preset authoring bridge.
-4. Modular system-prompt/runtime-context overlay model with capability-aware placement.
+3. **Complete** — M3A native AgentPreset roster resolution, M3B live Session effective identity, and M3C DSH-owned copy-only native preset authoring bridge.
+4. **M4A complete / M4B next** — Storage-backed Prompt Library is complete; PromptBinding Domain state comes next, followed by placement compatibility and Agent-scoped runtime composition.
 5. Scoped skill policy model for Pinned / Auto / Manual / Off, with leakage and resume tests.
 6. Host Remote API for browser-safe Domain/runtime views and explicit mutations.
 7. Web client package and additive right-side Drawer.
@@ -119,7 +119,7 @@ pnpm install --frozen-lockfile
 pnpm run check
 ```
 
-`pnpm run check` performs type checking, a clean production build, and package/domain/runtime tests against the legacy development dependency set. CI additionally runs modern Settings regressions through `0.1.5-rc.2`, four published AgentPreset Host-contract plus real-native-runtime lanes, four Session preset identity lanes, a strict packed-package peer installation check, and bundle composition smoke tests against `0.1.2-rc.1`, `0.1.5-rc.1`, and `0.1.5-rc.2`.
+`pnpm run check` performs type checking, a clean production build, and package/domain/runtime tests against the legacy development dependency set. CI additionally runs modern Settings regressions through `0.1.5-rc.2`, four published AgentPreset Host-contract plus real-native-runtime lanes, four Session preset identity lanes, four Prompt Library Storage Domain compile/runtime lanes, a strict packed-package peer installation check, and bundle composition smoke tests against `0.1.2-rc.1`, `0.1.5-rc.1`, and `0.1.5-rc.2`.
 
 Before changing runtime integration or adding a Web capability, read [docs/development-guide.md](docs/development-guide.md). It records the project's persistence, lifecycle, DSH-integration, transform, client, performance, and testing rules.
 
