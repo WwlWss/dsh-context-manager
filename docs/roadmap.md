@@ -104,7 +104,7 @@ Exit criteria were met before merge:
 
 Goal: connect stored preset references to DSH's native preset domain, observe the identity a live Session actually records, and provide a narrow bridge to DSH-owned native preset authoring without creating a second preset store or changing existing Session composition.
 
-The Settings compatibility prerequisite was completed in merged PR #3. The compatibility matrix retains the legacy `0.1.1-rc.2` generation, the prior-modern `0.1.2-rc.1` generation, and both install-tested `0.1.5-rc.1` / `0.1.5-rc.2` generations. Source-forward review follows current official `master` separately from install-tested npm claims; see [compatibility.md](compatibility.md).
+The Settings compatibility prerequisite was completed in merged PR #3. The compatibility matrix retains the legacy `0.1.1-rc.2` generation, the prior-modern `0.1.2-rc.1` generation, both `0.1.5-rc.1` / `0.1.5-rc.2` regressions, and the install-tested forward alpha `0.1.6-alpha.2`. Source-forward review follows current official `master` separately from install-tested npm claims; see [compatibility.md](compatibility.md).
 
 ### 3A — Native roster and configured -> resolved state
 
@@ -168,7 +168,7 @@ Lifecycle/compatibility tests cover:
 - malformed present Host capabilities failing loud;
 - optional capability attach/detach without stale caching;
 - exact identity surviving independently from current profile intent or roster/default state;
-- actual published DSH Session objects on `0.1.1-rc.2`, `0.1.2-rc.1`, `0.1.5-rc.1`, and `0.1.5-rc.2`;
+- actual published DSH Session objects on `0.1.1-rc.2`, `0.1.2-rc.1`, `0.1.5-rc.1`, `0.1.5-rc.2`, and `0.1.6-alpha.2`;
 - actual modern `agentPresetProjectionDefinition` + `SessionProjectionRegistry` execution.
 
 M3B deliberately does **not** consume `SessionPersistence`, `SessionHandle`, or cold-session query APIs. DSH owns creation, resume, persistence, locking, and composition. A Session resumed by DSH becomes a normal live Session and is then observable through the same M3B read path. If a later product surface needs independent cold-archive inspection, design that capability against the then-current Session Query/persistence seam rather than extending M3B downward.
@@ -201,7 +201,7 @@ Native ownership rules:
 
 State separation remains strict. Copy/remove are native resource operations and do not mutate Context Manager profiles. If a profile still references a removed preset, M3A reports the exact configured id as `missing`; if a live Session already recorded that preset, M3B continues to report that effective identity. Diagnostics do not become repair operations.
 
-Compatibility tests exercise the same Host contract on `0.1.1-rc.2`, `0.1.2-rc.1`, `0.1.5-rc.1`, and `0.1.5-rc.2`, including exact argument preservation, operation-local validation, native-error propagation, a real native copy/read/remove cycle, and configured/resolved/effective independence after removal.
+Compatibility tests exercise the same Host contract on `0.1.1-rc.2`, `0.1.2-rc.1`, `0.1.5-rc.1`, `0.1.5-rc.2`, and `0.1.6-alpha.2`, including exact argument preservation, operation-local validation, native-error propagation, a real native copy/read/remove cycle, and configured/resolved/effective independence after removal.
 
 M3C does **not** expose Remote/UI authoring yet. Opening the authored preset directory is a later client/Remote concern and should reuse the then-current DSH public opener rather than adding a Context Manager filesystem target API.
 
@@ -231,7 +231,7 @@ Delivered:
 - all Context Manager writes serialized through one operation chain, with native Storage Domain update semantics remaining the durable transaction boundary;
 - malformed-resource diagnostics and explicit path-not-editable failures instead of silent repair;
 - adapter validation and cleanup through the public `storageDomain` seam only;
-- four-generation compile/runtime coverage on `0.1.1-rc.2`, `0.1.2-rc.1`, `0.1.5-rc.1`, and `0.1.5-rc.2`.
+- five-generation compile/runtime coverage on `0.1.1-rc.2`, `0.1.2-rc.1`, `0.1.5-rc.1`, `0.1.5-rc.2`, and `0.1.6-alpha.2`.
 
 M4A remains model-inert. It does not add PromptBinding, register `systemPrompt`, change any Agent/Session behavior, fall back to Settings for bodies, or access `$DSH_HOME`/backend paths directly.
 
