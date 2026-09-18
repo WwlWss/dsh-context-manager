@@ -9,8 +9,9 @@ DeepSeek Harness evolves quickly. Context Manager separates **installable/tested
 | Legacy regression | `dsh-v0.1.1-rc.2` | The committed development dependency set. The full type/build/Domain suite exercises the legacy module-level `installSettingsSection(...)` generation. Focused published-package lanes exercise the M3A roster seam, the M3B legacy live-Session identity path through `Session.events`, and the M3C Host `read/copy/remove` authoring contract plus a real native authoring cycle. |
 | Prior modern regression | `dsh-v0.1.2-rc.1` | Dedicated ephemeral CI keeps the first modern Settings generation and native Session `agentPreset` projection under regression. The full Settings suite, AgentPreset M3A/M3C declaration/behavior/native-runtime checks, M3B contract/runtime smoke, and bundle composition smoke all run here. |
 | 0.1.5 published regression | `dsh-v0.1.5-rc.1` | Retained because it remains an important published/default-install line. CI reruns modern Settings, AgentPreset M3A/M3C declaration/behavior/native-runtime checks, M3B Session contract/runtime smoke, and full bundle composition smoke against it. |
-| Newest reviewed published line | `dsh-v0.1.5-rc.2` | Install-tested forward line matching the AgentPreset generation currently present on official `master`. CI runs modern Settings, M3A/M3C compile and real-native authoring, M3B projection/runtime, strict packed-package peer installation, and full DSH bundle composition against this generation where applicable. |
-| Latest official repository | `master` / `c291e796...` | Source-forward architecture target reviewed from official source. At this commit the AgentPreset package identifies itself as `0.1.5-rc.2` and preserves the same M3B projection/consumer pattern and copy-only native authoring model. Source review remains a separate assertion even when the same package generation is also install-tested. |
+| Current stable regression | `dsh-v0.1.5-rc.2` | Install-tested published line retained as the stable regression anchor. CI runs modern Settings, M3A/M3C compile and real-native authoring, M3B projection/runtime, strict packed-package peer installation, M4A Storage runtime, and full DSH bundle composition against this generation where applicable. |
+| Forward alpha candidate | `dsh-v0.1.6-alpha.2` | Published forward-compatibility target. PR #10 adds Settings, AgentPreset, Session projection, Storage Domain, strict peer-install, and full bundle smoke lanes. Treat it as install-tested only after those lanes are green; until then it is a source-reviewed/install-test candidate rather than a replacement stable baseline. |
+| Latest official repository | `master` / `ddefc45f...` | Source-forward architecture target reviewed from official source. The tree identifies as `0.1.6-alpha.2`, preserves the existing M2-M4A minimum seams, adds native live AgentPreset selection, and exposes prompt `AssembleContext` as assembly scope/signal rather than Agent ownership. Source review remains distinct from package/runtime evidence. |
 
 Support claims must name what was actually tested. A GitHub source tree and an installable npm package remain distinct evidence even when their package version currently matches.
 
@@ -23,7 +24,7 @@ Context Manager owns the `dsh-context-manager` Settings namespace and never read
 The Settings public surface changed between the legacy and modern lines:
 
 - `0.1.1-rc.2` exported `settingsNamespace()` and a module-level `installSettingsSection()` helper.
-- `0.1.2-rc.1+`, including `0.1.5-rc.1`, `0.1.5-rc.2`, and current source, validates namespace strings in the Settings service and exposes the optional-consumer lifecycle as `settings.installSection(owner, ns, schema, entry, hooks)`.
+- `0.1.2-rc.1+`, including `0.1.5-rc.1`, `0.1.5-rc.2`, `0.1.6-alpha.2`, and current source, validates namespace strings in the Settings service and exposes the optional-consumer lifecycle as `settings.installSection(owner, ns, schema, entry, hooks)`.
 
 `src/adapters/settings.ts` owns the narrow version seam:
 
@@ -49,7 +50,7 @@ Two Settings limits are intentionally not papered over by Context Manager:
 1. namespace write serialization/revision fencing is an in-process guarantee; cross-process convergence remains provider-defined;
 2. Context Manager does not reach into provider internals to repair malformed storage or strengthen lifecycle guarantees beyond the public service contract.
 
-The package peer declaration explicitly opts into the supported `0.1.5` prerelease series with `^0.1.5-rc.1`. This is necessary because prerelease semver ranges do not implicitly opt into a different `major.minor.patch` prerelease tuple. CI verifies the built tarball by installing it in a fresh consumer with `--strict-peer-dependencies` against `@deepseek-ai/dsh-settings@0.1.5-rc.2`; compatibility is therefore checked using the package manager's real peer-resolution rules rather than a string assertion.
+The package peer declaration explicitly opts into each tested prerelease tuple rather than assuming prerelease semver crosses tuple boundaries. PR #10 adds the `0.1.6-alpha.2` tuple only together with its compatibility lanes. This is necessary because prerelease semver ranges do not implicitly opt into a different `major.minor.patch` prerelease tuple. CI verifies the built tarball by installing it in a fresh consumer with `--strict-peer-dependencies` against `@deepseek-ai/dsh-settings@0.1.5-rc.2`; compatibility is therefore checked using the package manager's real peer-resolution rules rather than a string assertion.
 
 ## AgentPreset compatibility
 
@@ -207,17 +208,31 @@ CI executes both declaration contracts and runtime behavior against:
 - `0.1.1-rc.2` — legacy `Session.events` branch;
 - `0.1.2-rc.1` — native Session projection branch and prior-modern regression;
 - `0.1.5-rc.1` — native Session projection branch on the retained 0.1.5 published line;
-- `0.1.5-rc.2` — native Session projection branch on the newest reviewed published line.
+- `0.1.5-rc.2` — native Session projection branch on the retained stable regression line;
+- `0.1.6-alpha.2` — forward-alpha native Session projection branch, including the live-selection semantics introduced on the 0.1.6 line.
 
 The runtime smoke creates an actual published-package `Session`, appends an actual `agent-preset/selected` record, and on modern lines registers the actual native `agentPresetProjectionDefinition` with the actual `SessionProjectionRegistry`. This ensures the compatibility branches production relies on are executed rather than merely simulated by structural fakes.
 
-Current official source at `c291e796...` was re-reviewed during M3C. It still defines the same `string | null` AgentPreset projection and first-party Session Controller reads it through `stateOf(session, 'agentPreset')`, so no additional source-forward adapter is needed.
+Current official source at `ddefc45f...` still defines the same `string | null` AgentPreset projection and `stateOf(session, 'agentPreset')` read path, so no additional M3B adapter is needed. It now also exposes native live AgentPreset selection: successful selection records `agent-preset/selected` after the composition swap commits. Context Manager must observe this changing effective identity but must not call `select()` merely to enforce a profile.
+
+### DSH 0.1.6 live preset switching
+
+DSH `0.1.6-alpha.2` adds a native `AgentPresets.select(agent, presetId)` path that serializes switches per Agent, recomposes the Agent, and records `agent-preset/selected` only after the swap commits. This is a Host capability owned by DSH, not a new Context Manager mutation surface.
+
+Consequences for future M4C runtime:
+
+- effective preset identity is dynamic runtime state, not an Agent-creation constant;
+- an exact profile/base-preset match must be re-evaluated on each prompt assembly;
+- native `A -> B` switching makes an A-bound overlay ineligible on the next assembly; switching back can make it eligible again;
+- no fallback profile search, stored-profile rewrite, provider re-registration, or Context Manager-driven `select()` is implied;
+- M3B remains the observation boundary and should continue reading the native Session projection/event semantics.
 
 ## System prompt and runtime-context guardrails
 
 Future prompt work must continue to use DSH-owned prompt/runtime-context composition rather than replacing the agent loop or rewriting native preset files.
 
 - placement must map to actual public DSH prompt/runtime-context capabilities;
+- Agent-scoped provider closures must capture their owning Agent; the reviewed 0.1.6 public `AssembleContext` exposes assembly `scope` / `signal`, not an Agent object, so runtime code must not depend on `context.agent`;
 - a restrictive preset such as Minimal must surface unavailable placement honestly rather than simulating success;
 - arbitrary SillyTavern numeric historical `depth=N` insertion is not equivalent to system-prompt placement and must not be faked through a different seam;
 - any future adapter must be rechecked against the then-current installable and source-forward DSH contracts before it ships.
