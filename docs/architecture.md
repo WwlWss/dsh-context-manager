@@ -98,9 +98,46 @@ The UI must expose this as a capability constraint rather than silently pretendi
 
 ## Prompt modules
 
-System-prompt modules should register through DSH's `systemPrompt` service. Placement is represented as stable anchors mapped to finite section orders, with local drag order inside an anchor.
+System-prompt modules should register through DSH's `systemPrompt` service. Placement is represented as stable semantic anchors mapped to finite native section orders, with local drag order inside an anchor. DSH numeric order values are compatibility-adapter details and must not be persisted in PromptBindings.
 
-Runtime-context modules should use DSH runtime-context contributions where the active preset permits them.
+Runtime-context modules should use DSH runtime-context contributions where the active preset permits them. Runtime context is a distinct native contribution channel, not merely another system-prompt section.
+
+### Effective profile selection is separate from registration scope
+
+Runtime profile selection and DSH registration ownership are different concepts.
+
+The global `defaultProfileId` is only the farthest fallback **selection source** for an effective profile. It must never be implemented as a global `systemPrompt` registration. Every Context Manager prompt/context contribution is Agent-scoped from the first runtime implementation.
+
+Conceptually:
+
+```text
+EffectiveProfileResolver
+        │
+        ├─ Session binding       ← future
+        ├─ Workspace binding     ← future
+        └─ Global default
+                ↓
+         candidate Profile
+                ↓
+ compare exact profile.basePreset
+ with live Agent/Session effective preset
+                ↓
+          usable / mismatch
+```
+
+M4 initially has only the global-default source. Future Workspace/Session bindings extend the resolver's source precedence; they do not change the Prompt Runtime's registration model.
+
+The exact live effective preset identity is the runtime compatibility fence. A roster result of `missing` does not by itself invalidate an already-running Agent: if that Agent/Session still records the same preset id named by the profile, the overlay may remain effective. Conversely, a healthy roster entry does not justify applying a profile to an Agent whose effective preset identity is different.
+
+On mismatch Context Manager contributes nothing and reports a diagnostic. It must not search for a different profile, fall back to the native default preset, mutate `basePreset`, or mount/recompose the Agent.
+
+### Native placement capability is runtime state
+
+PromptBinding stores semantic placement intent such as `before-persona`, `after-persona`, `before-tool-guidance`, `after-tool-guidance`, or `runtime-context`. The compatibility adapter maps those anchors to the exact supported DSH public ordering contract.
+
+A placement being configured does not prove that the final native composition can express it. Complete system-prompt sections and runtime-context suppression are final native assembly constraints. Runtime diagnostics must inspect the actual composed capability/final assembly behavior rather than infer suppression from a hard-coded preset id such as `minimal`; copied or custom presets can carry the same constraints.
+
+Runtime Prompt providers should be a small fixed aggregate set per Agent, not one DSH registration per PromptResource. Resolve the effective profile and selected resources once per assembly and share that plan across aggregate providers. Per-assembly memoization is acceptable; a cross-step cache must not become a second authority for Settings, Prompt Library, Session identity, or native composition state.
 
 Arbitrary SillyTavern-style insertion at a numeric historical `depth=N` is not currently a public DSH prompt primitive and must not be simulated by rewriting a different seam. History **replacement/shadowing** is different: DSH's public Session Surface explicitly supports `SurfaceOp: { op: 'replace', start, end }`, and any surface-replacing producer may use it. Context Manager history transforms may therefore use that public primitive when their real semantics are durable replacement/compaction rather than arbitrary message insertion.
 
