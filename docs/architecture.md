@@ -193,7 +193,21 @@ Use DSH `settings` for reusable Context Manager configuration state when availab
 
 Malformed Context Manager resources should fail in isolation. A malformed profile remains stored and becomes a diagnostic; it is not silently deleted or rewritten. Invalid Cordis deployment configuration is different: follow DSH conventions and fail fast with an actionable schema error rather than swallowing it.
 
-Large prompt, skill, regex, HTML, CSS, JavaScript, or renderer bodies may live in a dedicated content library. Settings should primarily store small bindings, order, enablement, references, and other profile metadata. Do not make every `settings.describe()` clone megabytes of helper source, and do not reimplement settings revisions, stale-write detection, JSON-shape validation, or user override merging around large-content storage.
+Large authored bodies use dedicated content libraries rather than the profile Settings namespace. M4A establishes this pattern for prompts through DSH Storage Domain:
+
+```text
+DSH Storage
+  ↓ persistence-shape gate
+opaque StoredPromptPayload
+  ↓ per-resource parse
+PromptResource Domain / invalid-resource diagnostic
+```
+
+The Storage-domain record gate must not use the current PromptResource Domain schema. One malformed or future prompt must not prevent valid sibling resources from loading. Structured writes still enforce current known fields plus lossless JSON persistence, while narrow edits use path-local guards and preserve unknown siblings.
+
+Prompt Library list operations expose metadata/diagnostics only; full bodies are targeted reads by id. The common legacy-compatible JSON Storage contract uses single-layout persistence so exact arbitrary authored ids, including spaces, slashes, and CJK, remain valid. That carries known whole-domain JSON write amplification; do not silently switch to newer per-record JSON layout because its backend-safe key vocabulary would narrow the public PromptResourceId contract. Large/frequently updated deployments may use an appropriate Storage provider such as SQLite without changing the Context Manager Domain API.
+
+Settings should primarily store small bindings, order, enablement, references, and other profile metadata. Do not make every `settings.describe()` clone megabytes of prompt/helper source, and do not reimplement settings revisions, stale-write detection, JSON-shape validation, or user override merging around large-content storage.
 
 DSH Settings' in-process revision queue is not a cross-process transaction protocol. When multiple DSH processes share one provider/document, convergence and same-namespace conflicts remain provider-defined.
 
