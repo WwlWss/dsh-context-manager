@@ -24,7 +24,7 @@ That has concrete implementation consequences:
 
 DSH evolves quickly. Before changing an integration, inspect the public documentation and the exact supported source line rather than coding from memory.
 
-Current reviewed references are recorded in [compatibility.md](compatibility.md). The committed legacy regression baseline is `dsh-v0.1.1-rc.2`; the prior-modern regression line is `dsh-v0.1.2-rc.1`; the latest installable runtime line is `dsh-v0.1.5-rc.1`; and the current source-forward target reviewed for M3B/M3C is official `master` at `c291e796...`. Treat those tracks separately: install-tested package compatibility and source review are not interchangeable claims.
+Current reviewed references are recorded in [compatibility.md](compatibility.md). The committed legacy regression baseline is `dsh-v0.1.1-rc.2`; the prior-modern regression line is `dsh-v0.1.2-rc.1`; published regression also covers `dsh-v0.1.5-rc.1` and the newest reviewed published line `dsh-v0.1.5-rc.2`; and the current source-forward target reviewed for M3/M4 is official `master` at `c291e796...`. Treat those tracks separately: install-tested package compatibility and source review are not interchangeable claims.
 
 For the corresponding feature, read these upstream documents first:
 
@@ -264,11 +264,49 @@ Do not force those into one adapter. Roster/configured resolution, native author
 
 Use `ctx.systemPrompt` public composition seams. DSH owns final prompt assembly.
 
-Prompt placement should use stable Context Manager anchors mapped onto finite DSH section orders. Drag ordering is local ordering inside an anchor; do not invent arbitrary numeric history-depth semantics for system prompt placement.
+Prompt placement is persisted as stable Context Manager semantic anchors, never as native DSH numeric section orders. A dedicated compatibility adapter owns the mapping for each supported public DSH contract. Keep runtime-context contributions separate from system-prompt sections; they have different native assembly semantics.
 
-The shipped Minimal preset has special composition constraints (complete persona and disabled runtime context). Expose those limitations honestly. Do not claim an insertion happened if the preset's composition makes it impossible.
+M4B is a Domain milestone only. PromptBindings remain model-inert until the runtime adapter exists.
 
-Expensive prompt bodies should eventually live in a dedicated content library. Settings should store small metadata, bindings, order, enabled state, and resource references rather than growing into a multi-megabyte content database.
+### Effective profile resolver
+
+Do not couple "where a profile selection came from" to "where its prompt providers are registered".
+
+The runtime selection contract is conceptually:
+
+```text
+Session binding       ← future M9
+Workspace binding     ← future M9
+Global default        ← current fallback
+        ↓
+candidate profile
+        ↓
+exact basePreset / live effective-preset match
+        ↓
+usable or diagnostic
+```
+
+The global `defaultProfileId` is a fallback selector, not permission to install global prompt content. From the first model-effective implementation, all Context Manager prompt/runtime-context providers must be Agent-scoped. This prevents a future Session/Workspace-selected profile from inheriting unrelated global-default prompt content.
+
+A profile may contribute only when its exact `basePreset` matches the live Agent/Session effective preset identity. On mismatch, contribute nothing and report a diagnostic. Do not search for another profile, substitute the native default, mutate the profile, or recompose the Agent.
+
+Use effective Session/Agent identity rather than current roster health as the runtime match authority. A deleted native preset can be `missing` in M3A while an already-running Session still legitimately records that same id.
+
+### Aggregate runtime providers and assembly reads
+
+Prefer one fixed Agent-scoped aggregate provider per supported system anchor plus one runtime-context provider. Do not register one native provider per PromptResource.
+
+Resolve the effective profile, bindings, resources, and local ordering once per DSH assembly and share that plan across the aggregate providers. A `WeakMap` keyed by the current native assembly context is an acceptable implementation strategy when the public API gives a stable assembly object. Do not persist or reuse that plan across model steps; Settings, Prompt Library resources, Session identity, and native composition remain authoritative.
+
+The runtime path should therefore observe an explicit PromptResource edit or PromptBinding reorder on the next model step without rebuilding the Agent or accumulating registrations.
+
+### Capability and suppression diagnostics
+
+The shipped Minimal preset is a known example of complete-persona/runtime-context suppression, but runtime code must not special-case the id `minimal`. Inspect the final native composition/assembly capability because copied or custom presets can express the same constraints.
+
+A configured placement that cannot survive native final assembly remains valid stored intent. Report it as suppressed/unavailable; do not move it to a nearby anchor.
+
+Large prompt bodies belong in the Storage-backed Prompt Library introduced in M4A. Settings stores only small PromptBindings and references. Resource-list reads stay metadata-only; runtime fetches only the bodies referenced by the selected profile.
 
 ## 11. Skills
 
@@ -436,10 +474,14 @@ When the client face exists, add package-contract checks for `./client` plus foc
 CI deliberately separates compatibility concerns instead of relying on one broad semver install:
 
 1. the committed/frozen development dependency set remains on legacy `0.1.1-rc.2` Settings and runs the normal Windows/Linux Node 22/24 suite;
-2. focused modern Settings lanes install exact `0.1.2-rc.1` and `0.1.5-rc.1` Settings generations with the matching modern Cordis/Schemastery packages and rerun the full type/build/Domain regression suite;
-3. the AgentPreset Host contract lane installs exact `@deepseek-ai/dsh-agent-presets` versions `0.1.1-rc.2`, `0.1.2-rc.1`, and `0.1.5-rc.1`, compiles the actual public Cordis service seam, then builds and runs M3C authoring behavior against each generation;
-4. the Session preset lane executes the legacy event branch and modern projection branch against the same three DSH generations, including actual published Session/projection objects;
-5. DSH CLI bundle smoke proves package installation/config composition on both `@deepseek-ai/dsh@0.1.2-rc.1` and `@deepseek-ai/dsh@0.1.5-rc.1`.
+2. focused modern Settings lanes install exact supported modern generations through `0.1.5-rc.2` with their matching Cordis/Schemastery packages and rerun the relevant type/build/Domain regressions;
+3. the AgentPreset Host-contract/runtime lanes cover exact published generations `0.1.1-rc.2`, `0.1.2-rc.1`, `0.1.5-rc.1`, and `0.1.5-rc.2`, including the real native M3C `copy -> read -> remove` cycle;
+4. the Session preset identity lanes cover the same four published generations and exercise the legacy event path and modern public projection path with real published Session/projection objects;
+5. the M4A Prompt Library Storage Domain matrix covers those same four published generations with both a compile contract and real Storage/StorageJson/StorageDomain durable reopen runtime test;
+6. strict packed-package peer installation is verified against the newest supported published Settings generation;
+7. full DSH CLI/bundle composition smoke covers `0.1.2-rc.1`, `0.1.5-rc.1`, and `0.1.5-rc.2`.
+
+Keep the exact authoritative matrix and reviewed source SHA in [compatibility.md](compatibility.md). When a new public generation is added, update CI and these maintainer docs together rather than letting the handbook lag behind the executable support claim.
 
 This separation prevents common false positives: compiling only against newest declarations while accidentally breaking the minimum line, passing `--dump-config` while never executing a runtime adapter branch, or testing structural fakes without proving the published Host declaration still matches the consumed seam.
 
