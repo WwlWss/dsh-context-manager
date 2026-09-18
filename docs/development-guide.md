@@ -474,12 +474,12 @@ When the client face exists, add package-contract checks for `./client` plus foc
 CI deliberately separates compatibility concerns instead of relying on one broad semver install:
 
 1. the committed/frozen development dependency set remains on legacy `0.1.1-rc.2` Settings and runs the normal Windows/Linux Node 22/24 suite;
-2. focused modern Settings lanes install exact supported modern generations through `0.1.5-rc.2` with their matching Cordis/Schemastery packages and rerun the relevant type/build/Domain regressions;
-3. the AgentPreset Host-contract/runtime lanes cover exact published generations `0.1.1-rc.2`, `0.1.2-rc.1`, `0.1.5-rc.1`, and `0.1.5-rc.2`, including the real native M3C `copy -> read -> remove` cycle;
-4. the Session preset identity lanes cover the same four published generations and exercise the legacy event path and modern public projection path with real published Session/projection objects;
-5. the M4A Prompt Library Storage Domain matrix covers those same four published generations with both a compile contract and real Storage/StorageJson/StorageDomain durable reopen runtime test;
-6. strict packed-package peer installation is verified against the newest supported published Settings generation;
-7. full DSH CLI/bundle composition smoke covers `0.1.2-rc.1`, `0.1.5-rc.1`, and `0.1.5-rc.2`.
+2. focused modern Settings lanes install exact supported generations `0.1.2-rc.1`, `0.1.5-rc.1`, `0.1.5-rc.2`, and the install-tested forward alpha `0.1.6-alpha.2` with matching Cordis/Schemastery packages and rerun the relevant type/build/Domain regressions;
+3. the AgentPreset Host-contract/runtime lanes cover `0.1.1-rc.2`, `0.1.2-rc.1`, `0.1.5-rc.1`, `0.1.5-rc.2`, and `0.1.6-alpha.2`, including the real native M3C `copy -> read -> remove` cycle;
+4. the Session preset identity lanes cover the same five generations and exercise the legacy event path and modern public projection path with real published Session/projection objects;
+5. the M4A Prompt Library Storage Domain matrix covers those same five generations with both a compile contract and real Storage/StorageJson/StorageDomain durable reopen runtime test;
+6. strict packed-package peer installation is verified against both the retained stable Settings line `0.1.5-rc.2` and the forward-alpha line `0.1.6-alpha.2`;
+7. full DSH CLI/bundle composition smoke covers `0.1.2-rc.1`, `0.1.5-rc.1`, `0.1.5-rc.2`, and `0.1.6-alpha.2`.
 
 Keep the exact authoritative matrix and reviewed source SHA in [compatibility.md](compatibility.md). When a new public generation is added, update CI and these maintainer docs together rather than letting the handbook lag behind the executable support claim.
 
