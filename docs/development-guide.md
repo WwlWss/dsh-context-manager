@@ -24,7 +24,7 @@ That has concrete implementation consequences:
 
 DSH evolves quickly. Before changing an integration, inspect the public documentation and the exact supported source line rather than coding from memory.
 
-Current reviewed references are recorded in [compatibility.md](compatibility.md). The committed legacy regression baseline is `dsh-v0.1.1-rc.2`; the prior-modern regression line is `dsh-v0.1.2-rc.1`; published regression also covers `dsh-v0.1.5-rc.1` and the newest reviewed published line `dsh-v0.1.5-rc.2`; and the current source-forward target reviewed for M3/M4 is official `master` at `c291e796...`. Treat those tracks separately: install-tested package compatibility and source review are not interchangeable claims.
+Current reviewed references are recorded in [compatibility.md](compatibility.md). The committed legacy regression baseline is `dsh-v0.1.1-rc.2`; the prior-modern regression line is `dsh-v0.1.2-rc.1`; published regression also covers `dsh-v0.1.5-rc.1` and `dsh-v0.1.5-rc.2`; DSH `0.1.6-alpha.2` is the current forward-alpha compatibility target; and the current source-forward target reviewed for M3/M4 is official `master` at `ddefc45f...`. Treat those tracks separately: install-tested package compatibility and source review are not interchangeable claims.
 
 For the corresponding feature, read these upstream documents first:
 
@@ -288,7 +288,7 @@ usable or diagnostic
 
 The global `defaultProfileId` is a fallback selector, not permission to install global prompt content. From the first model-effective implementation, all Context Manager prompt/runtime-context providers must be Agent-scoped. This prevents a future Session/Workspace-selected profile from inheriting unrelated global-default prompt content.
 
-A profile may contribute only when its exact `basePreset` matches the live Agent/Session effective preset identity. On mismatch, contribute nothing and report a diagnostic. Do not search for another profile, substitute the native default, mutate the profile, or recompose the Agent.
+A profile may contribute only when its exact `basePreset` matches the live Agent/Session effective preset identity. On mismatch, contribute nothing and report a diagnostic. Do not search for another profile, substitute the native default, mutate the profile, or recompose/select the Agent. DSH 0.1.6 can natively switch a live AgentPreset; treat that as an observed runtime change and re-evaluate the fence on the next assembly.
 
 Use effective Session/Agent identity rather than current roster health as the runtime match authority. A deleted native preset can be `missing` in M3A while an already-running Session still legitimately records that same id.
 
@@ -296,7 +296,7 @@ Use effective Session/Agent identity rather than current roster health as the ru
 
 Prefer one fixed Agent-scoped aggregate provider per supported system anchor plus one runtime-context provider. Do not register one native provider per PromptResource.
 
-Resolve the effective profile, bindings, resources, and local ordering once per DSH assembly and share that plan across the aggregate providers. A `WeakMap` keyed by the current native assembly context is an acceptable implementation strategy when the public API gives a stable assembly object. Do not persist or reuse that plan across model steps; Settings, Prompt Library resources, Session identity, and native composition remain authoritative.
+Resolve the effective profile, bindings, resources, and local ordering once per DSH assembly and share that plan across the aggregate providers. A `WeakMap` keyed by the current native assembly context is an acceptable implementation strategy when the public API gives a stable assembly object. Capture the owning Agent in the Agent-scoped provider closure; do not read an invented `AssembleContext.agent` property. The reviewed 0.1.6 public `AssembleContext` carries `scope` / `signal`, not Agent ownership. Do not persist or reuse that plan across model steps; Settings, Prompt Library resources, Session identity, and native composition remain authoritative.
 
 The runtime path should therefore observe an explicit PromptResource edit or PromptBinding reorder on the next model step without rebuilding the Agent or accumulating registrations.
 
