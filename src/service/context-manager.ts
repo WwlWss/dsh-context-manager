@@ -9,8 +9,20 @@ import {
 } from '../adapters/settings.js'
 
 import { assertSafePathKey, ContextManagerError } from '../domain/errors.js'
-import type { ContextManagerSnapshot, SkillMode } from '../domain/model.js'
-import { normalizeSettings, parseProfileForWrite, parseSkillMode } from '../domain/normalize.js'
+import type {
+  ContextManagerSnapshot,
+  PromptBindingInput,
+  PromptPlacement,
+  SkillMode,
+} from '../domain/model.js'
+import {
+  normalizeSettings,
+  parseProfileForWrite,
+  parsePromptBinding,
+  parsePromptOrder,
+  parsePromptPlacement,
+  parseSkillMode,
+} from '../domain/normalize.js'
 import {
   classifyContextManagerSchemaVersion,
   CONTEXT_MANAGER_SCHEMA_VERSION,
@@ -223,6 +235,166 @@ export class ContextManagerService extends Service {
     }])
   }
 
+
+  /**
+   * Add one complete prompt binding. Binding identity is profile-local and
+   * Settings-path-safe; PromptResource identity is an arbitrary exact string
+   * stored as a value and is deliberately not resolved here.
+   */
+  async addPromptBinding(
+    profileId: string,
+    bindingId: string,
+    input: PromptBindingInput,
+    expectedRevision?: number,
+  ): Promise<void> {
+    assertSafePathKey(profileId, 'profile id')
+    assertSafePathKey(bindingId, 'prompt binding id')
+
+    const state = this.captureWritableState(expectedRevision)
+    const prompts = this.requirePromptsObjectOrAbsent(state.stored, profileId)
+    if (prompts !== undefined && Object.hasOwn(prompts, bindingId)) {
+      throw new ContextManagerError(
+        'prompt-binding-exists',
+        `profile ${JSON.stringify(profileId)} already has prompt binding ${JSON.stringify(bindingId)}`,
+      )
+    }
+
+    this.validateStructuredPromptBindingWrite(input)
+    await this.mutate(state, [{
+      op: 'set',
+      path: ['profiles', profileId, 'prompts', bindingId],
+      value: input,
+    }])
+  }
+
+  async setPromptBindingResourceId(
+    profileId: string,
+    bindingId: string,
+    resourceId: string,
+    expectedRevision?: number,
+  ): Promise<void> {
+    const state = this.capturePromptBindingWrite(profileId, bindingId, expectedRevision)
+    if (typeof resourceId !== 'string') {
+      throw new ContextManagerError(
+        'invalid-prompt-binding',
+        'prompt binding.resourceId must be a string',
+      )
+    }
+    await this.mutate(state, [{
+      op: 'set',
+      path: ['profiles', profileId, 'prompts', bindingId, 'resourceId'],
+      value: resourceId,
+    }])
+  }
+
+  async setPromptBindingEnabled(
+    profileId: string,
+    bindingId: string,
+    enabled: boolean,
+    expectedRevision?: number,
+  ): Promise<void> {
+    const state = this.capturePromptBindingWrite(profileId, bindingId, expectedRevision)
+    if (typeof enabled !== 'boolean') {
+      throw new ContextManagerError(
+        'invalid-prompt-binding',
+        'prompt binding.enabled must be a boolean',
+      )
+    }
+    await this.mutate(state, [{
+      op: 'set',
+      path: ['profiles', profileId, 'prompts', bindingId, 'enabled'],
+      value: enabled,
+    }])
+  }
+
+  async setPromptBindingPlacement(
+    profileId: string,
+    bindingId: string,
+    placement: PromptPlacement,
+    expectedRevision?: number,
+  ): Promise<void> {
+    const state = this.capturePromptBindingWrite(profileId, bindingId, expectedRevision)
+    let parsedPlacement: PromptPlacement
+    try {
+      parsedPlacement = parsePromptPlacement(placement)
+    } catch (error) {
+      throw new ContextManagerError(
+        'invalid-prompt-placement',
+        error instanceof Error ? error.message : String(error),
+      )
+    }
+    await this.mutate(state, [{
+      op: 'set',
+      path: ['profiles', profileId, 'prompts', bindingId, 'placement'],
+      value: parsedPlacement,
+    }])
+  }
+
+  async setPromptBindingOrder(
+    profileId: string,
+    bindingId: string,
+    order: number,
+    expectedRevision?: number,
+  ): Promise<void> {
+    const state = this.capturePromptBindingWrite(profileId, bindingId, expectedRevision)
+    let parsedOrder: number
+    try {
+      parsedOrder = parsePromptOrder(order)
+    } catch (error) {
+      throw new ContextManagerError(
+        'invalid-prompt-order',
+        error instanceof Error ? error.message : String(error),
+      )
+    }
+    await this.mutate(state, [{
+      op: 'set',
+      path: ['profiles', profileId, 'prompts', bindingId, 'order'],
+      value: parsedOrder,
+    }])
+  }
+
+  /**
+   * Explicitly remove one whole prompt binding. Malformed/scalar bindings may
+   * still be removed because deletion is the requested destructive operation.
+   */
+  async removePromptBinding(
+    profileId: string,
+    bindingId: string,
+    expectedRevision?: number,
+  ): Promise<void> {
+    assertSafePathKey(profileId, 'profile id')
+    assertSafePathKey(bindingId, 'prompt binding id')
+
+    const state = this.captureWritableState(expectedRevision)
+    const prompts = this.requirePromptsObjectOrAbsent(state.stored, profileId)
+    if (prompts === undefined || !Object.hasOwn(prompts, bindingId)) {
+      throw new ContextManagerError(
+        'prompt-binding-not-found',
+        `profile ${JSON.stringify(profileId)} has no stored prompt binding ${JSON.stringify(bindingId)}`,
+      )
+    }
+
+    await this.mutate(state, [{
+      op: 'unset',
+      path: ['profiles', profileId, 'prompts', bindingId],
+    }])
+  }
+
+  private validateStructuredPromptBindingWrite(input: unknown): void {
+    try {
+      parsePromptBinding(input)
+    } catch (error) {
+      throw new ContextManagerError(
+        'invalid-prompt-binding',
+        error instanceof Error ? error.message : String(error),
+      )
+    }
+
+    // Store the caller's original binding payload so future extension siblings
+    // survive structured creation just as they do for structured profiles.
+    assertStoredProfilePayloadSafe(input)
+  }
+
   private validateStructuredProfileWrite(input: unknown): void {
     try {
       parseProfileForWrite(input)
@@ -273,6 +445,57 @@ export class ContextManagerService extends Service {
       )
     }
     return profile.skills
+  }
+
+
+  private requirePromptsObjectOrAbsent(
+    stored: StoredContextManagerSettings,
+    profileId: string,
+  ): Record<string, unknown> | undefined {
+    const profile = this.requireProfileObject(stored, profileId)
+    if (profile.prompts === undefined) return undefined
+    if (!isPlainObject(profile.prompts)) {
+      throw new ContextManagerError(
+        'profile-path-not-editable',
+        `profile ${JSON.stringify(profileId)} has a non-object prompts field; use the stored-payload editor or replace the profile explicitly`,
+      )
+    }
+    return profile.prompts
+  }
+
+  private requirePromptBindingObject(
+    stored: StoredContextManagerSettings,
+    profileId: string,
+    bindingId: string,
+  ): Record<string, unknown> {
+    const prompts = this.requirePromptsObjectOrAbsent(stored, profileId)
+    if (prompts === undefined || !Object.hasOwn(prompts, bindingId)) {
+      throw new ContextManagerError(
+        'prompt-binding-not-found',
+        `profile ${JSON.stringify(profileId)} has no stored prompt binding ${JSON.stringify(bindingId)}`,
+      )
+    }
+
+    const binding = prompts[bindingId]
+    if (!isPlainObject(binding)) {
+      throw new ContextManagerError(
+        'profile-path-not-editable',
+        `profile ${JSON.stringify(profileId)} prompt binding ${JSON.stringify(bindingId)} is not an object; remove that binding explicitly or use the stored-payload editor`,
+      )
+    }
+    return binding
+  }
+
+  private capturePromptBindingWrite(
+    profileId: string,
+    bindingId: string,
+    expectedRevision?: number,
+  ): WritableState {
+    assertSafePathKey(profileId, 'profile id')
+    assertSafePathKey(bindingId, 'prompt binding id')
+    const state = this.captureWritableState(expectedRevision)
+    this.requirePromptBindingObject(state.stored, profileId, bindingId)
+    return state
   }
 
   /**

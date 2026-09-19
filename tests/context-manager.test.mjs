@@ -473,3 +473,390 @@ test('domain snapshots are immutable down to skill bindings and diagnostic recor
   }, TypeError)
   assert.notEqual(manager.snapshot().diagnostics.find(item => item.profileId === 'broken').message, 'mutated by consumer')
 })
+
+
+test('profiles without prompt bindings remain backward compatible with an empty Domain map', async () => {
+  const { manager } = await boot()
+  await manager.createProfile('legacy', anima)
+
+  const snapshot = manager.snapshot()
+  assert.deepEqual({ ...snapshot.profiles.legacy.prompts }, {})
+})
+
+test('structured prompt bindings preserve unknown siblings and arbitrary resource ids', async () => {
+  const { manager } = await boot()
+  await manager.createProfile('prompts', anima)
+
+  await manager.addPromptBinding('prompts', 'primary', {
+    resourceId: '__proto__',
+    enabled: true,
+    placement: 'after-persona',
+    order: -100,
+    futureActivation: { kind: 'future-rule' },
+  }, manager.snapshot().persistence.revision)
+
+  let stored = manager.getStoredProfile('prompts')
+  assert.deepEqual(stored.prompts.primary, {
+    resourceId: '__proto__',
+    enabled: true,
+    placement: 'after-persona',
+    order: -100,
+    futureActivation: { kind: 'future-rule' },
+  })
+  assert.deepEqual(manager.snapshot().profiles.prompts.prompts.primary, {
+    resourceId: '__proto__',
+    enabled: true,
+    placement: 'after-persona',
+    order: -100,
+  })
+
+  await manager.setPromptBindingResourceId('prompts', 'primary', 'missing/resource/日本語', manager.snapshot().persistence.revision)
+  await manager.setPromptBindingEnabled('prompts', 'primary', false, manager.snapshot().persistence.revision)
+  await manager.setPromptBindingOrder('prompts', 'primary', 200, manager.snapshot().persistence.revision)
+
+  stored = manager.getStoredProfile('prompts')
+  assert.deepEqual(stored.prompts.primary, {
+    resourceId: 'missing/resource/日本語',
+    enabled: false,
+    placement: 'after-persona',
+    order: 200,
+    futureActivation: { kind: 'future-rule' },
+  })
+})
+
+test('prompt binding ids are Settings path identities, not PromptResource ids', async () => {
+  const { manager } = await boot()
+  await manager.createProfile('prompts', anima)
+
+  await assert.rejects(
+    manager.addPromptBinding('prompts', '__proto__', {
+      resourceId: 'ordinary-resource',
+      enabled: true,
+      placement: 'after-persona',
+      order: 0,
+    }, manager.snapshot().persistence.revision),
+    error => error instanceof ContextManagerError && error.code === 'unsafe-path-key',
+  )
+
+  await manager.addPromptBinding('prompts', 'safe-binding', {
+    resourceId: '__proto__',
+    enabled: true,
+    placement: 'after-persona',
+    order: 0,
+  }, manager.snapshot().persistence.revision)
+
+  assert.equal(manager.snapshot().profiles.prompts.prompts['safe-binding'].resourceId, '__proto__')
+})
+
+
+test('externally stored unsafe prompt binding ids stay readable but remain outside structured mutation paths', async () => {
+  const externallyStored = JSON.parse(`{
+    "name": "External prompts",
+    "basePreset": "standard",
+    "prompts": {
+      "__proto__": {
+        "resourceId": "resource",
+        "enabled": true,
+        "placement": "after-persona",
+        "order": 0
+      }
+    }
+  }`)
+  const { manager } = await boot({
+    [CONTEXT_MANAGER_SETTINGS_NAMESPACE]: {
+      schemaVersion: 1,
+      profiles: { external: externallyStored },
+    },
+  })
+
+  const snapshot = manager.snapshot()
+  assert.equal(snapshot.profiles.external.prompts['__proto__'].resourceId, 'resource')
+
+  const beforeRevision = snapshot.persistence.revision
+  const beforeStored = manager.getStoredProfile('external')
+  await assert.rejects(
+    manager.setPromptBindingOrder('external', '__proto__', 100, beforeRevision),
+    error => error instanceof ContextManagerError && error.code === 'unsafe-path-key',
+  )
+
+  assert.equal(manager.snapshot().persistence.revision, beforeRevision)
+  assert.deepEqual(manager.getStoredProfile('external'), beforeStored)
+})
+
+test('prompt leaf setters never synthesize a missing partial binding', async () => {
+  const { manager } = await boot()
+  await manager.createProfile('prompts', anima)
+  const before = manager.snapshot().persistence.revision
+
+  await assert.rejects(
+    manager.setPromptBindingEnabled('prompts', 'missing', true, before),
+    error => error instanceof ContextManagerError && error.code === 'prompt-binding-not-found',
+  )
+
+  assert.equal(manager.getStoredProfile('prompts').prompts, undefined)
+  assert.equal(manager.snapshot().persistence.revision, before)
+})
+
+test('prompt binding parser rejects malformed known fields without rewriting Stored state', async () => {
+  const { manager } = await boot()
+  await manager.setRawProfile('broken-prompts', {
+    name: 'Broken prompts',
+    basePreset: 'standard',
+    prompts: {
+      broken: {
+        resourceId: 'future-resource',
+        enabled: true,
+        placement: 'future-anchor',
+        order: 0,
+        future: 'keep',
+      },
+    },
+  })
+
+  const snapshot = manager.snapshot()
+  assert.equal(snapshot.profiles['broken-prompts'], undefined)
+  assert.ok(snapshot.diagnostics.some(item =>
+    item.code === 'invalid-profile'
+    && item.profileId === 'broken-prompts'
+    && item.message.includes('profile.prompts["broken"]'),
+  ))
+  assert.equal(manager.getStoredProfile('broken-prompts').prompts.broken.future, 'keep')
+})
+
+test('prompt binding order accepts safe integers including negatives and rejects ambiguous numbers', async () => {
+  const { manager } = await boot()
+  await manager.createProfile('orders', anima)
+  await manager.addPromptBinding('orders', 'p', {
+    resourceId: 'resource',
+    enabled: true,
+    placement: 'after-persona',
+    order: 0,
+  }, manager.snapshot().persistence.revision)
+
+  await manager.setPromptBindingOrder('orders', 'p', Number.MIN_SAFE_INTEGER, manager.snapshot().persistence.revision)
+  assert.equal(manager.snapshot().profiles.orders.prompts.p.order, Number.MIN_SAFE_INTEGER)
+
+  for (const invalid of [1.5, Number.NaN, Number.POSITIVE_INFINITY, Number.MAX_SAFE_INTEGER + 1]) {
+    const before = manager.snapshot().persistence.revision
+    await assert.rejects(
+      manager.setPromptBindingOrder('orders', 'p', invalid, before),
+      error => error instanceof ContextManagerError && error.code === 'invalid-prompt-order',
+    )
+    assert.equal(manager.snapshot().persistence.revision, before)
+  }
+})
+
+
+test('prompt leaf setters validate runtime inputs without mutating stored state', async () => {
+  const { manager } = await boot()
+  await manager.createProfile('runtime-validation', anima)
+  await manager.addPromptBinding('runtime-validation', 'p', {
+    resourceId: 'resource',
+    enabled: true,
+    placement: 'after-persona',
+    order: 0,
+  }, manager.snapshot().persistence.revision)
+
+  const cases = [
+    {
+      code: 'invalid-prompt-placement',
+      mutate: revision => manager.setPromptBindingPlacement(
+        'runtime-validation',
+        'p',
+        'future-anchor',
+        revision,
+      ),
+    },
+    {
+      code: 'invalid-prompt-binding',
+      mutate: revision => manager.setPromptBindingEnabled(
+        'runtime-validation',
+        'p',
+        'yes',
+        revision,
+      ),
+    },
+    {
+      code: 'invalid-prompt-binding',
+      mutate: revision => manager.setPromptBindingResourceId(
+        'runtime-validation',
+        'p',
+        42,
+        revision,
+      ),
+    },
+  ]
+
+  for (const item of cases) {
+    const beforeRevision = manager.snapshot().persistence.revision
+    const beforeStored = manager.getStoredProfile('runtime-validation')
+
+    await assert.rejects(
+      item.mutate(beforeRevision),
+      error => error instanceof ContextManagerError && error.code === item.code,
+    )
+
+    assert.equal(manager.snapshot().persistence.revision, beforeRevision)
+    assert.deepEqual(manager.getStoredProfile('runtime-validation'), beforeStored)
+  }
+})
+
+test('prompt leaf edits are path-local repairs and preserve unrelated malformed data', async () => {
+  const { manager } = await boot()
+  await manager.setRawProfile('repair-prompts', {
+    name: 42,
+    basePreset: [],
+    futureField: { untouched: true },
+    prompts: {
+      broken: {
+        resourceId: 'resource',
+        enabled: 'not-a-boolean',
+        placement: 'future-anchor',
+        order: 0,
+        future: 'keep',
+      },
+      keep: {
+        resourceId: 'other',
+        enabled: true,
+        placement: 'runtime-context',
+        order: 500,
+      },
+    },
+  })
+
+  await manager.setPromptBindingPlacement(
+    'repair-prompts',
+    'broken',
+    'before-persona',
+    manager.snapshot().persistence.revision,
+  )
+  let stored = manager.getStoredProfile('repair-prompts')
+  assert.equal(stored.prompts.broken.placement, 'before-persona')
+  assert.equal(stored.prompts.broken.enabled, 'not-a-boolean')
+  assert.equal(stored.prompts.broken.future, 'keep')
+  assert.deepEqual(stored.futureField, { untouched: true })
+
+  await manager.setPromptBindingEnabled(
+    'repair-prompts',
+    'broken',
+    false,
+    manager.snapshot().persistence.revision,
+  )
+  stored = manager.getStoredProfile('repair-prompts')
+  assert.equal(stored.prompts.broken.enabled, false)
+  assert.equal(stored.name, 42)
+  assert.deepEqual(stored.prompts.keep, {
+    resourceId: 'other',
+    enabled: true,
+    placement: 'runtime-context',
+    order: 500,
+  })
+})
+
+test('prompt leaf edits never replace non-object path segments, while explicit removal can delete malformed bindings', async () => {
+  const { manager } = await boot()
+  await manager.setRawProfile('bad-prompts', {
+    name: 'Bad prompts',
+    basePreset: 'standard',
+    prompts: 'DO NOT REPLACE',
+  })
+
+  await assert.rejects(
+    manager.setPromptBindingEnabled('bad-prompts', 'p', true, manager.snapshot().persistence.revision),
+    error => error instanceof ContextManagerError && error.code === 'profile-path-not-editable',
+  )
+  assert.equal(manager.getStoredProfile('bad-prompts').prompts, 'DO NOT REPLACE')
+
+  await manager.setRawProfile('bad-binding', {
+    name: 'Bad binding',
+    basePreset: 'standard',
+    prompts: { broken: 'legacy scalar must not be overwritten' },
+  }, manager.snapshot().persistence.revision)
+
+  await assert.rejects(
+    manager.setPromptBindingOrder('bad-binding', 'broken', 10, manager.snapshot().persistence.revision),
+    error => error instanceof ContextManagerError && error.code === 'profile-path-not-editable',
+  )
+  assert.equal(manager.getStoredProfile('bad-binding').prompts.broken, 'legacy scalar must not be overwritten')
+
+  await manager.removePromptBinding('bad-binding', 'broken', manager.snapshot().persistence.revision)
+  assert.equal(Object.hasOwn(manager.getStoredProfile('bad-binding').prompts, 'broken'), false)
+})
+
+test('prompt binding creation is complete, explicit, and non-overwriting', async () => {
+  const { manager } = await boot()
+  await manager.createProfile('prompts', anima)
+
+  const incomplete = {
+    resourceId: 'resource',
+    enabled: true,
+    placement: 'after-persona',
+  }
+  await assert.rejects(
+    manager.addPromptBinding('prompts', 'incomplete', incomplete, manager.snapshot().persistence.revision),
+    error => error instanceof ContextManagerError && error.code === 'invalid-prompt-binding',
+  )
+
+  await manager.addPromptBinding('prompts', 'p', {
+    resourceId: 'resource',
+    enabled: true,
+    placement: 'after-persona',
+    order: 0,
+  }, manager.snapshot().persistence.revision)
+
+  await assert.rejects(
+    manager.addPromptBinding('prompts', 'p', {
+      resourceId: 'replacement',
+      enabled: false,
+      placement: 'runtime-context',
+      order: 1,
+    }, manager.snapshot().persistence.revision),
+    error => error instanceof ContextManagerError && error.code === 'prompt-binding-exists',
+  )
+
+  assert.equal(manager.snapshot().profiles.prompts.prompts.p.resourceId, 'resource')
+})
+
+test('prompt binding mutations remain revision-fenced against competing writers', async () => {
+  const { manager } = await boot()
+  await manager.createProfile('prompts', anima)
+  await manager.addPromptBinding('prompts', 'p', {
+    resourceId: 'resource',
+    enabled: true,
+    placement: 'after-persona',
+    order: 0,
+  }, manager.snapshot().persistence.revision)
+
+  const results = await Promise.allSettled([
+    manager.setRawProfile('prompts', 'replacement'),
+    manager.setPromptBindingOrder('prompts', 'p', 100),
+  ])
+
+  assert.equal(results[0].status, 'fulfilled')
+  assert.equal(results[1].status, 'rejected')
+  assert.ok(results[1].reason instanceof SettingsConflictError)
+  assert.equal(manager.getStoredProfile('prompts'), 'replacement')
+})
+
+test('prompt binding Domain snapshots are immutable', async () => {
+  const { manager } = await boot()
+  await manager.createProfile('prompts', {
+    ...anima,
+    prompts: {
+      p: {
+        resourceId: 'resource',
+        enabled: true,
+        placement: 'after-persona',
+        order: 0,
+      },
+    },
+  })
+
+  const snapshot = manager.snapshot()
+  assert.throws(() => {
+    snapshot.profiles.prompts.prompts.p.order = 10
+  }, TypeError)
+  assert.throws(() => {
+    snapshot.profiles.prompts.prompts.other = snapshot.profiles.prompts.prompts.p
+  }, TypeError)
+})

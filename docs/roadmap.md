@@ -239,19 +239,26 @@ The library deliberately keeps the legacy-compatible single-domain layout. Curre
 
 ### 4B. PromptBinding
 
-**Status:** next.
+**Status:** in progress.
 
-Add object-shaped profile bindings from the beginning, conceptually:
+Add object-shaped profile bindings with a profile-local binding identity that is deliberately separate from PromptResource identity:
 
 ```ts
+type PromptBindingId = string
+
 interface PromptBinding {
+  resourceId: string
   enabled: boolean
   placement: PromptPlacement
   order: number
 }
 ```
 
-The stored placement vocabulary is semantic Context Manager state, not a native DSH numeric order. The first supported vocabulary is expected to remain finite, for example:
+Profiles store `prompts: Record<PromptBindingId, PromptBinding>`. A missing `prompts` field is interpreted as an empty map, so this additive Domain field does not require a Settings envelope schema-version bump.
+
+The identity split is intentional. M4A permits arbitrary exact PromptResource ids, while prompt binding ids are used as DSH Settings path keys by structured mutations. Those mutation paths must obey the current Settings path-safety boundary. A resource id such as `__proto__` therefore remains a valid reference value, while a structured mutation targeting that same string as a binding key is refused. Externally stored data is still parsed as Stored/Domain input rather than silently rewritten solely because one key is not structurally editable by the current Settings implementation. The split also avoids imposing a one-resource-once-per-profile restriction: several bindings may reference the same PromptResource at different placements/orders.
+
+The stored placement vocabulary is semantic Context Manager state, not a native DSH numeric order:
 
 ```text
 before-persona
@@ -263,13 +270,18 @@ runtime-context
 
 Rules:
 
-- unknown binding siblings survive every narrow edit;
+- `resourceId` is stored literally and is not resolved against Prompt Library during M4B writes;
+- missing PromptResource references remain valid stored intent; resource health belongs to later resolved/runtime diagnostics;
+- `order` is a signed safe integer local to the semantic placement. M4B does not persist native DSH numeric section order;
+- within one semantic placement, local ordering is deterministic: `order` ascending, then `PromptBindingId` by locale-independent JavaScript string/code-unit order. M4C runtime resolution and M8 preview must share this ordering contract rather than inventing separate tie-breaks;
+- unknown binding siblings survive structured creation and every narrow edit;
 - adding a binding is an explicit operation that supplies the complete current binding shape;
-- changing enabled/placement/order edits only that leaf;
-- removing the whole binding is a separate explicit operation;
-- missing PromptResource references remain stored intent and become diagnostics rather than auto-repair;
-- no runtime health, effective order, suppression state, token count, or native section identity is persisted in the binding;
-- M4B remains model-inert. Persisting a PromptBinding does not register a system-prompt section or runtime-context contribution.
+- changing resourceId/enabled/placement/order requires an existing object-shaped binding and edits only that leaf;
+- leaf setters never synthesize a missing partial binding;
+- removing the whole binding is a separate explicit operation and may remove a malformed stored binding;
+- malformed prompt binding data can make the Domain profile unusable without rewriting Stored state; path-local edits may repair the requested leaf without gating on unrelated malformed profile fields;
+- no runtime health, effective order, suppression state, token count, native section identity, or PromptResource body is persisted in the binding;
+- M4B remains model-inert. Persisting a PromptBinding does not query Prompt Library, register a system-prompt section, alter Agent/Session state, or contribute runtime context.
 
 ### 4C1. DSH system-prompt placement compatibility adapter
 

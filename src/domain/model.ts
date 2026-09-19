@@ -2,6 +2,52 @@ export const SKILL_MODES = ['pinned', 'auto', 'manual', 'off'] as const
 
 export type SkillMode = (typeof SKILL_MODES)[number]
 
+export const PROMPT_PLACEMENTS = [
+  'before-persona',
+  'after-persona',
+  'before-tool-guidance',
+  'after-tool-guidance',
+  'runtime-context',
+] as const
+
+export type PromptPlacement = (typeof PROMPT_PLACEMENTS)[number]
+
+/**
+ * Stable identity of one profile-local PromptBinding.
+ *
+ * This is deliberately distinct from PromptResourceId. Binding ids live as
+ * DSH Settings path keys, while prompt resource ids are arbitrary authored
+ * strings stored as ordinary values and may therefore use a wider vocabulary.
+ */
+export type PromptBindingId = string
+
+/**
+ * Structured Domain view of one stored prompt binding.
+ *
+ * Unknown stored siblings remain outside the current Domain view and must
+ * survive every narrow mutation for forward-compatible editing.
+ */
+export interface PromptBinding {
+  readonly resourceId: string
+  readonly enabled: boolean
+  readonly placement: PromptPlacement
+  readonly order: number
+}
+
+/**
+ * Structured authoring input for a new prompt binding.
+ *
+ * Known fields are validated, but caller-supplied JSON-shaped extension fields
+ * are preserved verbatim in Stored state.
+ */
+export interface PromptBindingInput {
+  readonly resourceId: string
+  readonly enabled: boolean
+  readonly placement: PromptPlacement
+  readonly order: number
+  readonly [key: string]: unknown
+}
+
 /**
  * Structured Domain view of one stored skill binding.
  *
@@ -25,6 +71,7 @@ export interface ContextProfile {
   readonly description?: string
   readonly basePreset: string
   readonly skills: Readonly<Record<string, SkillBinding>>
+  readonly prompts: Readonly<Record<PromptBindingId, PromptBinding>>
 }
 
 export type ContextManagerDiagnosticCode =
