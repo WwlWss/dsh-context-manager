@@ -115,16 +115,37 @@ export async function attachAgentRuntimeBridge(
   if (agents === undefined) return undefined
 
   const attached = new Map<RuntimeAgent, AgentRuntimeCleanup>()
+  const pending = new Map<RuntimeAgent, Promise<void>>()
   let disposed = false
 
-  const attachOne = async (agent: RuntimeAgent): Promise<void> => {
-    if (disposed || attached.has(agent)) return
-    const cleanup = await attach(agent)
-    if (disposed) {
-      await cleanup()
-      return
-    }
-    attached.set(agent, cleanup)
+  const isCurrentLiveAgent = (agent: RuntimeAgent): boolean =>
+    agents.get(agent.id) === agent
+
+  const attachOne = (agent: RuntimeAgent): Promise<void> => {
+    if (disposed || attached.has(agent)) return Promise.resolve()
+
+    const existing = pending.get(agent)
+    if (existing !== undefined) return existing
+
+    // Defer the actual attach by one microtask so the pending entry becomes
+    // visible before user code can suspend. Initial agents.list() adoption and
+    // a concurrent agent/created announcement for the same exact Agent
+    // therefore share one in-flight attachment.
+    const task = Promise.resolve().then(async () => {
+      if (disposed || !isCurrentLiveAgent(agent)) return
+
+      const cleanup = await attach(agent)
+      if (disposed || !isCurrentLiveAgent(agent)) {
+        await cleanup()
+        return
+      }
+      attached.set(agent, cleanup)
+    })
+    pending.set(agent, task)
+
+    return task.finally(() => {
+      if (pending.get(agent) === task) pending.delete(agent)
+    })
   }
 
   let stopCreated: (() => void) | undefined
@@ -143,6 +164,10 @@ export async function attachAgentRuntimeBridge(
         // DSH disposes the Agent scope before publishing agent/disposed. The
         // scoped registrations are already gone; remove only our process-local
         // bookkeeping so a dead Agent cannot remain inspectable/retained.
+        //
+        // A still-pending attachment is not cancelled here. Its completion
+        // re-checks exact registry identity and immediately cleans itself if
+        // this Agent is no longer live (including same-id replacement).
         attached.delete(lifecycleAgent(payload, 'agent/disposed'))
       },
     )
@@ -183,9 +208,28 @@ export async function attachAgentRuntimeBridge(
       disposed = true
       stopCreated?.()
       stopDisposed?.()
+
+      const failures: unknown[] = []
+      const pendingResults = await Promise.allSettled([...pending.values()])
+      for (const result of pendingResults) {
+        if (result.status === 'rejected') failures.push(result.reason)
+      }
+
       const cleanups = [...attached.values()]
       attached.clear()
-      await cleanupAll(cleanups)
+      try {
+        await cleanupAll(cleanups)
+      } catch (error) {
+        failures.push(error)
+      }
+
+      if (failures.length === 1) throw failures[0]
+      if (failures.length > 1) {
+        throw new AggregateError(
+          failures,
+          'failed to dispose Context Manager Agent runtime bridge',
+        )
+      }
     },
   })
 }
