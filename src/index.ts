@@ -23,8 +23,6 @@ export type {
 } from './service/prompt-placement.js'
 export type {
   EffectiveProfileResolution,
-  PromptBindingPlanState,
-  PromptPlan,
   PromptRuntimeBindingInspection,
   PromptRuntimeInspection,
   PromptRuntimeNativeState,

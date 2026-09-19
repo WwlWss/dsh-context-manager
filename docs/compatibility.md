@@ -6,12 +6,12 @@ DeepSeek Harness evolves quickly. Context Manager separates **installable/tested
 
 | Track | DSH reference | How it is used |
 | --- | --- | --- |
-| Legacy regression | `dsh-v0.1.1-rc.2` | The committed development dependency set. The full type/build/Domain suite exercises the legacy module-level `installSettingsSection(...)` generation. Focused published-package lanes exercise the M3A roster seam, the M3B legacy live-Session identity path through `Session.events`, and the M3C Host `read/copy/remove` authoring contract plus a real native authoring cycle. |
-| Prior modern regression | `dsh-v0.1.2-rc.1` | Dedicated ephemeral CI keeps the first modern Settings generation and native Session `agentPreset` projection under regression. The full Settings suite, AgentPreset M3A/M3C declaration/behavior/native-runtime checks, M3B contract/runtime smoke, and bundle composition smoke all run here. |
-| 0.1.5 published regression | `dsh-v0.1.5-rc.1` | Retained because it remains an important published/default-install line. CI reruns modern Settings, AgentPreset M3A/M3C declaration/behavior/native-runtime checks, M3B Session contract/runtime smoke, and full bundle composition smoke against it. |
-| Current stable regression | `dsh-v0.1.5-rc.2` | Install-tested published line retained as the stable regression anchor. CI runs modern Settings, M3A/M3C compile and real-native authoring, M3B projection/runtime, strict packed-package peer installation, M4A Storage runtime, and full DSH bundle composition against this generation where applicable. |
-| Install-tested forward alpha | `dsh-v0.1.6-alpha.2` | Published forward-compatibility line validated by CI across modern Settings, AgentPreset contract plus real-native authoring, Session projection/runtime, Prompt Library Storage Domain compile/runtime, strict packed-package peer installation, and full DSH bundle composition. It extends forward support without replacing `0.1.5-rc.2` as the retained stable regression anchor. |
-| Latest official repository | `master` / `ddefc45f...` | Source-forward architecture target reviewed from official source. The tree identifies as `0.1.6-alpha.2`, preserves the existing M2-M4B minimum seams, adds native live AgentPreset selection, and keeps the base prompt `AssembleContext` at scope/signal while `@deepseek-ai/dsh-agent` publicly augments it with optional Agent identity. Source review remains distinct from package/runtime evidence. |
+| Legacy regression | `dsh-v0.1.1-rc.2` | The committed development dependency set. The full type/build/Domain suite exercises the legacy module-level `installSettingsSection(...)` generation. Focused published-package lanes exercise M3A/M3B/M3C, M4C1 placement, and the M4C2 Agent/SystemPrompt contract. A real 0.1.1 AgentLoop recording-adapter E2E proves Context Manager system/runtime-context contributions reach the legacy model request path. |
+| Prior modern regression | `dsh-v0.1.2-rc.1` | Dedicated ephemeral CI keeps the first modern Settings generation and native Session `agentPreset` projection under regression. The full Settings suite, AgentPreset M3A/M3C checks, M3B runtime, M4C1 placement, M4C2 Agent/SystemPrompt compile contract and real scoped SystemPrompt smoke, and bundle composition smoke run here. |
+| 0.1.5 published regression | `dsh-v0.1.5-rc.1` | Retained because it remains an important published/default-install line. CI reruns modern Settings, AgentPreset M3A/M3C checks, M3B Session runtime, M4C1 placement, M4C2 Agent/SystemPrompt compile contract and real scoped SystemPrompt smoke, and full bundle composition smoke against it. |
+| Current stable regression | `dsh-v0.1.5-rc.2` | Install-tested published line retained as the stable regression anchor. CI runs modern Settings, M3A/M3C, M3B projection/runtime, M4A Storage, M4C1 placement, M4C2 Agent/SystemPrompt compile contract plus real scoped SystemPrompt smoke, strict packed-package peer installation, and full DSH bundle composition. |
+| Install-tested forward alpha | `dsh-v0.1.6-alpha.2` | Published forward-compatibility line validated by CI across modern Settings, AgentPreset, Session projection/runtime, Prompt Library Storage, M4C1 placement, and M4C2 Agent/SystemPrompt compatibility. A real 0.1.6 AgentLoop recording-adapter E2E proves the modern model-visible Surface/runtime-context path, dynamic profile/resource resolution, native suppression, and unload/reload behavior. Strict packed-package and bundle composition lanes remain in place. |
+| Latest official repository | `master` / `ddefc45f...` | Source-forward architecture target reviewed from official source. The tree identifies as `0.1.6-alpha.2`, preserves the M2-M4C2 seams consumed by Context Manager, adds native live AgentPreset selection, and keeps the base prompt `AssembleContext` at scope/signal while `@deepseek-ai/dsh-agent` publicly augments it with optional Agent identity. Source review remains distinct from package/runtime evidence. |
 
 Support claims must name what was actually tested. A GitHub source tree and an installable npm package remain distinct evidence even when their package version currently matches.
 
@@ -244,17 +244,49 @@ Runtime-context remains a separate native channel. A complete system-prompt sect
 
 The interpolation contract also matters for later runtime work. DSH 0.1.1 through 0.1.5 interpolate system-section `{{variable}}` groups; 0.1.6 adds optional `PromptSection.interpolate`, while PromptContext still uses native interpolation. M4C1 therefore does not introduce a 0.1.6-only literal mode. Stored PromptResource text remains unchanged and later runtime assembly follows the supported native interpolation semantics unless Context Manager adds an explicit author-controlled vocabulary in a separate milestone.
 
+## M4C2 Agent-scoped prompt runtime compatibility
+
+M4C2 is the first model-effective Context Manager milestone. Production still avoids runtime imports from DSH Agent/SystemPrompt packages merely to identify versions or classes: it consumes Cordis services and Agent objects structurally, while M4C1 remains the sole owner of native numeric placement ranks.
+
+The delivered lifecycle/runtime seam is:
+
+- `ctx.agents.list()` / `get()` for current liveness;
+- serial `agent/created` plus `agent/disposed` lifecycle events;
+- the public Agent-scoped `agent.ctx` registration owner;
+- scoped `systemPrompt.section()` / `context()`;
+- the scope-filtered `system-prompt/assemble` waterfall;
+- native `systemPrompt.assemble()` for fresh diagnostic inspection.
+
+Context Manager registers four empty system-section placeholders, one empty runtime-context placeholder, and one scoped assembly expander per live Agent. PromptBindings are resolved once per assembly, then expanded as independent native sections/contexts so DSH keeps per-resource interpolation boundaries. There is no cross-step runtime truth cache and no synthetic `system-prompt/change` event for resource/profile edits.
+
+CI now validates this seam in two layers:
+
+1. all five retained published DSH generations compile the public Agent/SystemPrompt contract and mount the real published SystemPrompt service for scoped placeholder/waterfall/suppression smoke;
+2. `0.1.1-rc.2` and `0.1.6-alpha.2` additionally run a real AgentLoop with a recording LLM adapter, proving the same Context Manager resolution reaches an actual model request at both ends of the compatibility range.
+
+The endpoint E2E deliberately substitutes only Context Manager's already-tested Domain/Prompt-Library/M3B read services. Those seams have their own persistence/native compatibility lanes. The E2E changes the M3B-observed live preset identity A -> B -> A to prove M4C2 re-evaluates the exact preset fence on every assembly without provider re-registration. Separately, M3B's published-package lanes execute real `agent-preset/selected` Session records/native projection behavior, and source-forward review confirms 0.1.6 native `AgentPresets.select()` records that identity after a successful composition swap. M4C2 itself never calls `select()`.
+
+Model-facing prompt transport differs by DSH generation and remains DSH-owned:
+
+- the legacy 0.1.1 AgentLoop carries the rendered system prompt in `GenerateOptions.system`;
+- current DSH projects system prompt updates through the model-visible Session Surface;
+- runtime-context is durable superseding user-role history, so native suppression/unload may leave older context text in history while a later `Current runtime context: none...` snapshot makes it no longer effective.
+
+M4C2 tests therefore assert the current effective system/runtime-context view rather than requiring historical text to disappear. Fresh `dshContextPromptRuntime.inspect(agentId)` reports resolved-but-not-yet-interpolated native assembly state (`present` / `suppressed` / `transformed`); fully rendered preview remains M8.
+
+Agent lifecycle cleanup is object-identity based. DSH disposes an Agent's scope before publishing `agent/disposed`; Context Manager therefore removes the dead Agent from its bookkeeping at that event without invoking the already-owned scoped disposer again. Plugin unload explicitly disposes still-live Agent attachments, and reload adopts surviving Agents without turning the global default into a global prompt provider.
+
 ## System prompt and runtime-context guardrails
 
-Future prompt work must continue to use DSH-owned prompt/runtime-context composition rather than replacing the agent loop or rewriting native preset files.
+M4C2 prompt runtime uses DSH-owned prompt/runtime-context composition rather than replacing the agent loop or rewriting native preset files. Future prompt extensions must preserve that boundary.
 
 - placement must map to actual public DSH prompt/runtime-context capabilities;
 - Agent-scoped provider closures must capture their owning Agent as their ownership seam. The base system-prompt `AssembleContext` exposes `scope` / `signal`, while public `@deepseek-ai/dsh-agent` augmentation adds optional `agent` and ordinary Agent assembly supplies it; runtime ownership must not be reconstructed from that optional field;
-- a restrictive preset such as Minimal must surface unavailable placement honestly rather than simulating success;
+- native complete sections and runtime-context suppression are reported from actual final composition; do not special-case a preset id such as Minimal;
 - arbitrary SillyTavern numeric historical `depth=N` insertion is not equivalent to system-prompt placement and must not be faked through a different seam;
 - any future adapter must be rechecked against the then-current installable and source-forward DSH contracts before it ships.
 
-These are architecture constraints, not claims that prompt overlays are implemented in the current build.
+M4C2 implements the prompt/runtime-context overlay under these constraints; arbitrary historical-depth insertion and later transform/preview features remain outside this milestone.
 
 ## Skills guardrails
 

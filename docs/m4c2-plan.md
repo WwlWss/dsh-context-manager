@@ -332,7 +332,8 @@ Installation sequence:
 4. track attachments by Agent object identity, not Session id;
 5. later `agent/created` attaches exactly once;
 6. Agent-scoped effect disposal removes registrations automatically on Agent teardown;
-7. plugin-level disposal explicitly cleans all still-live attachments.
+7. `agent/disposed` removes the already-torn-down Agent from Context Manager bookkeeping without re-invoking its scoped disposer;
+8. plugin-level disposal explicitly cleans all still-live attachments.
 
 Reusing the same Session id with a new Agent object is a new lifecycle and must receive a new attachment.
 
@@ -504,7 +505,7 @@ Implement M4C2 as reviewable stages:
 6. **test: prove M4C2 model-visible behavior across DSH**
    - five-generation public/runtime compatibility;
    - oldest/newest real AgentLoop recording-adapter E2E;
-   - native preset switch and dynamic edit regressions.
+   - M3B-observed live preset identity changes and dynamic edit regressions.
 
 ## 20. Test matrix
 
@@ -568,7 +569,7 @@ Prove:
 
 - matching profile reaches real model request;
 - preset mismatch removes CM content;
-- native A -> B -> A re-evaluates without re-registration;
+- M3B-observed live preset identity A -> B -> A re-evaluates without re-registration;
 - PromptResource edit is visible on next model step;
 - binding order/edit/disable is visible on next model step;
 - default profile change is visible on next model step;

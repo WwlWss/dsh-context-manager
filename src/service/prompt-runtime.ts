@@ -15,8 +15,6 @@ import type { PromptPlacement } from '../domain/model.js'
 import { resolveEffectiveProfile } from '../runtime/effective-profile.js'
 import { resolvePromptPlan } from '../runtime/prompt-plan.js'
 import type {
-  EffectiveProfileResolution,
-  PromptBindingPlanState,
   PromptRuntimeBindingInspection,
   PromptRuntimeInspection,
 } from '../runtime/types.js'
@@ -72,7 +70,6 @@ export class ContextManagerPromptRuntime extends Service {
       }, 'dshContextPromptRuntime.lifecycle()')
     })
   }
-
 
   async inspect(agentId: string): Promise<PromptRuntimeInspection> {
     const bridge = this.activeBridge
