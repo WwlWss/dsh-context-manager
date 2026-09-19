@@ -77,7 +77,6 @@ function proxyCandidate(
   })
 
   return Object.freeze({
-    ...(native.path === undefined ? {} : { path: native.path }),
     name: native.name,
     description: native.description,
     ...(native.whenToUse === undefined ? {} : { whenToUse: native.whenToUse }),
