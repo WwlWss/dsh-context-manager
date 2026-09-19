@@ -25,8 +25,14 @@ function agent(id) {
   return { id, ctx }
 }
 
-function emitCreated(ctx, value) {
-  return ctx.emit('agent/created', { agent: value })
+async function emitCreated(ctx, value) {
+  ctx.emit('agent/created', { agent: value })
+  // Test Context.emit() is fire-and-forget, while real DSH publishes
+  // agent/created through serial dispatch and awaits async listeners.
+  // Flush the immediate listener/attachment microtasks for synchronous
+  // attachment fixtures without turning gated race tests into blocking emits.
+  await Promise.resolve()
+  await Promise.resolve()
 }
 
 function emitDisposed(ctx, value) {
