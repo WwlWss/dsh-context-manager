@@ -25,6 +25,9 @@ export type {
   EffectiveProfileResolution,
   PromptBindingPlanState,
   PromptPlan,
+  PromptRuntimeBindingInspection,
+  PromptRuntimeInspection,
+  PromptRuntimeNativeState,
 } from './runtime/types.js'
 export * from './domain/errors.js'
 export * from './domain/model.js'

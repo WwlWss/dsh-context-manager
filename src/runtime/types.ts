@@ -61,3 +61,38 @@ export interface PromptPlan {
   readonly bindings: readonly Readonly<PromptBindingPlanState>[]
   readonly eligible: readonly Readonly<Extract<PromptBindingPlanState, { state: 'eligible' }>>[]
 }
+
+
+export type PromptRuntimeNativeState = 'present' | 'suppressed' | 'transformed'
+
+export type PromptRuntimeBindingInspection =
+  | Readonly<Extract<PromptBindingPlanState, { state: 'disabled' | 'missing-resource' | 'invalid-resource' | 'empty-content' }>>
+  | {
+      readonly state: 'native-suppressed'
+      readonly bindingId: string
+      readonly resourceId: string
+      readonly placement: import('../domain/model.js').PromptPlacement
+      readonly order: number
+    }
+  | (Readonly<Extract<PromptBindingPlanState, { state: 'eligible' }>> & {
+      readonly nativeState: PromptRuntimeNativeState
+    })
+
+export type PromptRuntimeInspection =
+  | {
+      readonly status: 'runtime-unavailable'
+    }
+  | {
+      readonly status: 'agent-not-live'
+      readonly agentId: string
+    }
+  | {
+      readonly status: 'assembly-bypassed'
+      readonly agentId: string
+    }
+  | {
+      readonly status: 'resolved'
+      readonly agentId: string
+      readonly profile: EffectiveProfileResolution
+      readonly bindings: readonly PromptRuntimeBindingInspection[]
+    }

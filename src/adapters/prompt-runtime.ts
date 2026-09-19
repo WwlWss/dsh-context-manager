@@ -25,6 +25,7 @@ interface HostPromptSectionRegistration {
 interface HostSystemPromptRuntime {
   section(section: HostPromptSectionRegistration): () => void
   context(context: HostPromptSectionRegistration): () => void
+  assemble?(context?: unknown): Promise<HostPromptAssembly>
 }
 
 interface HostAssembledSection {
@@ -56,6 +57,7 @@ interface PromptAssemblyEventContext {
 }
 
 export interface PromptRuntimeAssemblyResolution {
+  readonly profile: import('../runtime/types.js').EffectiveProfileResolution
   readonly plan?: PromptPlan
 }
 
@@ -109,7 +111,9 @@ function placementOfSlot(name: string): PromptPlacement | undefined {
   return undefined
 }
 
-function visiblePlacements(assembly: HostPromptAssembly): ReadonlySet<PromptPlacement> {
+export function promptRuntimeVisiblePlacements(
+  assembly: HostPromptAssembly,
+): ReadonlySet<PromptPlacement> {
   const placements = new Set<PromptPlacement>()
   for (const section of assembly.sections) {
     const placement = placementOfSlot(section.name)
@@ -167,6 +171,56 @@ function expandPlan(assembly: HostPromptAssembly, plan: PromptPlan | undefined):
     PROMPT_RUNTIME_SLOT_NAMES['runtime-context'],
     (byPlacement.get('runtime-context') ?? []) as HostAssembledContext[],
   )
+}
+
+
+const INSPECTION_CAPTURE = Symbol('dsh-context-manager.prompt-runtime.inspection')
+
+interface InspectionCapture {
+  visiblePlacements?: readonly PromptPlacement[]
+  resolution?: PromptRuntimeAssemblyResolution
+}
+
+function inspectionCapture(context: unknown): InspectionCapture | undefined {
+  if (typeof context !== 'object' || context === null) return undefined
+  return (context as Record<PropertyKey, unknown>)[INSPECTION_CAPTURE] as InspectionCapture | undefined
+}
+
+export interface AgentPromptRuntimeInspectionAssembly {
+  readonly assembly: HostPromptAssembly
+  readonly visiblePlacements?: readonly PromptPlacement[]
+  readonly resolution?: PromptRuntimeAssemblyResolution
+}
+
+/**
+ * Run a fresh native assembly for one already-attached Agent. The private
+ * capture token exists only for this call and does not become cross-step state.
+ */
+export async function inspectAgentPromptRuntime(
+  agent: RuntimeAgent,
+): Promise<AgentPromptRuntimeInspectionAssembly> {
+  const runtime = requireRuntime(agent.ctx)
+  if (typeof runtime.assemble !== 'function') {
+    throw unsupportedRuntimeApi('expected assemble() for runtime inspection')
+  }
+
+  const capture: InspectionCapture = {}
+  const assembly = await runtime.assemble({
+    scope: agent,
+    agent,
+    [INSPECTION_CAPTURE]: capture,
+  })
+  validateAssembly(assembly)
+
+  return Object.freeze({
+    assembly,
+    ...(capture.visiblePlacements === undefined
+      ? {}
+      : { visiblePlacements: capture.visiblePlacements }),
+    ...(capture.resolution === undefined
+      ? {}
+      : { resolution: capture.resolution }),
+  })
 }
 
 function registerSlot(
@@ -229,8 +283,13 @@ export function installAgentPromptRuntime(
       'system-prompt/assemble',
       async (assembly, _context, next) => {
         validateAssembly(assembly)
-        const visible = visiblePlacements(assembly)
+        const visible = promptRuntimeVisiblePlacements(assembly)
         const resolved = resolve(visible)
+        const inspection = inspectionCapture(_context)
+        if (inspection !== undefined) {
+          inspection.visiblePlacements = Object.freeze([...visible])
+          inspection.resolution = resolved
+        }
         expandPlan(assembly, resolved.plan)
         return await next()
       },
