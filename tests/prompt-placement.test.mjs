@@ -109,7 +109,7 @@ test('present partial or malformed systemPrompt capabilities fail loud', () => {
       section() {},
       context() {},
       getSectionOrder(name) {
-        return name === 'TOOL_BASH' ? 2 : 3
+        return name === 'TOOL_BASH' ? 0 : 3
       },
       getContextOrder() { return 120 },
     })),
