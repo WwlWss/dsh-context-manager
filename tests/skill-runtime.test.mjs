@@ -404,3 +404,62 @@ test('lower-rank Agent-local provider wins and inspection reports policy not eff
   await current.scope.dispose()
   await root.fiber.dispose()
 })
+
+
+test('incomplete parent discovery propagates and inspection refuses to overclaim policy state', async () => {
+  const root = new Context()
+  await root.plugin(SkillRegistry)
+
+  let bodyLoads = 0
+  const stopNative = scopedSkills(root).registerProvider(() => ({
+    name: 'recovering-provider',
+    async list() {
+      return {
+        candidates: [
+          candidate('recovering-provider', 'target', {
+            modelInvocable: true,
+            userInvocable: true,
+          }, 'body'),
+        ],
+        complete: false,
+      }
+    },
+    async get(selected) {
+      bodyLoads += 1
+      return {
+        name: selected.name,
+        description: selected.description,
+        invocation: selected.invocation,
+        source: selected.source,
+        provider: selected.provider,
+        content: selected.locator.content,
+      }
+    },
+  }))
+
+  const current = mintAgent(root, 'agent-incomplete')
+  const state = {
+    presetId: 'standard',
+    skills: { target: 'off' },
+  }
+  const runtime = await bootRuntime(root, [current.agent], state)
+
+  const catalog = await scopedSkills(root).snapshot({ scope: current.agent })
+  assert.equal(catalog.complete, false)
+  assert.equal(bodyLoads, 0)
+
+  const inspected = await runtime.runtime.inspect('agent-incomplete')
+  assert.equal(inspected.status, 'resolved')
+  assert.equal(inspected.catalogComplete, false)
+  assert.deepEqual(inspected.bindings, [{
+    state: 'catalog-incomplete',
+    skillName: 'target',
+    mode: 'off',
+  }])
+  assert.equal(bodyLoads, 0)
+
+  await runtime.fiber.dispose()
+  stopNative()
+  await current.scope.dispose()
+  await root.fiber.dispose()
+})
