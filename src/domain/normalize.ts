@@ -5,6 +5,7 @@ import {
   type ContextManagerPersistenceState,
   type ContextManagerSnapshot,
   type ContextProfile,
+  type DefaultProfileCandidate,
   type PromptBinding,
   type PromptPlacement,
   type SkillBinding,
@@ -162,6 +163,51 @@ function incompatibleSnapshot(
     diagnostics: [diagnostic],
     persistence,
   })
+}
+
+/**
+ * Resolve only the configured default profile for runtime hot paths.
+ *
+ * This deliberately avoids enumerating the reusable profile library. Invalid
+ * sibling profiles therefore do not participate in the result or cost of this
+ * read.
+ */
+export function normalizeDefaultProfileCandidate(
+  stored: StoredContextManagerSettings,
+): DefaultProfileCandidate {
+  if (classifyContextManagerSchemaVersion(stored.schemaVersion) !== 'supported') {
+    return Object.freeze({
+      status: 'schema-incompatible',
+      ...(stored.defaultProfileId === undefined
+        ? {}
+        : { configuredProfileId: stored.defaultProfileId }),
+    })
+  }
+
+  const profileId = stored.defaultProfileId
+  if (profileId === undefined) {
+    return Object.freeze({ status: 'no-default-profile' })
+  }
+
+  if (!Object.hasOwn(stored.profiles, profileId)) {
+    return Object.freeze({
+      status: 'missing-default-profile',
+      profileId,
+    })
+  }
+
+  try {
+    return Object.freeze({
+      status: 'candidate',
+      profileId,
+      profile: parseProfile(stored.profiles[profileId]),
+    })
+  } catch {
+    return Object.freeze({
+      status: 'invalid-default-profile',
+      profileId,
+    })
+  }
 }
 
 /**
