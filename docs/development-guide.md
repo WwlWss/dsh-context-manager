@@ -325,17 +325,20 @@ A missing bound skill is diagnostic state, not permission to fabricate a skill d
 
 M5A adds only the targeted default-profile hot-path read, Context Manager authority invalidation event, and five-generation Skill/Scope contract lane. It must remain model-inert for skills.
 
-M5B should use one Agent-scoped overlay/shadow provider and resolve its underlying native winner through the parent-scope view. Do not rewrite the filesystem provider and do not listen to `skills/change` merely to trigger Context Manager invalidation; native SkillRegistry invalidation already refreshes provider discovery. The planned `Number.MAX_VALUE` rank is the lowest public finite rank, but equal-rank same-layer candidates still tie on provider registration order, so only claim the precedence actually proven by tests.
+M5B should use one Agent-scoped overlay/shadow provider and resolve its underlying native winner through the parent-scope view. Provider `list()` must stay metadata-only; full native definitions are loaded lazily only from proxy `get()`. Proxy candidates must advertise the Context Manager provider name because DSH validates `candidate.provider === provider.name`; keep underlying native identity in locator/inspection state. Do not rewrite the filesystem provider and do not listen to `skills/change` merely to trigger Context Manager invalidation; native SkillRegistry invalidation already refreshes provider discovery. The planned `Number.MAX_VALUE` rank is the largest finite numeric rank and therefore the lowest-priority finite rank because lower ranks win. Equal-rank same-layer candidates still tie on provider registration order, so only claim the precedence actually proven by tests.
 
 Before claiming hard `off`, `manual`, or `pinned` semantics, test:
 
-- global/preset/agent scope precedence;
+- global/preset/agent scope precedence, including dynamic preset-parent rebind without a manual registry invalidation;
 - Agent-local same-name duplicates and the equal-`Number.MAX_VALUE` boundary;
+- provider-candidate ownership validation;
 - provider invalidation;
 - live Agent adoption/create/dispose and HMR reload;
 - cold/resumed sessions where the current public lifecycle exposes a relevant seam;
 - exact `basePreset` switching;
 - model and explicit user invocation leakage.
+
+A single `dsh-context-manager/change` must cause at most one registry-wide Skill invalidation, not one `control.invalidate()` call per live Agent. Any per-Agent derived state should be pull-based or cleared without producing N redundant `skills/change` events.
 
 M5C must use native `renderSkillContent()` for pinned full instructions and replace/clear one owned durable bundle rather than appending a new copy every model step.
 
@@ -490,7 +493,7 @@ CI deliberately separates compatibility concerns instead of relying on one broad
 4. the Session preset identity lanes cover the same five generations and exercise the legacy event path and modern public projection path with real published Session/projection objects;
 5. the M4A Prompt Library Storage Domain matrix covers those same five generations with both a compile contract and real Storage/StorageJson/StorageDomain durable reopen runtime test;
 6. M4C1/M4C2 focused lanes cover all five generations for SystemPrompt placement/runtime contracts, with real AgentLoop endpoint E2E on the legacy and forward-alpha lines;
-7. the M5A Skill/Scope lane compiles and executes the public SkillRegistry/Scope contract on all five generations, including nearest-scope precedence, same-layer rank/ties, invalidation/disposal, policy preservation, policy-neutral `get()`, `renderSkillContent()`, and `scopeParentOf()`;
+7. the M5A Skill/Scope lane compiles and executes the public SkillRegistry/Scope contract on all five generations, including nearest-scope precedence, dynamic parent rebind/cache behavior, same-layer rank/ties, provider-candidate ownership, invalidation/disposal, policy preservation, policy-neutral `get()`, `renderSkillContent()`, and `scopeParentOf()`;
 8. strict packed-package peer installation is verified against both the retained stable Settings line `0.1.5-rc.2` and the forward-alpha line `0.1.6-alpha.2`;
 9. full DSH CLI/bundle composition smoke covers `0.1.2-rc.1`, `0.1.5-rc.1`, `0.1.5-rc.2`, and `0.1.6-alpha.2`.
 
