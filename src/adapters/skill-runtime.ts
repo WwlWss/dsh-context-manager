@@ -234,13 +234,15 @@ export async function inspectAgentSkillPolicy(
   }
 
   const rootSkills = skillsService(rootCtx)
-  const [parentSnapshot, agentSnapshot] = await Promise.all([
-    rootSkills.snapshot(parentViewOptions(agent, cwd)),
-    rootSkills.snapshot({
-      ...(cwd === undefined ? {} : { cwd }),
-      scope: agent,
-    }),
-  ])
+  // Resolve the parent first. The Agent-view snapshot invokes this CM
+  // provider, which reads the same parent view; sequencing lets SkillRegistry
+  // reuse the completed parent catalog instead of concurrently discovering the
+  // same native providers twice.
+  const parentSnapshot = await rootSkills.snapshot(parentViewOptions(agent, cwd))
+  const agentSnapshot = await rootSkills.snapshot({
+    ...(cwd === undefined ? {} : { cwd }),
+    scope: agent,
+  })
 
   const complete = parentSnapshot.complete && agentSnapshot.complete
   const parentByName = new Map(parentSnapshot.skills.map(skill => [skill.name, skill]))
