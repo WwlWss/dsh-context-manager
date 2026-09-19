@@ -5,7 +5,7 @@ import type {
 } from '../domain/model.js'
 import type { EffectiveProfileResolution } from './types.js'
 
-function frozen<T extends object>(value: T): Readonly<T> {
+function frozen<const T extends object>(value: T): Readonly<T> {
   return Object.freeze(value)
 }
 
