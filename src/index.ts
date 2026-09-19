@@ -5,6 +5,7 @@ import { ContextManagerPresetAuthoring } from './service/preset-authoring.js'
 import { ContextManagerPresetDirectory } from './service/preset-directory.js'
 import { ContextManagerPromptLibrary } from './service/prompt-library.js'
 import { ContextManagerPromptPlacementCapability } from './service/prompt-placement.js'
+import { ContextManagerPromptRuntime } from './service/prompt-runtime.js'
 import { ContextManagerSessionPresetIdentity } from './service/session-preset.js'
 
 export type {
@@ -20,6 +21,11 @@ export type {
   PromptPlacementCapabilityChannel,
   PromptPlacementCapabilitySnapshot,
 } from './service/prompt-placement.js'
+export type {
+  EffectiveProfileResolution,
+  PromptBindingPlanState,
+  PromptPlan,
+} from './runtime/types.js'
 export * from './domain/errors.js'
 export * from './domain/model.js'
 export * from './domain/schema.js'
@@ -38,6 +44,7 @@ export { ContextManagerPresetAuthoring } from './service/preset-authoring.js'
 export { ContextManagerPresetDirectory } from './service/preset-directory.js'
 export { ContextManagerPromptLibrary } from './service/prompt-library.js'
 export { ContextManagerPromptPlacementCapability } from './service/prompt-placement.js'
+export { ContextManagerPromptRuntime } from './service/prompt-runtime.js'
 export { ContextManagerSessionPresetIdentity } from './service/session-preset.js'
 
 export const name = 'dsh-context-manager'
@@ -49,5 +56,6 @@ export function apply(ctx: Context): void {
   ctx.plugin(ContextManagerPresetAuthoring)
   ctx.plugin(ContextManagerPromptLibrary)
   ctx.plugin(ContextManagerPromptPlacementCapability)
+  ctx.plugin(ContextManagerPromptRuntime)
   ctx.logger('dsh-context-manager').info('Context Manager Host services loaded')
 }
