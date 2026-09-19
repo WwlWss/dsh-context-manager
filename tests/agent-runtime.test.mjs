@@ -60,7 +60,7 @@ test('Agent runtime bridge adopts existing Agents and later created Agents once 
 
   const attached = []
   const cleaned = []
-  const bridge = await attachAgentRuntimeBridge(root, async current => {
+  const bridge = await attachAgentRuntimeBridge(root, current => {
     attached.push(current)
     return () => { cleaned.push(current) }
   })
