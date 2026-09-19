@@ -146,6 +146,53 @@ test('Agent runtime bridge initial adoption rolls back earlier Agents when a lat
   assert.deepEqual(cleaned, ['a'])
 })
 
+test('Agent runtime bridge drains concurrent created attachment when initial adoption fails', async () => {
+  const root = new Context()
+  const first = agent('first')
+  const failing = agent('failing')
+  const late = agent('late')
+  const agents = [first, failing]
+  await root.plugin(FakeAgents, agents)
+
+  const failingStarted = Promise.withResolvers()
+  const failRelease = Promise.withResolvers()
+  const lateStarted = Promise.withResolvers()
+  const lateRelease = Promise.withResolvers()
+  const cleaned = []
+
+  const bridgePromise = attachAgentRuntimeBridge(root, async current => {
+    if (current === failing) {
+      failingStarted.resolve()
+      await failRelease.promise
+      throw new Error('initial attach failed')
+    }
+    if (current === late) {
+      lateStarted.resolve()
+      await lateRelease.promise
+    }
+    return () => { cleaned.push(current.id) }
+  })
+
+  await failingStarted.promise
+  agents.push(late)
+  const created = emitCreated(root, late)
+  await lateStarted.promise
+
+  let rejected = false
+  const observed = bridgePromise.catch(error => {
+    rejected = true
+    throw error
+  })
+  failRelease.resolve()
+  await Promise.resolve()
+  assert.equal(rejected, false)
+
+  lateRelease.resolve()
+  await created
+  await assert.rejects(observed, /initial attach failed/)
+  assert.deepEqual(cleaned.sort(), ['first', 'late'])
+})
+
 test('Agent runtime bridge waits for an in-flight attachment before disposal completes', async () => {
   const root = new Context()
   const agents = []
