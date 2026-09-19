@@ -140,25 +140,27 @@ M4C2 must concatenate/resolve bindings in that order. It must not turn individua
 
 | Context Manager placement | 0.1.1 legacy | 0.1.2+ named sparse | Meaning |
 | --- | ---: | ---: | --- |
-| `before-persona` | `-1` | `-1` | after DSH opening/identity material, immediately before persona opening |
-| `after-persona` | `1` | `1` | immediately after persona opening, before DSH policy/guidance groups |
-| `before-tool-guidance` | `99` | `getSectionOrder('TOOL_BASH') - 1` (currently `999`) | after policy/invocation prelude, before ordinary tool guidance |
-| `after-tool-guidance` | `200` | `getSectionOrder('TOOLS_SDK') - 1` (currently `4999`) | after ordinary/higher-level textual tool guidance, before generated tool protocol |
+| `before-persona` | `-0.5` | `-0.5` | after DSH opening/identity material, immediately before persona opening |
+| `after-persona` | `0.5` | `0.5` | immediately after persona opening, before DSH policy/guidance groups |
+| `before-tool-guidance` | `99.5` | `getSectionOrder('TOOL_BASH') - 0.5` (currently `999.5`) | after policy/invocation prelude, before ordinary tool guidance |
+| `after-tool-guidance` | `199.5` | `getSectionOrder('TOOLS_SDK') - 0.5` (currently `4999.5`) | after ordinary/higher-level textual tool guidance, before generated tool protocol |
 
 The modern adapter deliberately queries only named boundaries common to every 0.1.2+ retained generation. It does not probe an invalid persona key to distinguish `DEPLOYMENT_PERSONA` from `DEPLOYMENT_PERSONA_PREFIX`.
 
 `after-tool-guidance` is defined against DSH's textual guidance grouping. It does not mean after tool schemas, because tool schemas are an independent assembly sequence. It also does not mean after generated protocol/final-output obligations: `TOOLS_SDK` is the next DSH group boundary.
 
+The half-step offsets are deliberate. The public registry accepts any finite numeric order, while the named first-party allocation is integer-valued. Using a half-step keeps Context Manager adjacent to the selected public boundary without claiming an unallocated integer as if it were a reserved extension slot.
+
 ### 6.2 Runtime-context anchor
 
 `runtime-context` maps to the native `PromptContext` channel, never to a system-prompt section.
 
-The retained contract places Context Manager's future aggregate context after the current DSH policy/delegation trio:
+The retained contract places Context Manager's future aggregate context immediately after the current DSH policy/delegation trio:
 
 ```text
-0.1.1:          130
-0.1.2+:         getContextOrder('SUBAGENT_DELEGATION') + 10
-current result: 130
+0.1.1:          120.5
+0.1.2+:         getContextOrder('SUBAGENT_DELEGATION') + 0.5
+current result: 120.5
 ```
 
 This is an independent context sequence. No cross-order relationship is implied between a context order and a system-section order.

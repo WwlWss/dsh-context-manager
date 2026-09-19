@@ -36,11 +36,11 @@ test('legacy systemPrompt convention maps semantic anchors without registration 
   assert.deepEqual(compatibility, {
     status: 'available',
     targets: {
-      'before-persona': { channel: 'section', order: -1 },
-      'after-persona': { channel: 'section', order: 1 },
-      'before-tool-guidance': { channel: 'section', order: 99 },
-      'after-tool-guidance': { channel: 'section', order: 200 },
-      'runtime-context': { channel: 'runtime-context', order: 130 },
+      'before-persona': { channel: 'section', order: -0.5 },
+      'after-persona': { channel: 'section', order: 0.5 },
+      'before-tool-guidance': { channel: 'section', order: 99.5 },
+      'after-tool-guidance': { channel: 'section', order: 199.5 },
+      'runtime-context': { channel: 'runtime-context', order: 0.530 },
     },
   })
   assert.equal(sectionCalls, 0)
@@ -71,11 +71,11 @@ test('named sparse systemPrompt mapping derives only common public boundaries', 
   assert.deepEqual(compatibility, {
     status: 'available',
     targets: {
-      'before-persona': { channel: 'section', order: -1 },
-      'after-persona': { channel: 'section', order: 1 },
-      'before-tool-guidance': { channel: 'section', order: 999 },
-      'after-tool-guidance': { channel: 'section', order: 4999 },
-      'runtime-context': { channel: 'runtime-context', order: 130 },
+      'before-persona': { channel: 'section', order: -0.5 },
+      'after-persona': { channel: 'section', order: 0.5 },
+      'before-tool-guidance': { channel: 'section', order: 99.59 },
+      'after-tool-guidance': { channel: 'section', order: 4999.5 },
+      'runtime-context': { channel: 'runtime-context', order: 0.530 },
     },
   })
   assert.deepEqual(sectionLookups, ['TOOL_BASH', 'TOOLS_SDK'])

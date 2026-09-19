@@ -65,12 +65,14 @@ function freezeTargets(
   return Object.freeze(targets)
 }
 
+const EXTENSION_STEP = 0.5
+
 const LEGACY_TARGETS = freezeTargets({
-  'before-persona': target('section', -1),
-  'after-persona': target('section', 1),
-  'before-tool-guidance': target('section', 99),
-  'after-tool-guidance': target('section', 200),
-  'runtime-context': target('runtime-context', 130),
+  'before-persona': target('section', -EXTENSION_STEP),
+  'after-persona': target('section', EXTENSION_STEP),
+  'before-tool-guidance': target('section', 100 - EXTENSION_STEP),
+  'after-tool-guidance': target('section', 199 + EXTENSION_STEP),
+  'runtime-context': target('runtime-context', 120 + EXTENSION_STEP),
 })
 
 function readNamedOrder(
@@ -104,11 +106,11 @@ function namedTargets(
   // Persona opening is order 0 on every retained public DSH generation.
   // Keep the semantic anchor adjacent to that stable public slot instead of
   // probing generation-specific DEPLOYMENT_PERSONA(_PREFIX) names.
-  const beforePersona = -1
-  const afterPersona = 1
-  const beforeToolGuidance = firstToolGuidance - 1
-  const afterToolGuidance = generatedToolProtocol - 1
-  const runtimeContext = nativeContextTail + 10
+  const beforePersona = -EXTENSION_STEP
+  const afterPersona = EXTENSION_STEP
+  const beforeToolGuidance = firstToolGuidance - EXTENSION_STEP
+  const afterToolGuidance = generatedToolProtocol - EXTENSION_STEP
+  const runtimeContext = nativeContextTail + EXTENSION_STEP
 
   if (beforeToolGuidance <= afterPersona) {
     throw unsupportedApi(
@@ -120,9 +122,9 @@ function namedTargets(
       'TOOLS_SDK placement leaves no extension slot after ordinary tool guidance',
     )
   }
-  if (!Number.isSafeInteger(runtimeContext)) {
+  if (!Number.isFinite(runtimeContext)) {
     throw unsupportedApi(
-      'SUBAGENT_DELEGATION placement leaves no safe runtime-context extension order',
+      'SUBAGENT_DELEGATION placement leaves no finite runtime-context extension order',
     )
   }
 

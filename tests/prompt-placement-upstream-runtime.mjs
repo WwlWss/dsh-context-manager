@@ -32,11 +32,11 @@ try {
 
   if (generation === 'legacy') {
     assert.deepEqual(targets, {
-      'before-persona': { channel: 'section', order: -1 },
-      'after-persona': { channel: 'section', order: 1 },
-      'before-tool-guidance': { channel: 'section', order: 99 },
-      'after-tool-guidance': { channel: 'section', order: 200 },
-      'runtime-context': { channel: 'runtime-context', order: 130 },
+      'before-persona': { channel: 'section', order: -0.5 },
+      'after-persona': { channel: 'section', order: 0.5 },
+      'before-tool-guidance': { channel: 'section', order: 99.5 },
+      'after-tool-guidance': { channel: 'section', order: 199.5 },
+      'runtime-context': { channel: 'runtime-context', order: 0.530 },
     })
     firstToolOrder = 100
     toolTailOrder = 199
@@ -47,11 +47,11 @@ try {
     toolTailOrder = systemPrompt.getSectionOrder('TOOLS_SDK')
     nativeContextTail = systemPrompt.getContextOrder('SUBAGENT_DELEGATION')
 
-    assert.equal(targets['before-persona'].order, -1)
-    assert.equal(targets['after-persona'].order, 1)
-    assert.equal(targets['before-tool-guidance'].order, firstToolOrder - 1)
-    assert.equal(targets['after-tool-guidance'].order, toolTailOrder - 1)
-    assert.equal(targets['runtime-context'].order, nativeContextTail + 10)
+    assert.equal(targets['before-persona'].order, -0.5)
+    assert.equal(targets['after-persona'].order, 0.5)
+    assert.equal(targets['before-tool-guidance'].order, firstToolOrder - 0.5)
+    assert.equal(targets['after-tool-guidance'].order, toolTailOrder - 0.5)
+    assert.equal(targets['runtime-context'].order, nativeContextTail + 0.5)
   }
 
   ctx.systemPrompt.section({

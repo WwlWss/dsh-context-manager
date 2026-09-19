@@ -214,7 +214,9 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: Install selected SystemPrompt generation
         run: |
-          pnpm add --save-dev --save-exact             @deepseek-ai/cordis@${{ matrix.cordis }}             @deepseek-ai/dsh-system-prompt@${{ matrix.version }}
+          pnpm add --save-dev --save-exact \
+            @deepseek-ai/cordis@${{ matrix.cordis }} \
+            @deepseek-ai/dsh-system-prompt@${{ matrix.version }}
       - name: Compile public SystemPrompt contract
         run: |
           pnpm exec tsc --ignoreConfig --noEmit --strict --skipLibCheck --module NodeNext --moduleResolution NodeNext --target ES2024 tests/prompt-placement-upstream-${{ matrix.fixture }}-contract.ts
