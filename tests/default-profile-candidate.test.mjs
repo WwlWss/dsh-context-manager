@@ -30,6 +30,10 @@ async function withManager(run) {
     assert.ok(manager)
 
     const read = stored => {
+      // Deliberate white-box seam: routing the Proxy sentinel through Settings
+      // would let schema resolution enumerate it before the runtime read. Keep
+      // the normalizer internal instead of publishing production API only for
+      // this performance regression.
       manager.source = () => stored
       return manager.defaultProfileCandidate()
     }
