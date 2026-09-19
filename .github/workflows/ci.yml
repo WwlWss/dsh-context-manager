@@ -228,9 +228,92 @@ jobs:
           node --test ./tests/prompt-placement.test.mjs
           node ./tests/prompt-placement-upstream-runtime.mjs
 
+  prompt-runtime-contract:
+    name: Prompt runtime Host contract (${{ matrix.version }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { version: 0.1.1-rc.2, cordis: 4.0.1, generation: legacy }
+          - { version: 0.1.2-rc.1, cordis: 4.0.2, generation: named }
+          - { version: 0.1.5-rc.1, cordis: 4.0.2, generation: named }
+          - { version: 0.1.5-rc.2, cordis: 4.0.2, generation: named }
+          - { version: 0.1.6-alpha.2, cordis: 4.0.2, generation: named }
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22.20.0
+      - name: Enable pinned pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.7.0 --activate
+      - run: pnpm install --frozen-lockfile
+      - name: Install selected Agent/SystemPrompt generation
+        run: |
+          pnpm add --save-dev --save-exact \
+            @deepseek-ai/cordis@${{ matrix.cordis }} \
+            @deepseek-ai/dsh-agent@${{ matrix.version }} \
+            @deepseek-ai/dsh-scope@${{ matrix.version }} \
+            @deepseek-ai/dsh-system-prompt@${{ matrix.version }}
+      - name: Compile public M4C2 Host contract
+        run: |
+          pnpm exec tsc --ignoreConfig --noEmit --strict --skipLibCheck --module NodeNext --moduleResolution NodeNext --target ES2024 tests/prompt-runtime-upstream-contract.ts
+      - name: Run scoped M4C2 runtime smoke
+        env:
+          DSH_M4C2_GENERATION: ${{ matrix.generation }}
+        run: |
+          pnpm run build
+          node ./tests/prompt-runtime-upstream-runtime.mjs
+
+  prompt-runtime-agent-loop:
+    name: Prompt runtime AgentLoop E2E (${{ matrix.version }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { version: 0.1.1-rc.2, cordis: 4.0.1, schemastery: 3.18.1, generation: legacy }
+          - { version: 0.1.6-alpha.2, cordis: 4.0.2, schemastery: 3.18.2, generation: current }
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22.20.0
+      - name: Enable pinned pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.7.0 --activate
+      - run: pnpm install --frozen-lockfile
+      - name: Install selected real AgentLoop generation
+        run: |
+          pnpm add --save-dev --save-exact \
+            @deepseek-ai/cordis@${{ matrix.cordis }} \
+            @deepseek-ai/schemastery@${{ matrix.schemastery }} \
+            @deepseek-ai/dsh-agent@${{ matrix.version }} \
+            @deepseek-ai/dsh-agent-loop@${{ matrix.version }} \
+            @deepseek-ai/dsh-invariants@${{ matrix.version }} \
+            @deepseek-ai/dsh-llm@${{ matrix.version }} \
+            @deepseek-ai/dsh-scope@${{ matrix.version }} \
+            @deepseek-ai/dsh-session@${{ matrix.version }} \
+            @deepseek-ai/dsh-session-persistence@${{ matrix.version }} \
+            @deepseek-ai/dsh-session-projection@${{ matrix.version }} \
+            @deepseek-ai/dsh-settings@${{ matrix.version }} \
+            @deepseek-ai/dsh-system-prompt@${{ matrix.version }} \
+            @deepseek-ai/dsh-tools@${{ matrix.version }}
+      - name: Build and run real AgentLoop M4C2 E2E
+        env:
+          DSH_M4C2_E2E_GENERATION: ${{ matrix.generation }}
+        run: |
+          pnpm run build
+          node ./tests/prompt-runtime-agent-loop.e2e.mjs
+
   package:
     name: verify packed bundle
-    needs: [verify, settings-modern, agent-presets-contract, session-preset-contract, prompt-library-contract, prompt-placement-contract]
+    needs: [verify, settings-modern, agent-presets-contract, session-preset-contract, prompt-library-contract, prompt-placement-contract, prompt-runtime-contract, prompt-runtime-agent-loop]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:

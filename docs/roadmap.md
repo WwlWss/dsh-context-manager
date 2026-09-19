@@ -285,7 +285,7 @@ Rules:
 
 ### 4C1. DSH system-prompt placement compatibility adapter
 
-**Status:** in progress. See [m4c1-plan.md](m4c1-plan.md).
+**Status:** complete in merged PR #13. See [m4c1-plan.md](m4c1-plan.md).
 
 Purpose: map the stable Context Manager placement vocabulary onto the public DSH system-prompt/runtime-context ordering contract without leaking DSH generation-specific numeric order into stored data.
 
@@ -304,6 +304,8 @@ Compatibility behavior:
 Special composition constraints, including complete-persona or runtime-context suppression, must remain observable runtime facts. Do not hard-code `presetId === "minimal"`; copied/custom presets may have the same native composition constraints.
 
 ### 4C2. Agent-scoped Prompt Runtime
+
+**Status:** in progress. See [m4c2-plan.md](m4c2-plan.md).
 
 Purpose: make PromptBindings model-effective for the first time while preserving future Workspace/Session binding extensibility.
 
@@ -339,7 +341,7 @@ Hard runtime invariants:
 - HMR/unload must remove every Context Manager registration from already-live Agents and leave stock DSH behavior;
 - reload must attach idempotently to Agents that already existed before the plugin reloaded.
 
-Prefer a small fixed set of aggregate Agent-scoped providers (one per supported system anchor plus one runtime-context provider) over one native registration per PromptResource. Resolve the selected profile/resources once per DSH assembly and share that result across the providers; per-assembly memoization keyed by the public `AssembleContext` object is allowed, cross-step state caching is not authoritative. The owning Agent must come from the Agent-scoped registration closure. `context.agent` may be present on ordinary DSH Agent assemblies through public module augmentation, but it is not Context Manager's registration-ownership mechanism.
+Use a fixed Agent-scoped placeholder set (one empty section slot per supported system anchor plus one empty runtime-context slot) and one Agent-scoped `system-prompt/assemble` waterfall expander. The expander resolves the effective profile/resources exactly once for that assembly and replaces each visible placeholder with independent per-binding assembled contributions. This preserves PromptResource interpolation boundaries and eliminates the need for `WeakMap<AssembleContext, Plan>` memoization. Never register one native provider per PromptResource, and never cache runtime truth across model steps. The owning Agent comes from the Agent-scoped registration closure; optional `context.agent` metadata is not the ownership mechanism.
 
 Runtime/effective output must distinguish at least:
 
@@ -353,22 +355,23 @@ active
 
 and per-binding states such as disabled, missing-resource, eligible, effective, or suppressed by the native composition.
 
-Tests before M4 is complete:
+M4 completion evidence covers:
 
-- all shipped native presets plus a copied/custom composition with equivalent suppression behavior;
+- representative native system-prompt compositions, including generic complete-section and runtime-context suppression behavior without preset-id special cases;
 - exact base-preset match and mismatch with no fallback;
-- native live preset switch `A -> B -> A`: matching overlay active on A, absent with `base-preset-mismatch` on B, and active again after returning to A, without provider re-registration or Context Manager-driven switching;
-- deleted native preset + still-live matching Session identity;
+- M3B-observed live identity switch `A -> B -> A`: matching overlay active on A, absent with `base-preset-mismatch` on B, and active again after returning to A without provider re-registration or Context Manager-driven switching; M3B's own published-package coverage remains the evidence for native preset projection/selection semantics;
+- deleted native preset + still-live matching Session identity at the effective-profile boundary;
 - stable local ordering and deterministic tie breaking;
 - PromptResource edit/reorder reflected on the next model step without duplicate registrations;
 - enable/disable lifecycle;
 - default-profile change reflected on the next model step without creating a Session binding;
-- unload/HMR cleanup and reload of already-live Agents;
-- cold/resume behavior consistent with the then-current effective-profile fallback;
-- runtime-context snapshot behavior when content is unchanged versus changed;
-- native template-variable errors propagate without rewriting stored PromptResource text;
-- a real DSH Agent/recording-model E2E proving the model request sees the same runtime resolution used by preview/diagnostics;
+- concurrent initial-adoption / `agent/created` attachment coalescing, unload/HMR cleanup, and reload of already-live Agents;
+- runtime-context projection and native suppression semantics;
+- independent native interpolation boundaries plus propagation of native template-variable errors without rewriting source PromptResource text;
+- real DSH Agent/recording-model E2E coverage on the retained legacy and current runtime lines;
 - no modification of native preset files.
+
+Cold/resume profile-binding semantics remain a later M9 concern because M4 has no Session/Workspace profile binding persistence of its own.
 
 M4 is complete only after M4C2 proves real model-visible behavior. M4A/M4B alone remain model-inert.
 

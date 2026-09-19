@@ -1,0 +1,276 @@
+import assert from 'node:assert/strict'
+import { test } from 'node:test'
+
+import { Context, Service } from '@deepseek-ai/cordis'
+
+import { attachAgentRuntimeBridge } from '../src/adapters/agent-runtime.ts'
+
+class FakeAgents extends Service {
+  constructor(ctx, agents = []) {
+    super(ctx, 'agents')
+    this.agents = agents
+  }
+
+  get(id) {
+    return this.agents.find(agent => agent.id === id)
+  }
+
+  list() {
+    return [...this.agents]
+  }
+}
+
+function agent(id) {
+  const ctx = new Context()
+  return { id, ctx }
+}
+
+async function emitCreated(ctx, value) {
+  ctx.emit('agent/created', { agent: value })
+  // Test Context.emit() is fire-and-forget, while real DSH publishes
+  // agent/created through serial dispatch and awaits async listeners.
+  // Flush the immediate listener/attachment microtasks for synchronous
+  // attachment fixtures without turning gated race tests into blocking emits.
+  await Promise.resolve()
+  await Promise.resolve()
+}
+
+function emitDisposed(ctx, value) {
+  return ctx.emit('agent/disposed', { agent: value })
+}
+
+test('Agent runtime bridge reports absent agents capability without attaching', async () => {
+  const ctx = new Context()
+  let calls = 0
+  const bridge = await attachAgentRuntimeBridge(ctx, async () => {
+    calls += 1
+    return () => {}
+  })
+
+  assert.equal(bridge, undefined)
+  assert.equal(calls, 0)
+})
+
+test('Agent runtime bridge adopts existing Agents and later created Agents once by object identity', async () => {
+  const root = new Context()
+  const first = agent('same-id')
+  const second = agent('same-id')
+  const agents = [first]
+  await root.plugin(FakeAgents, agents)
+
+  const attached = []
+  const cleaned = []
+  const bridge = await attachAgentRuntimeBridge(root, current => {
+    attached.push(current)
+    return () => { cleaned.push(current) }
+  })
+  assert.ok(bridge)
+  assert.deepEqual(attached, [first])
+
+  await emitCreated(root, first)
+  assert.deepEqual(attached, [first])
+
+  agents.splice(0, 1)
+  await emitDisposed(root, first)
+  agents.push(second)
+  root.emit('agent/created', { agent: second })
+  // Legacy DSH publishes this event fire-and-forget. A synchronous Host
+  // attachment must therefore be visible before emit() returns.
+  assert.deepEqual(attached, [first, second])
+  assert.equal(bridge.agents.size, 1)
+  assert.equal(bridge.agents.has(second), true)
+
+  await bridge.dispose()
+  assert.deepEqual(cleaned, [second])
+  assert.equal(bridge.agents.size, 0)
+})
+
+test('Agent runtime bridge coalesces initial adoption with a concurrent created announcement', async () => {
+  const root = new Context()
+  const current = agent('race')
+  await root.plugin(FakeAgents, [current])
+
+  const started = Promise.withResolvers()
+  const release = Promise.withResolvers()
+  let calls = 0
+
+  const bridgePromise = attachAgentRuntimeBridge(root, async () => {
+    calls += 1
+    started.resolve()
+    await release.promise
+    return () => {}
+  })
+
+  await started.promise
+  const created = emitCreated(root, current)
+  release.resolve()
+
+  const [bridge] = await Promise.all([bridgePromise, created])
+  assert.ok(bridge)
+  assert.equal(calls, 1)
+  assert.equal(bridge.agents.size, 1)
+
+  await bridge.dispose()
+})
+
+test('Agent runtime bridge drops disposed Agent identity without re-disposing its already-owned scope effects', async () => {
+  const root = new Context()
+  const current = agent('a')
+  await root.plugin(FakeAgents, [current])
+  let cleanupCalls = 0
+
+  const bridge = await attachAgentRuntimeBridge(root, async () => () => {
+    cleanupCalls += 1
+  })
+  assert.ok(bridge)
+  assert.equal(bridge.agents.has(current), true)
+
+  await emitDisposed(root, current)
+  assert.equal(bridge.agents.has(current), false)
+
+  // In real DSH the Agent scope is disposed before agent/disposed; the bridge
+  // must not invoke the same scoped disposer a second time.
+  assert.equal(cleanupCalls, 0)
+
+  await bridge.dispose()
+  assert.equal(cleanupCalls, 0)
+})
+
+test('Agent runtime bridge initial adoption rolls back earlier Agents when a later attach fails', async () => {
+  const root = new Context()
+  const first = agent('a')
+  const second = agent('b')
+  await root.plugin(FakeAgents, [first, second])
+
+  const cleaned = []
+  await assert.rejects(
+    attachAgentRuntimeBridge(root, async current => {
+      if (current === second) throw new Error('attach failed')
+      return () => { cleaned.push(current.id) }
+    }),
+    /attach failed/,
+  )
+
+  assert.deepEqual(cleaned, ['a'])
+})
+
+test('Agent runtime bridge drains concurrent created attachment when initial adoption fails', async () => {
+  const root = new Context()
+  const first = agent('first')
+  const failing = agent('failing')
+  const late = agent('late')
+  const agents = [first, failing]
+  await root.plugin(FakeAgents, agents)
+
+  const failingStarted = Promise.withResolvers()
+  const failRelease = Promise.withResolvers()
+  const lateStarted = Promise.withResolvers()
+  const lateRelease = Promise.withResolvers()
+  const cleaned = []
+
+  const bridgePromise = attachAgentRuntimeBridge(root, async current => {
+    if (current === failing) {
+      failingStarted.resolve()
+      await failRelease.promise
+      throw new Error('initial attach failed')
+    }
+    if (current === late) {
+      lateStarted.resolve()
+      await lateRelease.promise
+    }
+    return () => { cleaned.push(current.id) }
+  })
+
+  await failingStarted.promise
+  agents.push(late)
+  const created = emitCreated(root, late)
+  await lateStarted.promise
+
+  let rejected = false
+  const observed = bridgePromise.catch(error => {
+    rejected = true
+    throw error
+  })
+  failRelease.resolve()
+  await Promise.resolve()
+  assert.equal(rejected, false)
+
+  lateRelease.resolve()
+  await created
+  await assert.rejects(observed, /initial attach failed/)
+  assert.deepEqual(cleaned.sort(), ['first', 'late'])
+})
+
+test('Agent runtime bridge waits for an in-flight attachment before disposal completes', async () => {
+  const root = new Context()
+  const agents = []
+  await root.plugin(FakeAgents, agents)
+  const started = Promise.withResolvers()
+  const pending = Promise.withResolvers()
+  const cleaned = []
+
+  const bridge = await attachAgentRuntimeBridge(root, async current => {
+    started.resolve()
+    await pending.promise
+    return () => { cleaned.push(current.id) }
+  })
+  assert.ok(bridge)
+
+  const late = agent('late')
+  agents.push(late)
+  const created = emitCreated(root, late)
+  await started.promise
+
+  let disposeSettled = false
+  const disposing = bridge.dispose().then(() => { disposeSettled = true })
+  await Promise.resolve()
+  assert.equal(disposeSettled, false)
+
+  pending.resolve()
+  await created
+  await disposing
+  assert.deepEqual(cleaned, ['late'])
+  assert.equal(bridge.agents.size, 0)
+})
+
+test('Agent runtime bridge validates malformed present Host capabilities and Agent shapes', async () => {
+  class BrokenAgents extends Service {
+    constructor(ctx) {
+      super(ctx, 'agents')
+    }
+    get() {}
+  }
+
+  const broken = new Context()
+  await broken.plugin(BrokenAgents)
+  await assert.rejects(
+    attachAgentRuntimeBridge(broken, async () => () => {}),
+    /unsupported agents API; expected list\(\)/,
+  )
+
+  const malformed = new Context()
+  await malformed.plugin(FakeAgents, [{ id: 'x', ctx: {} }])
+  await assert.rejects(
+    attachAgentRuntimeBridge(malformed, async () => () => {}),
+    /ctx must expose get\(\), effect\(\), and on\(\)/,
+  )
+})
+
+test('Agent runtime bridge dispose is idempotent and shares concurrent teardown', async () => {
+  const root = new Context()
+  const current = agent('a')
+  await root.plugin(FakeAgents, [current])
+  let cleaned = 0
+
+  const bridge = await attachAgentRuntimeBridge(root, async () => () => {
+    cleaned += 1
+  })
+  assert.ok(bridge)
+
+  const first = bridge.dispose()
+  const second = bridge.dispose()
+  assert.equal(second, first)
+  await Promise.all([first, second])
+  await bridge.dispose()
+  assert.equal(cleaned, 1)
+})
