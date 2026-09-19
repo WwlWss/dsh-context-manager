@@ -11,11 +11,13 @@ import {
 import { assertSafePathKey, ContextManagerError } from '../domain/errors.js'
 import type {
   ContextManagerSnapshot,
+  DefaultProfileCandidate,
   PromptBindingInput,
   PromptPlacement,
   SkillMode,
 } from '../domain/model.js'
 import {
+  normalizeDefaultProfileCandidate,
   normalizeSettings,
   parseProfileForWrite,
   parsePromptBinding,
@@ -85,6 +87,15 @@ export class ContextManagerService extends Service {
   snapshot(): ContextManagerSnapshot {
     const { stored, persistence } = this.readState()
     return normalizeSettings(stored, persistence)
+  }
+
+  /**
+   * Targeted immutable Domain read for runtime consumers that only need the
+   * configured default profile. Unlike snapshot(), this does not normalize or
+   * enumerate unrelated profiles.
+   */
+  defaultProfileCandidate(): DefaultProfileCandidate {
+    return normalizeDefaultProfileCandidate(this.readState().stored)
   }
 
   /** List every stored profile payload, including ones the Domain cannot parse. */
