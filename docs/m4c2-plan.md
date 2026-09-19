@@ -399,6 +399,8 @@ transformed
 - `suppressed`: the contribution is absent from final native assembly;
 - `transformed`: the named contribution remains but downstream expert assembly changed its text.
 
+The public inspection read model is metadata/diagnostic-only. It may report binding identity, placement/order, resource revision, and native state, but it does **not** return PromptResource bodies. Fully rendered effective preview remains an explicit M8 API rather than turning ordinary runtime diagnostics into a large-payload transport surface.
+
 Fully rendered effective preview remains M8 territory. Real AgentLoop tests prove actual model-visible behavior.
 
 ## 16. Unload/HMR semantics
@@ -409,6 +411,9 @@ M4C2 does not cancel active user turns merely because the plugin unloads.
 
 Precise guarantee:
 
+- initial `agents.list()` adoption and a concurrent `agent/created` announcement for the same exact Agent share one in-flight attachment;
+- an Agent attachment that finishes after that Agent is no longer the exact live registry entry is immediately cleaned instead of becoming inspectable;
+- plugin cleanup stops new lifecycle attachment and waits for every in-flight attachment to settle/clean before it resolves;
 - an assembly that started before cleanup may finish using contributions it already resolved;
 - after cleanup completes, every new fresh assembly has no Context Manager registration;
 - reload can adopt already-live Agents once without duplicate providers.
