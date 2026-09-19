@@ -253,6 +253,9 @@ try {
   let inspection = await waitForRuntime(ctx.dshContextPromptRuntime, agent.id)
   assert.equal(inspection.status, 'resolved')
   assert.equal(inspection.profile.status, 'active')
+  const initialBinding = inspection.bindings.find(item => item.bindingId === 'first')
+  assert.equal(initialBinding?.state, 'eligible')
+  assert.equal(Object.hasOwn(initialBinding ?? {}, 'content'), false)
 
   await turn(ctx, agent, 'turn-1')
   let text = requestText(adapter.requests.at(-1))
