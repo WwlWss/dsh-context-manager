@@ -74,6 +74,29 @@ export interface ContextProfile {
   readonly prompts: Readonly<Record<PromptBindingId, PromptBinding>>
 }
 
+/** Targeted Domain read used by runtime hot paths that need only the configured default profile. */
+export type DefaultProfileCandidate =
+  | {
+      readonly status: 'schema-incompatible'
+      readonly configuredProfileId?: string
+    }
+  | {
+      readonly status: 'no-default-profile'
+    }
+  | {
+      readonly status: 'missing-default-profile'
+      readonly profileId: string
+    }
+  | {
+      readonly status: 'invalid-default-profile'
+      readonly profileId: string
+    }
+  | {
+      readonly status: 'candidate'
+      readonly profileId: string
+      readonly profile: ContextProfile
+    }
+
 export type ContextManagerDiagnosticCode =
   | 'invalid-profile'
   | 'missing-default-profile'
