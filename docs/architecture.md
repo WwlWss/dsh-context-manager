@@ -189,9 +189,9 @@ Native DSH invocation policy already separates model and user visibility. The pr
 
 M5A deliberately remains model-inert for skills. It pins the five-generation Skill/Scope contract, introduces a targeted default-profile read for request hot paths, and publishes a Context Manager authority invalidation event. M5B owns native invocation policy; M5C owns the durable Pinned instruction bundle.
 
-The lowest public finite rank is `Number.MAX_VALUE`, but an equal-rank same-layer candidate still ties on provider registration order. Do not describe Agent-local precedence more strongly than the actual M5B lifecycle tests prove.
+`Number.MAX_VALUE` is the largest finite numeric rank accepted by the public contract and therefore the lowest-priority finite rank because lower ranks win. An equal-rank same-layer candidate still ties on provider registration order. Do not describe Agent-local precedence more strongly than the actual M5B lifecycle tests prove.
 
-Before shipping hard policy behavior, verify live Agent creation/adoption/disposal, cold/resumed sessions where a public seam applies, preset standing scopes, provider invalidation, exact base-preset switching, duplicate-name precedence, HMR/unload restoration, and model/user invocation leakage. Do not create a `skills/change` feedback loop: Context Manager Settings changes are its authority invalidation source, while native SkillRegistry invalidation already owns catalog refresh.
+Before shipping hard policy behavior, verify live Agent creation/adoption/disposal, cold/resumed sessions where a public seam applies, dynamic preset-scope reparenting, provider invalidation, exact base-preset switching, duplicate-name precedence, HMR/unload restoration, and model/user invocation leakage. Catalog/list paths must remain metadata-only; load full bodies lazily through provider `get()`. Coalesce one Context Manager authority change to at most one registry-wide Skill invalidation rather than invalidating once per Agent. Do not create a `skills/change` feedback loop: Context Manager Settings changes are its authority invalidation source, while native SkillRegistry invalidation already owns catalog refresh.
 
 Pinned full instructions must use native `renderSkillContent()` and one owned replacement/clearable bundle. Do not append a fresh durable copy on every pre-step.
 
