@@ -4,7 +4,7 @@ M5 makes Context Manager skill bindings model-effective without replacing DSH's 
 
 The implementation is split into three reviewable parts:
 
-- **M5A — compatibility + runtime foundation**: model-inert. Pin the public Skill/Scope contracts, add a targeted default-profile read path, move M4C2 off whole-library profile normalization, and publish one Context Manager invalidation event for later runtime caches.
+- **M5A — compatibility + runtime foundation**: model-inert with respect to skills. Pin the public Skill/Scope contracts, add a targeted default-profile read path, move M4C2 off whole-library profile normalization, and publish one Context Manager invalidation event for later runtime caches. M4C2 prompt composition remains model-effective.
 - **M5B — Agent-scoped Skill invocation policy overlay**: make Auto / Manual / Off / Pinned discovery and invocation semantics effective through a native Agent-local Skill provider shadow.
 - **M5C — Pinned durable instruction bundle**: inject full pinned instructions through one Context Manager-owned durable Session/Surface replacement contribution, not repeated append-only pre-step copies.
 
@@ -37,7 +37,7 @@ Important consequences:
 
 ## 2. M5A scope
 
-M5A is deliberately model-inert.
+M5A is deliberately model-inert with respect to skills. M4C2 prompt composition remains model-effective.
 
 It must:
 
@@ -159,7 +159,7 @@ The event is emitted from the existing Settings section lifecycle's `onChange` h
 
 DSH suppresses the consumer hook during the consumer's own unload, so Context Manager must not duplicate that lifecycle logic.
 
-M5B may react to this event by calling the exact borrowed `SkillProviderControl.invalidate()` for each attached Agent provider.
+M5B may react to this event through a borrowed `SkillProviderControl.invalidate()`, but **one Context Manager authority change must be coalesced to at most one registry invalidation**. DSH invalidation clears the registry-wide collect cache, increments the global catalog revision, and emits `skills/change`; looping over every live Agent control would therefore create N redundant global invalidations/events. M5B should retain/select one currently active CM provider control as the invalidation coordinator while Agent-local providers continue to pull current Domain state when their catalog is rebuilt.
 
 Context Manager must **not** listen to `skills/change` and recursively invalidate its own provider. `skills/change` is the downstream native notification produced by SkillRegistry invalidation, not Context Manager's authority source.
 
@@ -184,7 +184,8 @@ Required Skill seams:
 Required Scope seam:
 
 - `scopeParentOf()`;
-- nearest-scope shadow behavior.
+- `bindScopeParent(...).rebind(...)` as the public dynamic-parent mechanism used by Agent/preset recomposition;
+- nearest-scope shadow behavior, including catalog cache keys following the live scope chain without requiring a SkillRegistry invalidation.
 
 The runtime fixture must prove:
 
@@ -197,7 +198,8 @@ The runtime fixture must prove:
 7. all four invocation-policy boolean combinations survive the registry;
 8. `get()` remains invocation-policy-neutral;
 9. `renderSkillContent()` remains the canonical full-body rendering seam;
-10. `scopeParentOf()` observes the live parent relationship used by M5B.
+10. provider candidates must name the provider that returned them, so a Context Manager proxy candidate cannot copy the underlying native `provider` field verbatim;
+11. `scopeParentOf()` observes a live parent rebind and the SkillRegistry catalog follows the new scope chain without a registry invalidation.
 
 ## 7. Rank and same-layer shadow boundary
 
@@ -219,7 +221,7 @@ M5B intends to register its managed shadow in the Agent layer with:
 rank: Number.MAX_VALUE
 ```
 
-This is the lowest public finite rank and therefore gives ordinary Agent-local candidates every normal rank opportunity to win.
+`Number.MAX_VALUE` is the **largest finite numeric rank** accepted by the public contract. Because lower ranks win, that makes it the lowest-priority finite rank and gives ordinary Agent-local candidates every lower-rank opportunity to win.
 
 It is **not** an absolute mathematical guarantee that Context Manager can never win a same-layer duplicate: another candidate may also use `Number.MAX_VALUE`, in which case provider registration order breaks the tie.
 
@@ -245,13 +247,16 @@ managed skill bindings
 
 For each currently managed binding:
 
-- resolve the native winning definition from the parent view, not from the Agent view that already contains the CM provider;
+- resolve the native winning **summary/candidate** from the parent view, not from the Agent view that already contains the CM provider;
+- provider `list()` / catalog construction must stay metadata-only and must not call `get()` or read full skill bodies;
 - Auto contributes no shadow;
-- Manual contributes the same definition metadata/body with `{ modelInvocable: false, userInvocable: true }`;
-- Off contributes the same definition with both invocation booleans false;
-- Pinned also contributes both invocation booleans false; its full instructions come only from M5C's separate durable Context Manager bundle.
+- Manual contributes a proxy candidate with `{ modelInvocable: false, userInvocable: true }`;
+- Off contributes a proxy candidate with both invocation booleans false;
+- Pinned also contributes both invocation booleans false; its full instructions come only from M5C's separate durable Context Manager bundle;
+- every proxy candidate must advertise the Context Manager provider's own name because DSH validates `candidate.provider === provider.name`; underlying native identity/provenance belongs in the proxy locator/inspection state rather than being copied into that field;
+- proxy provider `get()` lazily loads the underlying definition through the parent scope only when a consumer actually requests the body, then applies the managed invocation policy without eager body I/O during discovery.
 
-The exact adapter and diagnostics remain M5B work, after M5A's contract lane is green.
+The exact loaded-definition provenance shape and diagnostics remain M5B work, after M5A's contract lane is green.
 
 ## 9. M5C planned Pinned instruction bundle
 
@@ -321,7 +326,7 @@ Those belong to M5B.
 - missing configured default;
 - stored-but-invalid configured default;
 - valid candidate;
-- exact profile identity retained;
+- exact configured profile id and parsed contents retained without fallback;
 - no profile-library enumeration;
 - unrelated malformed sibling profiles do not participate;
 - returned structures remain immutable.
@@ -354,6 +359,6 @@ M5A is complete only when:
 - no SkillProvider is registered by production code;
 - no skill invocation behavior changes;
 - five retained DSH lines compile and execute the Skill/Scope contract used by future M5B;
-- README/roadmap/compatibility/development docs describe M4 as complete and M5A as the current model-inert foundation.
+- README/roadmap/compatibility/development docs describe M4 and M5A as complete and M5B as the next implementation milestone.
 
 Only then should M5B begin changing native skill behavior.
