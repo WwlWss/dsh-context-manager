@@ -9,9 +9,11 @@ import {
   type SkillSummary,
 } from '@deepseek-ai/dsh-skill'
 import {
+  bindScopeParent,
   createScope,
   scopeParentOf,
   type ScopeKey,
+  type ScopeParentBinding,
 } from '@deepseek-ai/dsh-scope'
 
 function consumeSkillContract(ctx: Context, key: ScopeKey): void {
@@ -79,6 +81,12 @@ function consumeSkillContract(ctx: Context, key: ScopeKey): void {
   const parent: ScopeKey | undefined = scopeParentOf(child)
   void parent
   void scope
+
+  const reparented = {}
+  const parentBinding: ScopeParentBinding = bindScopeParent(reparented, key)
+  parentBinding.rebind(child)
+  const reboundParent: ScopeKey | undefined = scopeParentOf(reparented)
+  void reboundParent
   stop()
 }
 
