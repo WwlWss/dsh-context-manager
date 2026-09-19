@@ -893,6 +893,7 @@ test('Context Manager change event follows authoritative Settings attach, commit
       profiles: { anima },
     },
   })
+  await new Promise(resolve => setImmediate(resolve))
   assert.ok(calls.length > afterCommit)
   assert.deepEqual(calls.at(-1), [])
 
