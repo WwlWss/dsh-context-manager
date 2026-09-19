@@ -96,6 +96,7 @@ Supported generations remain:
 - `0.1.2-rc.1`
 - `0.1.5-rc.1`
 - `0.1.5-rc.2`
+- `0.1.6-alpha.2`
 
 Compatibility evidence must compile the public DomainSpec fixture and run the real Storage/StorageJson/StorageDomain reopen smoke for every generation. The smoke proves exact prompt text and unknown fields survive reopen, one malformed stored resource does not brick the library, and a normal path-local update preserves unknown durable siblings.
 
