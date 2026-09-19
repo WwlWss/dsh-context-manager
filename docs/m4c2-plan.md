@@ -399,9 +399,7 @@ transformed
 - `suppressed`: the contribution is absent from final native assembly;
 - `transformed`: the named contribution remains but downstream expert assembly changed its text.
 
-The public inspection read model is metadata/diagnostic-only. It may report binding identity, placement/order, resource revision, and native state, but it does **not** return PromptResource bodies. Fully rendered effective preview remains an explicit M8 API rather than turning ordinary runtime diagnostics into a large-payload transport surface.
-
-Fully rendered effective preview remains M8 territory. Real AgentLoop tests prove actual model-visible behavior.
+The public inspection read model is metadata/diagnostic-only. It may report binding identity, placement/order, resource revision, and native state, but it does **not** return PromptResource bodies. Fully rendered effective preview remains an explicit M8 API rather than turning ordinary runtime diagnostics into a large-payload transport surface. Real AgentLoop tests prove actual model-visible behavior.
 
 ## 16. Unload/HMR semantics
 
