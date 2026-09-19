@@ -1,0 +1,29 @@
+name: M5B Lock Bootstrap
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  lockfile-bootstrap:
+    if: github.head_ref == 'feat/m5b-skill-policy-overlay'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22.20.0
+      - name: Enable pinned pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.7.0 --activate
+      - name: Regenerate lockfile from M5B manifest
+        run: pnpm install --lockfile-only --no-frozen-lockfile
+      - uses: actions/upload-artifact@v4
+        with:
+          name: m5b-pnpm-lock
+          path: pnpm-lock.yaml
+          if-no-files-found: error
