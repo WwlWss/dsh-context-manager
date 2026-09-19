@@ -155,7 +155,10 @@ class RecordingAdapter extends LlmAdapter {
 }
 
 function requestText(request) {
-  return JSON.stringify(request?.messages ?? [])
+  return JSON.stringify({
+    system: request?.system,
+    messages: request?.messages ?? [],
+  })
 }
 
 function latestRuntimeContextText(request) {
