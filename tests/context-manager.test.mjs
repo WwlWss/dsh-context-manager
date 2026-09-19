@@ -923,3 +923,26 @@ test('Context Manager unload does not synthesize a late change event', async () 
 
   await settingsFiber.dispose()
 })
+
+
+test('targeted default profile read does not depend on Settings describe()', async () => {
+  const { manager, settings } = await boot({
+    [CONTEXT_MANAGER_SETTINGS_NAMESPACE]: {
+      schemaVersion: 1,
+      defaultProfileId: 'anima',
+      profiles: {
+        anima,
+        broken: { name: 42, basePreset: [] },
+      },
+    },
+  })
+
+  settings.describe = () => {
+    throw new Error('runtime targeted read must not call Settings describe()')
+  }
+
+  const candidate = manager.defaultProfileCandidate()
+  assert.equal(candidate.status, 'candidate')
+  assert.equal(candidate.profileId, 'anima')
+  assert.equal(candidate.profile.name, 'Anima Development')
+})
