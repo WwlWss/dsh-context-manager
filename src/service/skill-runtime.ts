@@ -42,11 +42,13 @@ function agentWorkspaceCwd(agent: RuntimeAgent): string | undefined {
  * invalidation is cached by the native SkillRegistry.
  */
 export class ContextManagerSkillRuntime extends Service {
+  private readonly ownerCtx: Context
   private activeBridge?: AgentRuntimeBridge
   private readonly controls = new Set<SkillProviderControl>()
 
   constructor(ctx: Context) {
     super(ctx, 'dshContextSkillRuntime')
+    this.ownerCtx = ctx
 
     ctx.inject([
       'dshContextManager',
@@ -104,7 +106,7 @@ export class ContextManagerSkillRuntime extends Service {
       return Object.freeze({ status: 'agent-not-live', agentId })
     }
 
-    const profile = this.resolveProfile(this.ctx, agent)
+    const profile = this.resolveProfile(this.ownerCtx, agent)
     if (profile.status !== 'active') {
       return Object.freeze({
         status: 'resolved',
@@ -116,7 +118,7 @@ export class ContextManagerSkillRuntime extends Service {
     }
 
     const inspected = await inspectAgentSkillPolicy(
-      this.ctx,
+      this.ownerCtx,
       agent,
       profile,
       agentWorkspaceCwd(agent),
