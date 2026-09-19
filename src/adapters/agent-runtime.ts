@@ -117,6 +117,7 @@ export async function attachAgentRuntimeBridge(
   const attached = new Map<RuntimeAgent, AgentRuntimeCleanup>()
   const pending = new Map<RuntimeAgent, Promise<void>>()
   let disposed = false
+  let disposal: Promise<void> | undefined
 
   const isCurrentLiveAgent = (agent: RuntimeAgent): boolean =>
     agents.get(agent.id) === agent
@@ -203,33 +204,35 @@ export async function attachAgentRuntimeBridge(
     get agents(): ReadonlyMap<RuntimeAgent, AgentRuntimeCleanup> {
       return attached
     },
-    async dispose(): Promise<void> {
-      if (disposed) return
-      disposed = true
-      stopCreated?.()
-      stopDisposed?.()
+    dispose(): Promise<void> {
+      return (disposal ??= (async () => {
+        if (disposed) return
+        disposed = true
+        stopCreated?.()
+        stopDisposed?.()
 
-      const failures: unknown[] = []
-      const pendingResults = await Promise.allSettled([...pending.values()])
-      for (const result of pendingResults) {
-        if (result.status === 'rejected') failures.push(result.reason)
-      }
+        const failures: unknown[] = []
+        const pendingResults = await Promise.allSettled([...pending.values()])
+        for (const result of pendingResults) {
+          if (result.status === 'rejected') failures.push(result.reason)
+        }
 
-      const cleanups = [...attached.values()]
-      attached.clear()
-      try {
-        await cleanupAll(cleanups)
-      } catch (error) {
-        failures.push(error)
-      }
+        const cleanups = [...attached.values()]
+        attached.clear()
+        try {
+          await cleanupAll(cleanups)
+        } catch (error) {
+          failures.push(error)
+        }
 
-      if (failures.length === 1) throw failures[0]
-      if (failures.length > 1) {
-        throw new AggregateError(
-          failures,
-          'failed to dispose Context Manager Agent runtime bridge',
-        )
-      }
+        if (failures.length === 1) throw failures[0]
+        if (failures.length > 1) {
+          throw new AggregateError(
+            failures,
+            'failed to dispose Context Manager Agent runtime bridge',
+          )
+        }
+      })())
     },
   })
 }
