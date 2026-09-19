@@ -53,11 +53,11 @@ interface WritableState {
 }
 
 /**
- * Authoritative Host-side domain service for Context Manager.
+ * Authoritative Host-side Domain service for Context Manager.
  *
- * This milestone is deliberately model-inert: it stores explicit user intent
- * and derives diagnostics, but does not mount presets, alter system prompts,
- * or shadow skills. Runtime/effective state belongs to later adapters.
+ * This service itself is model-inert: it stores explicit user intent and
+ * derives diagnostics. Model-visible prompt/skill behavior belongs to the
+ * separate runtime services (M4C2, M5B, and M5C), not to this Settings owner.
  */
 export class ContextManagerService extends Service {
   private readonly ownerCtx: Context
