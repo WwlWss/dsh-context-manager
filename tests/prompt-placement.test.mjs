@@ -40,7 +40,7 @@ test('legacy systemPrompt convention maps semantic anchors without registration 
       'after-persona': { channel: 'section', order: 0.5 },
       'before-tool-guidance': { channel: 'section', order: 99.5 },
       'after-tool-guidance': { channel: 'section', order: 199.5 },
-      'runtime-context': { channel: 'runtime-context', order: 0.530 },
+      'runtime-context': { channel: 'runtime-context', order: 120.5 },
     },
   })
   assert.equal(sectionCalls, 0)
@@ -73,9 +73,9 @@ test('named sparse systemPrompt mapping derives only common public boundaries', 
     targets: {
       'before-persona': { channel: 'section', order: -0.5 },
       'after-persona': { channel: 'section', order: 0.5 },
-      'before-tool-guidance': { channel: 'section', order: 99.59 },
+      'before-tool-guidance': { channel: 'section', order: 999.5 },
       'after-tool-guidance': { channel: 'section', order: 4999.5 },
-      'runtime-context': { channel: 'runtime-context', order: 0.530 },
+      'runtime-context': { channel: 'runtime-context', order: 120.5 },
     },
   })
   assert.deepEqual(sectionLookups, ['TOOL_BASH', 'TOOLS_SDK'])

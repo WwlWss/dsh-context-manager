@@ -36,7 +36,7 @@ try {
       'after-persona': { channel: 'section', order: 0.5 },
       'before-tool-guidance': { channel: 'section', order: 99.5 },
       'after-tool-guidance': { channel: 'section', order: 199.5 },
-      'runtime-context': { channel: 'runtime-context', order: 0.530 },
+      'runtime-context': { channel: 'runtime-context', order: 120.5 },
     })
     firstToolOrder = 100
     toolTailOrder = 199
