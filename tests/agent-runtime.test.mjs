@@ -201,7 +201,7 @@ test('Agent runtime bridge validates malformed present Host capabilities and Age
   )
 })
 
-test('Agent runtime bridge dispose is idempotent', async () => {
+test('Agent runtime bridge dispose is idempotent and shares concurrent teardown', async () => {
   const root = new Context()
   const current = agent('a')
   await root.plugin(FakeAgents, [current])
@@ -212,7 +212,10 @@ test('Agent runtime bridge dispose is idempotent', async () => {
   })
   assert.ok(bridge)
 
-  await bridge.dispose()
+  const first = bridge.dispose()
+  const second = bridge.dispose()
+  assert.equal(second, first)
+  await Promise.all([first, second])
   await bridge.dispose()
   assert.equal(cleaned, 1)
 })
