@@ -1,0 +1,184 @@
+import type { Context } from '@deepseek-ai/cordis'
+import type SkillRegistry from '@deepseek-ai/dsh-skill'
+import type {
+  SkillCandidate,
+  SkillDefinition,
+  SkillInvocationPolicy,
+  SkillLookupOptions,
+  SkillProvider,
+  SkillProviderControl,
+  SkillProviderObservation,
+  SkillSummary,
+} from '@deepseek-ai/dsh-skill'
+import { scopeParentOf } from '@deepseek-ai/dsh-scope'
+
+import type { RuntimeAgent } from './agent-runtime.js'
+import {
+  compareSkillNames,
+  managedSkillInvocationPolicy,
+  profileSkillMode,
+  sortedProfileSkillBindings,
+} from '../runtime/skill-policy.js'
+import type { EffectiveProfileResolution } from '../runtime/types.js'
+
+export const CONTEXT_MANAGER_SKILL_PROVIDER = 'dsh-context-manager-policy'
+
+export interface ContextManagerSkillLocator {
+  readonly kind: 'dsh-context-manager-policy'
+  readonly name: string
+  readonly nativeProvider: string
+}
+
+export interface AgentSkillPolicyProvider {
+  readonly control: SkillProviderControl
+  dispose(): void
+}
+
+export type EffectiveProfileReader = () => EffectiveProfileResolution
+
+function skillsService(ctx: Context): SkillRegistry {
+  const skills = ctx.get('skills')
+  if (skills === undefined) {
+    throw new TypeError('dsh-context-manager: SkillRegistry service unavailable')
+  }
+  return skills as SkillRegistry
+}
+
+function combinedSignal(
+  caller: AbortSignal | undefined,
+  lifecycle: AbortSignal,
+): AbortSignal {
+  if (caller === undefined || caller === lifecycle) return lifecycle
+  return AbortSignal.any([caller, lifecycle])
+}
+
+function parentOptions(
+  agent: RuntimeAgent,
+  options: SkillLookupOptions,
+  lifecycle: AbortSignal,
+) {
+  const parent = scopeParentOf(agent)
+  const signal = combinedSignal(options.signal, lifecycle)
+  return {
+    ...(options.cwd === undefined ? {} : { cwd: options.cwd }),
+    signal,
+    ...(parent === undefined ? {} : { scope: parent }),
+  }
+}
+
+function proxyCandidate(
+  native: SkillSummary,
+  invocation: SkillInvocationPolicy,
+): SkillCandidate {
+  const locator: ContextManagerSkillLocator = Object.freeze({
+    kind: 'dsh-context-manager-policy',
+    name: native.name,
+    nativeProvider: native.provider,
+  })
+
+  return Object.freeze({
+    ...(native.path === undefined ? {} : { path: native.path }),
+    name: native.name,
+    description: native.description,
+    ...(native.whenToUse === undefined ? {} : { whenToUse: native.whenToUse }),
+    invocation,
+    source: native.source,
+    provider: CONTEXT_MANAGER_SKILL_PROVIDER,
+    ...(native.resourceBase === undefined ? {} : { resourceBase: native.resourceBase }),
+    rank: Number.MAX_VALUE,
+    locator,
+  })
+}
+
+/**
+ * Install one fixed Context Manager provider into one live Agent layer.
+ *
+ * The provider never caches parent identity or effective Domain state. DSH may
+ * re-parent the same Agent to another standing preset without recreating it.
+ */
+export function installAgentSkillPolicyProvider(
+  rootCtx: Context,
+  agent: RuntimeAgent,
+  readProfile: EffectiveProfileReader,
+  onControl?: (control: SkillProviderControl) => void,
+): AgentSkillPolicyProvider {
+  const rootSkills = skillsService(rootCtx)
+  const scopedSkills = skillsService(agent.ctx)
+  let borrowed: SkillProviderControl | undefined
+
+  const stop = scopedSkills.registerProvider((control) => {
+    borrowed = control
+    onControl?.(control)
+
+    const provider: SkillProvider = {
+      name: CONTEXT_MANAGER_SKILL_PROVIDER,
+
+      async list(options): Promise<readonly SkillCandidate[] | SkillProviderObservation> {
+        const resolution = readProfile()
+        if (resolution.status !== 'active') return Object.freeze([])
+
+        const managed = sortedProfileSkillBindings(resolution.profile)
+          .filter(([, mode]) => mode !== 'auto')
+        if (managed.length === 0) return Object.freeze([])
+
+        const snapshot = await rootSkills.snapshot(parentOptions(agent, options, control.signal))
+        const nativeByName = new Map(snapshot.skills.map(skill => [skill.name, skill]))
+        const candidates: SkillCandidate[] = []
+
+        for (const [name, mode] of managed) {
+          const native = nativeByName.get(name)
+          if (native === undefined) continue
+          const invocation = managedSkillInvocationPolicy(mode)
+          if (invocation === undefined) continue
+          candidates.push(proxyCandidate(native, invocation))
+        }
+
+        const frozen = Object.freeze(candidates)
+        return snapshot.complete
+          ? frozen
+          : Object.freeze({ candidates: frozen, complete: false })
+      },
+
+      async get(candidate, options): Promise<SkillDefinition | undefined> {
+        const native = await rootSkills.get(
+          candidate.name,
+          parentOptions(agent, options, control.signal),
+        )
+        if (native === undefined) return undefined
+
+        const resolution = readProfile()
+        if (resolution.status !== 'active') return native
+
+        const mode = profileSkillMode(resolution.profile, candidate.name)
+        const invocation = managedSkillInvocationPolicy(mode)
+        if (invocation === undefined) return native
+
+        return Object.freeze({
+          ...native,
+          invocation,
+        })
+      },
+    }
+
+    return provider
+  })
+
+  if (borrowed === undefined) {
+    stop()
+    throw new TypeError('dsh-context-manager: SkillRegistry did not provide provider control')
+  }
+
+  return Object.freeze({
+    control: borrowed,
+    dispose(): void {
+      stop()
+    },
+  })
+}
+
+export function compareSkillSummaryNames(
+  left: Pick<SkillSummary, 'name'>,
+  right: Pick<SkillSummary, 'name'>,
+): number {
+  return compareSkillNames(left.name, right.name)
+}
