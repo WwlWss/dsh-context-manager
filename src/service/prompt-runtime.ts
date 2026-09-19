@@ -32,8 +32,8 @@ export class ContextManagerPromptRuntime extends Service {
       'dshContextPromptLibrary',
       'agents',
       'systemPrompt',
-    ], (runtimeCtx) => {
-      runtimeCtx.effect(async () => {
+    ], async (runtimeCtx) => {
+      await runtimeCtx.effect(async () => {
         const bridge = await attachAgentRuntimeBridge(
           runtimeCtx,
           agent => installAgentPromptRuntime(

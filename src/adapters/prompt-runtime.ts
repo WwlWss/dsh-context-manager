@@ -184,11 +184,11 @@ function registerSlot(
     : runtime.context(input)
 }
 
-async function disposeReverse(disposers: readonly (() => void | Promise<void>)[]): Promise<void> {
+function disposeReverse(disposers: readonly (() => void)[]): void {
   const errors: unknown[] = []
   for (const dispose of [...disposers].reverse()) {
     try {
-      await dispose()
+      dispose()
     } catch (error) {
       errors.push(error)
     }
@@ -205,14 +205,14 @@ async function disposeReverse(disposers: readonly (() => void | Promise<void>)[]
 export function installAgentPromptRuntime(
   agent: RuntimeAgent,
   resolve: PromptRuntimeResolver,
-): () => Promise<void> {
+): () => void {
   const compatibility = observeNativePromptPlacementCompatibility(agent.ctx)
   if (compatibility.status !== 'available') {
     throw unsupportedRuntimeApi('systemPrompt capability disappeared from Agent scope')
   }
 
   const runtime = requireRuntime(agent.ctx)
-  const disposers: Array<() => void | Promise<void>> = []
+  const disposers: Array<() => void> = []
 
   try {
     for (const placement of [
@@ -237,14 +237,14 @@ export function installAgentPromptRuntime(
     )
     disposers.push(stopAssembly)
   } catch (error) {
-    void disposeReverse(disposers)
+    disposeReverse(disposers)
     throw error
   }
 
   let disposed = false
-  return async () => {
+  return () => {
     if (disposed) return
     disposed = true
-    await disposeReverse(disposers)
+    disposeReverse(disposers)
   }
 }
