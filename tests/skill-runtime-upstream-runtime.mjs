@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 
 import { Context } from '@deepseek-ai/cordis'
 import SkillRegistry, { renderSkillContent } from '@deepseek-ai/dsh-skill'
-import { createScope, scopeParentOf } from '@deepseek-ai/dsh-scope'
+import { bindScopeParent, createScope, scopeParentOf } from '@deepseek-ai/dsh-scope'
 
 const ctx = new Context()
 
@@ -99,6 +99,39 @@ try {
   listed = await ctx.skills.list({ scope: childKey })
   assert.equal(listed.find(skill => skill.name === 'shadowed-skill')?.provider, 'child-provider')
 
+  const presetAKey = {}
+  const presetBKey = {}
+  const reparentedKey = {}
+  const presetA = createScope(ctx, presetAKey)
+  const presetB = createScope(ctx, presetBKey)
+  const reparentedBinding = bindScopeParent(reparentedKey, presetAKey)
+  const reparented = createScope(ctx, reparentedKey)
+
+  const stopPresetA = scopedSkills(presetA.ctx).registerProvider(
+    providerFactory('reparent-a', [
+      candidate('reparent-a', 'reparent-probe', 0, {
+        modelInvocable: true,
+        userInvocable: true,
+      }),
+    ]),
+  )
+  const stopPresetB = scopedSkills(presetB.ctx).registerProvider(
+    providerFactory('reparent-b', [
+      candidate('reparent-b', 'reparent-probe', 0, {
+        modelInvocable: true,
+        userInvocable: true,
+      }),
+    ]),
+  )
+
+  listed = await ctx.skills.list({ scope: reparentedKey })
+  assert.equal(listed.find(skill => skill.name === 'reparent-probe')?.provider, 'reparent-a')
+
+  reparentedBinding.rebind(presetBKey)
+  assert.equal(scopeParentOf(reparentedKey), presetBKey)
+  listed = await ctx.skills.list({ scope: reparentedKey })
+  assert.equal(listed.find(skill => skill.name === 'reparent-probe')?.provider, 'reparent-b')
+
   const rankHigh = candidate(
     'rank-high',
     'same-layer-rank',
@@ -176,6 +209,23 @@ try {
   })
   assert.equal(hidden.content, 'body:policy-ff:policy-provider')
 
+  const mismatchKey = {}
+  const mismatchScope = createScope(ctx, mismatchKey)
+  const stopMismatch = scopedSkills(mismatchScope.ctx).registerProvider(
+    providerFactory('proxy-provider', [
+      candidate('native-provider', 'provider-identity-probe', 0, {
+        modelInvocable: true,
+        userInvocable: true,
+      }),
+    ]),
+  )
+  await assert.rejects(
+    ctx.skills.list({ scope: mismatchKey }),
+    /provider/,
+  )
+  await Promise.resolve(stopMismatch())
+  await mismatchScope.dispose()
+
   const rendered = renderSkillContent({
     name: 'render-probe',
     provider: 'render-provider',
@@ -233,6 +283,12 @@ try {
 
   const snapshot = await ctx.skills.snapshot({ scope: childKey })
   assert.equal(snapshot.complete, true)
+
+  await Promise.resolve(stopPresetB())
+  await Promise.resolve(stopPresetA())
+  await reparented.dispose()
+  await presetB.dispose()
+  await presetA.dispose()
 
   await Promise.resolve(stopMaxSecond())
   await Promise.resolve(stopMaxFirst())
