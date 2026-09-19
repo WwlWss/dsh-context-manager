@@ -24,7 +24,7 @@ Context Manager skill modes mean:
 
 | Mode | Model discovery / model load | User invocation | Context Manager pinned instructions |
 | --- | --- | --- | --- |
-| Pinned | hidden | allowed | included |
+| Pinned | hidden | hidden | included |
 | Auto | preserve native winning definition | preserve native winning definition | not included |
 | Manual | hidden | allowed | not included |
 | Off | hidden | hidden | not included |
@@ -32,7 +32,7 @@ Context Manager skill modes mean:
 Important consequences:
 
 - **Auto is native pass-through.** Context Manager must not force `{ modelInvocable: true, userInvocable: true }`; the native winning skill's invocation policy stays authoritative.
-- Manual / Off / Pinned are managed overlays over a native definition. Context Manager never edits the source skill file or replaces the filesystem provider.
+- Manual / Off / Pinned are managed overlays over a native definition. Manual resolves to `{ modelInvocable: false, userInvocable: true }`; Off and Pinned resolve to `{ modelInvocable: false, userInvocable: false }`. Context Manager never edits the source skill file or replaces the filesystem provider.
 - Pinned is not a synonym for native model discovery. Full instructions are deliberately supplied by Context Manager through the later M5C context contribution.
 
 ## 2. M5A scope
@@ -247,9 +247,9 @@ For each currently managed binding:
 
 - resolve the native winning definition from the parent view, not from the Agent view that already contains the CM provider;
 - Auto contributes no shadow;
-- Manual contributes the same definition metadata/body with `modelInvocable: false` and native user visibility preserved/allowed according to the final M5B contract;
+- Manual contributes the same definition metadata/body with `{ modelInvocable: false, userInvocable: true }`;
 - Off contributes the same definition with both invocation booleans false;
-- Pinned contributes a discovery shadow with model visibility disabled while retaining user invocation according to the final contract; full instructions come from M5C.
+- Pinned also contributes both invocation booleans false; its full instructions come only from M5C's separate durable Context Manager bundle.
 
 The exact adapter and diagnostics remain M5B work, after M5A's contract lane is green.
 
