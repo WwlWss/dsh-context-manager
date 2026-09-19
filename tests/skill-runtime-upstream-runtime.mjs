@@ -6,6 +6,12 @@ import { createScope, scopeParentOf } from '@deepseek-ai/dsh-scope'
 
 const ctx = new Context()
 
+function scopedSkills(scopedCtx) {
+  const skills = scopedCtx.get('skills')
+  if (skills === undefined) throw new Error('skills service missing from scoped context')
+  return skills
+}
+
 function candidate(provider, name, rank, invocation, description = provider) {
   return {
     name,
@@ -73,7 +79,7 @@ try {
     Number.MAX_VALUE,
     { modelInvocable: false, userInvocable: true },
   )
-  const stopParent = parent.ctx.skills.registerProvider(
+  const stopParent = scopedSkills(parent.ctx).registerProvider(
     providerFactory('parent-provider', [parentSkill]),
   )
 
@@ -86,7 +92,7 @@ try {
     Number.MAX_VALUE,
     { modelInvocable: false, userInvocable: false },
   )
-  const stopChild = child.ctx.skills.registerProvider(
+  const stopChild = scopedSkills(child.ctx).registerProvider(
     providerFactory('child-provider', [childSkill]),
   )
 
@@ -105,10 +111,10 @@ try {
     -100,
     { modelInvocable: true, userInvocable: true },
   )
-  const stopRankHigh = child.ctx.skills.registerProvider(
+  const stopRankHigh = scopedSkills(child.ctx).registerProvider(
     providerFactory('rank-high', [rankHigh]),
   )
-  const stopRankLow = child.ctx.skills.registerProvider(
+  const stopRankLow = scopedSkills(child.ctx).registerProvider(
     providerFactory('rank-low', [rankLow]),
   )
 
@@ -127,10 +133,10 @@ try {
     Number.MAX_VALUE,
     { modelInvocable: true, userInvocable: true },
   )
-  const stopMaxFirst = child.ctx.skills.registerProvider(
+  const stopMaxFirst = scopedSkills(child.ctx).registerProvider(
     providerFactory('max-first', [maxFirst]),
   )
-  const stopMaxSecond = child.ctx.skills.registerProvider(
+  const stopMaxSecond = scopedSkills(child.ctx).registerProvider(
     providerFactory('max-second', [maxSecond]),
   )
 
