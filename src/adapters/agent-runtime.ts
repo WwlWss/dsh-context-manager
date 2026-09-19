@@ -128,25 +128,51 @@ export async function attachAgentRuntimeBridge(
     const existing = pending.get(agent)
     if (existing !== undefined) return existing
 
-    // Defer the actual attach by one microtask so the pending entry becomes
-    // visible before user code can suspend. Initial agents.list() adoption and
-    // a concurrent agent/created announcement for the same exact Agent
-    // therefore share one in-flight attachment.
-    const task = Promise.resolve().then(async () => {
-      if (disposed || !isCurrentLiveAgent(agent)) return
-
-      const cleanup = await attach(agent)
-      if (disposed || !isCurrentLiveAgent(agent)) {
-        await cleanup()
-        return
-      }
-      attached.set(agent, cleanup)
-    })
+    // Publish the in-flight identity before invoking user attachment code.
+    // This closes the list()/agent-created race without adding an artificial
+    // microtask: a synchronous Host registration remains synchronous on legacy
+    // DSH, while genuinely async attachment still shares this exact Promise.
+    const deferred = Promise.withResolvers<void>()
+    const task = deferred.promise
     pending.set(agent, task)
 
-    return task.finally(() => {
+    const forget = (): void => {
       if (pending.get(agent) === task) pending.delete(agent)
-    })
+    }
+    const succeed = (): void => {
+      forget()
+      deferred.resolve()
+    }
+    const fail = (error: unknown): void => {
+      forget()
+      deferred.reject(error)
+    }
+    const acceptCleanup = (
+      cleanup: AgentRuntimeCleanup,
+    ): void | Promise<void> => {
+      if (disposed || !isCurrentLiveAgent(agent)) return cleanup()
+      attached.set(agent, cleanup)
+    }
+    const finishAsync = (operation: PromiseLike<void>): void => {
+      void Promise.resolve(operation).then(succeed, fail)
+    }
+
+    try {
+      const result = attach(agent)
+      if (typeof result === 'function') {
+        const cleanupResult = acceptCleanup(result)
+        if (cleanupResult === undefined) succeed()
+        else finishAsync(cleanupResult)
+      } else {
+        finishAsync(
+          Promise.resolve(result).then(cleanup => acceptCleanup(cleanup)),
+        )
+      }
+    } catch (error) {
+      fail(error)
+    }
+
+    return task
   }
 
   let stopCreated: (() => void) | undefined
