@@ -74,9 +74,15 @@ export type PromptRuntimeBindingInspection =
       readonly placement: import('../domain/model.js').PromptPlacement
       readonly order: number
     }
-  | (Readonly<Extract<PromptBindingPlanState, { state: 'eligible' }>> & {
+  | {
+      readonly state: 'eligible'
+      readonly bindingId: string
+      readonly resourceId: string
+      readonly placement: import('../domain/model.js').PromptPlacement
+      readonly order: number
+      readonly resourceRevision: number
       readonly nativeState: PromptRuntimeNativeState
-    })
+    }
 
 export type PromptRuntimeInspection =
   | {
