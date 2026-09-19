@@ -312,25 +312,34 @@ Large prompt bodies belong in the Storage-backed Prompt Library introduced in M4
 
 ## 11. Skills
 
-Keep DSH's registry/providers as the source capability. The intended Context Manager modes are:
+Keep DSH's registry/providers as the source capability. M5 is split so public-contract/performance work lands before any skill behavior changes.
 
-- `pinned` — full instructions explicitly included through a Context Manager prompt/context contribution;
-- `auto` — available through native discovery and invocation;
-- `manual` — user-invocable but hidden from model-facing discovery;
-- `off` — hidden from both managed model and managed user invocation.
+The intended Context Manager semantics are:
 
-The preferred runtime implementation is a scoped overlay/shadow, not rewriting the filesystem provider.
+- `pinned` — native model/user invocation both disabled; full instructions are supplied separately by one Context Manager-owned durable replacement bundle;
+- `auto` — **no override**: preserve the native winning skill's invocation policy exactly;
+- `manual` — `{ modelInvocable: false, userInvocable: true }` when the underlying native skill exists;
+- `off` — `{ modelInvocable: false, userInvocable: false }` when the underlying native skill exists.
 
-Before claiming hard `off` or `manual` semantics, test:
+A missing bound skill is diagnostic state, not permission to fabricate a skill definition.
+
+M5A adds only the targeted default-profile hot-path read, Context Manager authority invalidation event, and five-generation Skill/Scope contract lane. It must remain model-inert for skills.
+
+M5B should use one Agent-scoped overlay/shadow provider and resolve its underlying native winner through the parent-scope view. Do not rewrite the filesystem provider and do not listen to `skills/change` merely to trigger Context Manager invalidation; native SkillRegistry invalidation already refreshes provider discovery. The planned `Number.MAX_VALUE` rank is the lowest public finite rank, but equal-rank same-layer candidates still tie on provider registration order, so only claim the precedence actually proven by tests.
+
+Before claiming hard `off`, `manual`, or `pinned` semantics, test:
 
 - global/preset/agent scope precedence;
-- duplicate-name shadowing;
+- Agent-local same-name duplicates and the equal-`Number.MAX_VALUE` boundary;
 - provider invalidation;
-- cold sessions and resumed sessions;
-- scope disposal;
-- whether a farther registration can leak when the managed binding is disabled.
+- live Agent adoption/create/dispose and HMR reload;
+- cold/resumed sessions where the current public lifecycle exposes a relevant seam;
+- exact `basePreset` switching;
+- model and explicit user invocation leakage.
 
-If DSH cannot prove the requested policy in the current version, surface a runtime capability diagnostic instead of simulating it.
+M5C must use native `renderSkillContent()` for pinned full instructions and replace/clear one owned durable bundle rather than appending a new copy every model step.
+
+If DSH cannot prove a requested policy in a supported version, surface a runtime capability diagnostic instead of simulating it.
 
 ## 12. Transform architecture
 
@@ -421,7 +430,7 @@ However, protect the following boundaries as the project grows:
 - `snapshot()` currently uses `settings.describe()` and must not become a render-frame polling API. Future Remote/client code should use change notifications plus pull-on-change snapshots.
 - Keep snapshot normalization metadata-only. Never read prompt bodies, skill files, scripts, renderer assets, or tokenize large text inside the Settings snapshot path.
 - Large content belongs in a content library and should be loaded lazily or through a cache owned by the resource subsystem.
-- Runtime request hot paths should resolve only the selected/effective profile, not repeatedly parse the entire reusable profile library.
+- Runtime request hot paths must resolve only the selected/effective profile, not repeatedly parse the entire reusable profile library. M5A establishes `defaultProfileCandidate()` for this purpose; keep full `snapshot()` for editor/diagnostic reads.
 - Client conversation renderers must not repeatedly scan the complete session event log on each render; follow DSH's projection/store patterns.
 - Regex/display transforms that can be expensive or adversarial should eventually have an isolation/budget strategy (for example a Worker) so one expression cannot freeze the parent UI.
 
@@ -480,8 +489,10 @@ CI deliberately separates compatibility concerns instead of relying on one broad
 3. the AgentPreset Host-contract/runtime lanes cover `0.1.1-rc.2`, `0.1.2-rc.1`, `0.1.5-rc.1`, `0.1.5-rc.2`, and `0.1.6-alpha.2`, including the real native M3C `copy -> read -> remove` cycle;
 4. the Session preset identity lanes cover the same five generations and exercise the legacy event path and modern public projection path with real published Session/projection objects;
 5. the M4A Prompt Library Storage Domain matrix covers those same five generations with both a compile contract and real Storage/StorageJson/StorageDomain durable reopen runtime test;
-6. strict packed-package peer installation is verified against both the retained stable Settings line `0.1.5-rc.2` and the forward-alpha line `0.1.6-alpha.2`;
-7. full DSH CLI/bundle composition smoke covers `0.1.2-rc.1`, `0.1.5-rc.1`, `0.1.5-rc.2`, and `0.1.6-alpha.2`.
+6. M4C1/M4C2 focused lanes cover all five generations for SystemPrompt placement/runtime contracts, with real AgentLoop endpoint E2E on the legacy and forward-alpha lines;
+7. the M5A Skill/Scope lane compiles and executes the public SkillRegistry/Scope contract on all five generations, including nearest-scope precedence, same-layer rank/ties, invalidation/disposal, policy preservation, policy-neutral `get()`, `renderSkillContent()`, and `scopeParentOf()`;
+8. strict packed-package peer installation is verified against both the retained stable Settings line `0.1.5-rc.2` and the forward-alpha line `0.1.6-alpha.2`;
+9. full DSH CLI/bundle composition smoke covers `0.1.2-rc.1`, `0.1.5-rc.1`, `0.1.5-rc.2`, and `0.1.6-alpha.2`.
 
 Keep the exact authoritative matrix and reviewed source SHA in [compatibility.md](compatibility.md). When a new public generation is added, update CI and these maintainer docs together rather than letting the handbook lag behind the executable support claim.
 
@@ -534,7 +545,7 @@ pnpm install --frozen-lockfile
 pnpm run check
 ```
 
-`pnpm run check` performs type checking, a clean production build, and the package/domain/runtime test suite on the committed legacy dependency set. CI adds the modern Settings lanes, three-generation AgentPreset and Session compatibility lanes, packed-bundle verification, and published DSH bundle smoke described above.
+`pnpm run check` performs type checking, a clean production build, and the package/domain/runtime test suite on the committed legacy dependency set. CI adds five-generation Settings/AgentPreset/Session/Prompt/Skill-focused compatibility lanes where applicable, endpoint AgentLoop regressions, packed-bundle verification, and published DSH bundle smoke described above.
 
 The git-install `prepare` path intentionally emits only the runtime JavaScript needed for installation. Declaration generation and full type checking remain development/CI responsibilities.
 
