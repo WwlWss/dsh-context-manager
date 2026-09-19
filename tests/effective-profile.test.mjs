@@ -10,29 +10,17 @@ const profile = Object.freeze({
   prompts: Object.freeze({}),
 })
 
-function snapshot(overrides = {}) {
+function candidate(overrides = {}) {
   return Object.freeze({
-    schemaVersion: 1,
-    schemaCompatible: true,
-    configuredDefaultProfileId: 'profile-a',
-    usableDefaultProfileId: 'profile-a',
-    profiles: Object.freeze({ 'profile-a': profile }),
-    diagnostics: Object.freeze([]),
-    persistence: Object.freeze({
-      available: true,
-      registered: true,
-      writable: true,
-      revision: 1,
-    }),
+    status: 'candidate',
+    profileId: 'profile-a',
+    profile,
     ...overrides,
   })
 }
 
 test('effective profile resolver reports no default without consulting a fallback', () => {
-  const result = resolveEffectiveProfile(snapshot({
-    configuredDefaultProfileId: undefined,
-    usableDefaultProfileId: undefined,
-  }), {
+  const result = resolveEffectiveProfile(Object.freeze({ status: 'no-default-profile' }), {
     status: 'known',
     sessionId: 'session-a',
     presetId: 'preset-a',
@@ -42,14 +30,9 @@ test('effective profile resolver reports no default without consulting a fallbac
 })
 
 test('schema incompatibility wins before profile or preset selection', () => {
-  const result = resolveEffectiveProfile(snapshot({
-    schemaCompatible: false,
-    usableDefaultProfileId: undefined,
-    profiles: Object.freeze({}),
-    diagnostics: Object.freeze([{
-      code: 'unsupported-schema-version',
-      message: 'future schema',
-    }]),
+  const result = resolveEffectiveProfile(Object.freeze({
+    status: 'schema-incompatible',
+    configuredProfileId: 'profile-a',
   }), {
     status: 'known',
     sessionId: 'session-a',
@@ -64,14 +47,9 @@ test('schema incompatibility wins before profile or preset selection', () => {
 })
 
 test('dangling and invalid configured defaults remain distinct runtime diagnostics', () => {
-  const missing = resolveEffectiveProfile(snapshot({
-    usableDefaultProfileId: undefined,
-    profiles: Object.freeze({}),
-    diagnostics: Object.freeze([{
-      code: 'missing-default-profile',
-      profileId: 'profile-a',
-      message: 'missing',
-    }]),
+  const missing = resolveEffectiveProfile(Object.freeze({
+    status: 'missing-default-profile',
+    profileId: 'profile-a',
   }), {
     status: 'known',
     sessionId: 'session-a',
@@ -83,14 +61,9 @@ test('dangling and invalid configured defaults remain distinct runtime diagnosti
     reason: 'missing-default-profile',
   })
 
-  const invalid = resolveEffectiveProfile(snapshot({
-    usableDefaultProfileId: undefined,
-    profiles: Object.freeze({}),
-    diagnostics: Object.freeze([{
-      code: 'invalid-default-profile',
-      profileId: 'profile-a',
-      message: 'invalid',
-    }]),
+  const invalid = resolveEffectiveProfile(Object.freeze({
+    status: 'invalid-default-profile',
+    profileId: 'profile-a',
   }), {
     status: 'known',
     sessionId: 'session-a',
@@ -104,7 +77,7 @@ test('dangling and invalid configured defaults remain distinct runtime diagnosti
 })
 
 test('Session capability absence and not-live identity remain distinct', () => {
-  const unavailable = resolveEffectiveProfile(snapshot(), {
+  const unavailable = resolveEffectiveProfile(candidate(), {
     status: 'unavailable',
     sessionId: 'session-a',
   })
@@ -114,7 +87,7 @@ test('Session capability absence and not-live identity remain distinct', () => {
     reason: 'session-store-unavailable',
   })
 
-  const notLive = resolveEffectiveProfile(snapshot(), {
+  const notLive = resolveEffectiveProfile(candidate(), {
     status: 'not-live',
     sessionId: 'session-a',
   })
@@ -126,7 +99,7 @@ test('Session capability absence and not-live identity remain distinct', () => {
 })
 
 test('exact live preset identity is the only eligibility fence', () => {
-  const active = resolveEffectiveProfile(snapshot(), {
+  const active = resolveEffectiveProfile(candidate(), {
     status: 'known',
     sessionId: 'session-a',
     presetId: 'preset-a',
@@ -138,7 +111,7 @@ test('exact live preset identity is the only eligibility fence', () => {
     presetId: 'preset-a',
   })
 
-  const mismatch = resolveEffectiveProfile(snapshot(), {
+  const mismatch = resolveEffectiveProfile(candidate(), {
     status: 'known',
     sessionId: 'session-a',
     presetId: 'Preset-A',
@@ -152,7 +125,7 @@ test('exact live preset identity is the only eligibility fence', () => {
 })
 
 test('null live preset identity never substitutes a native/default preset', () => {
-  const result = resolveEffectiveProfile(snapshot(), {
+  const result = resolveEffectiveProfile(candidate(), {
     status: 'known',
     sessionId: 'session-a',
     presetId: null,
@@ -167,7 +140,7 @@ test('null live preset identity never substitutes a native/default preset', () =
 })
 
 test('resolver does not need or observe native preset roster health', () => {
-  const result = resolveEffectiveProfile(snapshot(), {
+  const result = resolveEffectiveProfile(candidate(), {
     status: 'known',
     sessionId: 'session-a',
     presetId: 'preset-a',
@@ -177,7 +150,7 @@ test('resolver does not need or observe native preset roster health', () => {
 })
 
 test('runtime resolution records are immutable', () => {
-  const result = resolveEffectiveProfile(snapshot(), {
+  const result = resolveEffectiveProfile(candidate(), {
     status: 'known',
     sessionId: 'session-a',
     presetId: 'preset-a',
