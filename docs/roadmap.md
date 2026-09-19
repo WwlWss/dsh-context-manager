@@ -355,22 +355,23 @@ active
 
 and per-binding states such as disabled, missing-resource, eligible, effective, or suppressed by the native composition.
 
-Tests before M4 is complete:
+M4 completion evidence covers:
 
-- all shipped native presets plus a copied/custom composition with equivalent suppression behavior;
+- representative native system-prompt compositions, including generic complete-section and runtime-context suppression behavior without preset-id special cases;
 - exact base-preset match and mismatch with no fallback;
-- native live preset switch `A -> B -> A`: matching overlay active on A, absent with `base-preset-mismatch` on B, and active again after returning to A, without provider re-registration or Context Manager-driven switching;
-- deleted native preset + still-live matching Session identity;
+- M3B-observed live identity switch `A -> B -> A`: matching overlay active on A, absent with `base-preset-mismatch` on B, and active again after returning to A without provider re-registration or Context Manager-driven switching; M3B's own published-package coverage remains the evidence for native preset projection/selection semantics;
+- deleted native preset + still-live matching Session identity at the effective-profile boundary;
 - stable local ordering and deterministic tie breaking;
 - PromptResource edit/reorder reflected on the next model step without duplicate registrations;
 - enable/disable lifecycle;
 - default-profile change reflected on the next model step without creating a Session binding;
-- unload/HMR cleanup and reload of already-live Agents;
-- cold/resume behavior consistent with the then-current effective-profile fallback;
-- runtime-context snapshot behavior when content is unchanged versus changed;
-- native template-variable errors propagate without rewriting stored PromptResource text;
-- a real DSH Agent/recording-model E2E proving the model request sees the same runtime resolution used by preview/diagnostics;
+- concurrent initial-adoption / `agent/created` attachment coalescing, unload/HMR cleanup, and reload of already-live Agents;
+- runtime-context projection and native suppression semantics;
+- independent native interpolation boundaries plus propagation of native template-variable errors without rewriting source PromptResource text;
+- real DSH Agent/recording-model E2E coverage on the retained legacy and current runtime lines;
 - no modification of native preset files.
+
+Cold/resume profile-binding semantics remain a later M9 concern because M4 has no Session/Workspace profile binding persistence of its own.
 
 M4 is complete only after M4C2 proves real model-visible behavior. M4A/M4B alone remain model-inert.
 
