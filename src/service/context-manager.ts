@@ -101,7 +101,7 @@ export class ContextManagerService extends Service {
    * enumerate unrelated profiles.
    */
   defaultProfileCandidate(): DefaultProfileCandidate {
-    return normalizeDefaultProfileCandidate(this.readState().stored)
+    return normalizeDefaultProfileCandidate(this.source())
   }
 
   /** List every stored profile payload, including ones the Domain cannot parse. */
