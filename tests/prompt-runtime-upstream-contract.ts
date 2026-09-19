@@ -13,6 +13,10 @@ function consumePublicM4C2Contract(ctx: Context, agent: Agent): void {
     const scoped: Context = created.ctx
     void scoped
   })
+  const stopDisposed = ctx.on('agent/disposed', ({ agent: disposed }) => {
+    const scoped: Context = disposed.ctx
+    void scoped
+  })
 
   const stopSection = agent.ctx.systemPrompt.section({
     name: 'contract:section',
@@ -32,6 +36,7 @@ function consumePublicM4C2Contract(ctx: Context, agent: Agent): void {
 
   stopContext()
   stopSection()
+  stopDisposed()
   stopCreated()
 }
 

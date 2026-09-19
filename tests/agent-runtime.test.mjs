@@ -29,6 +29,10 @@ function emitCreated(ctx, value) {
   return ctx.emit('agent/created', { agent: value })
 }
 
+function emitDisposed(ctx, value) {
+  return ctx.emit('agent/disposed', { agent: value })
+}
+
 test('Agent runtime bridge reports absent agents capability without attaching', async () => {
   const ctx = new Context()
   let calls = 0
@@ -68,6 +72,29 @@ test('Agent runtime bridge adopts existing Agents and later created Agents once 
   await bridge.dispose()
   assert.deepEqual(cleaned, [second, first])
   assert.equal(bridge.agents.size, 0)
+})
+
+test('Agent runtime bridge drops disposed Agent identity without re-disposing its already-owned scope effects', async () => {
+  const root = new Context()
+  const current = agent('a')
+  await root.plugin(FakeAgents, [current])
+  let cleanupCalls = 0
+
+  const bridge = await attachAgentRuntimeBridge(root, async () => () => {
+    cleanupCalls += 1
+  })
+  assert.ok(bridge)
+  assert.equal(bridge.agents.has(current), true)
+
+  await emitDisposed(root, current)
+  assert.equal(bridge.agents.has(current), false)
+
+  // In real DSH the Agent scope is disposed before agent/disposed; the bridge
+  // must not invoke the same scoped disposer a second time.
+  assert.equal(cleanupCalls, 0)
+
+  await bridge.dispose()
+  assert.equal(cleanupCalls, 0)
 })
 
 test('Agent runtime bridge initial adoption rolls back earlier Agents when a later attach fails', async () => {

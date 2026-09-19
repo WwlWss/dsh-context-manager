@@ -12,7 +12,7 @@ interface AgentsCapability {
 
 interface AgentLifecycleContext {
   on(
-    event: 'agent/created',
+    event: 'agent/created' | 'agent/disposed',
     listener: (payload: unknown) => void | Promise<void>,
   ): () => void
 }
@@ -71,12 +71,12 @@ function runtimeAgent(raw: unknown, label: string): RuntimeAgent {
   return raw as RuntimeAgent
 }
 
-function createdAgent(payload: unknown): RuntimeAgent {
+function lifecycleAgent(payload: unknown, event: 'agent/created' | 'agent/disposed'): RuntimeAgent {
   if (typeof payload !== 'object' || payload === null) {
-    throw unsupportedAgentShape('agent/created payload must be an object')
+    throw unsupportedAgentShape(`${event} payload must be an object`)
   }
   const rawAgent = (payload as Record<string, unknown>).agent
-  return runtimeAgent(rawAgent, 'agent/created payload.agent')
+  return runtimeAgent(rawAgent, `${event} payload.agent`)
 }
 
 async function cleanupAll(cleanups: readonly AgentRuntimeCleanup[]): Promise<void> {
@@ -128,11 +128,22 @@ export async function attachAgentRuntimeBridge(
   }
 
   let stopCreated: (() => void) | undefined
+  let stopDisposed: (() => void) | undefined
   try {
-    stopCreated = (ctx as unknown as AgentLifecycleContext).on(
+    const lifecycle = ctx as unknown as AgentLifecycleContext
+    stopCreated = lifecycle.on(
       'agent/created',
       async payload => {
-        await attachOne(createdAgent(payload))
+        await attachOne(lifecycleAgent(payload, 'agent/created'))
+      },
+    )
+    stopDisposed = lifecycle.on(
+      'agent/disposed',
+      payload => {
+        // DSH disposes the Agent scope before publishing agent/disposed. The
+        // scoped registrations are already gone; remove only our process-local
+        // bookkeeping so a dead Agent cannot remain inspectable/retained.
+        attached.delete(lifecycleAgent(payload, 'agent/disposed'))
       },
     )
 
@@ -147,6 +158,7 @@ export async function attachAgentRuntimeBridge(
     disposed = true
     try {
       stopCreated?.()
+      stopDisposed?.()
     } finally {
       const cleanups = [...attached.values()]
       attached.clear()
@@ -170,6 +182,7 @@ export async function attachAgentRuntimeBridge(
       if (disposed) return
       disposed = true
       stopCreated?.()
+      stopDisposed?.()
       const cleanups = [...attached.values()]
       attached.clear()
       await cleanupAll(cleanups)
