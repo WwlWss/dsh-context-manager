@@ -127,14 +127,14 @@ From 0.1.2 onward equal-order sections use locale-independent code-unit section-
 
 ## 6. Semantic placement mapping
 
-M4C1 maps one future Context Manager **aggregate contribution per semantic anchor**. PromptBinding-local ordering stays inside the future resolved aggregate plan:
+M4C1 reserves one Context Manager **extension slot per semantic anchor**. PromptBinding-local ordering stays inside the later M4C2 resolved plan:
 
 ```text
 PromptBinding.order ASC
 then PromptBindingId code-unit ASC
 ```
 
-M4C2 must concatenate/resolve bindings in that order. It must not turn individual PromptBinding order values into native DSH numeric section offsets.
+M4C2 expands each visible slot into independent per-binding assembled contributions in that order. It deliberately does **not** concatenate PromptResource bodies, because each resource must retain its own native interpolation boundary. Individual PromptBinding order values are never turned into native DSH numeric section offsets.
 
 ### 6.1 System-section anchors
 
@@ -155,7 +155,7 @@ The half-step offsets are deliberate. The public registry accepts any finite num
 
 `runtime-context` maps to the native `PromptContext` channel, never to a system-prompt section.
 
-The retained contract places Context Manager's future aggregate context immediately after the current DSH policy/delegation trio:
+The retained contract places Context Manager's runtime-context extension slot immediately after the current DSH policy/delegation trio:
 
 ```text
 0.1.1:          120.5
@@ -217,7 +217,7 @@ Two stable native behaviors matter to M4C2:
 - an effective `complete: true` section removes other system-prompt sections from the final assembled section list;
 - an active runtime-context suppressor removes runtime-context contributions from the final assembled context list.
 
-M4C1 must not special-case the shipped `minimal` preset. M4C2 diagnostics must determine whether Context Manager's own registered aggregate contribution survives the actual native assembly/composition and report suppression without relocating the binding.
+M4C1 must not special-case the shipped `minimal` preset. M4C2 diagnostics must determine whether Context Manager's registered slot/contributions survive the actual native assembly/composition and report suppression without relocating the binding.
 
 ## 10. Planned code structure
 
