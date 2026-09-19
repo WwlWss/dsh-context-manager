@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 
 import { Context } from '@deepseek-ai/cordis'
-import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
+import SystemPrompt, { renderPrompt } from '@deepseek-ai/dsh-system-prompt'
 import { createScope } from '@deepseek-ai/dsh-scope'
 
 import {
@@ -53,11 +53,12 @@ try {
   assert.equal(placement.status, 'available')
 
   let visible
+  let systemBindings = [systemBinding]
   const dispose = installAgentPromptRuntime(agent, placement.targets, placements => {
     visible = placements
     const eligible = placements.has('runtime-context')
-      ? [systemBinding, contextBinding]
-      : [systemBinding]
+      ? [...systemBindings, contextBinding]
+      : [...systemBindings]
     return {
       profile: {
         status: 'active',
@@ -91,6 +92,50 @@ try {
     assembled.contexts.find(item => item.name === promptBindingContributionName('context'))?.text,
     'CM context smoke',
   )
+
+  const leftBoundary = Object.freeze({
+    ...systemBinding,
+    bindingId: 'left-boundary',
+    resourceId: 'left-boundary-resource',
+    order: 1,
+    content: 'literal {{',
+  })
+  const rightBoundary = Object.freeze({
+    ...systemBinding,
+    bindingId: 'right-boundary',
+    resourceId: 'right-boundary-resource',
+    order: 2,
+    content: 'missing}}',
+  })
+  systemBindings = [leftBoundary, rightBoundary]
+  const independent = await rootPrompt.assemble({ scope: scopeKey })
+  assert.doesNotThrow(() => renderPrompt(independent))
+  assert.equal(
+    independent.sections.find(item => item.name === promptBindingContributionName('left-boundary'))?.text,
+    'literal {{',
+  )
+  assert.equal(
+    independent.sections.find(item => item.name === promptBindingContributionName('right-boundary'))?.text,
+    'missing}}',
+  )
+
+  const invalidSource = 'before {{missing_variable}} after'
+  const invalidBinding = Object.freeze({
+    ...systemBinding,
+    bindingId: 'invalid-variable',
+    resourceId: 'invalid-variable-resource',
+    order: 3,
+    content: invalidSource,
+  })
+  systemBindings = [invalidBinding]
+  const invalidAssembly = await rootPrompt.assemble({ scope: scopeKey })
+  assert.throws(
+    () => renderPrompt(invalidAssembly),
+    /unknown prompt variable/,
+  )
+  assert.equal(invalidBinding.content, invalidSource)
+
+  systemBindings = [systemBinding]
 
   const suppress = scopedPrompt.suppressRuntimeContext()
   try {
