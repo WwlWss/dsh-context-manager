@@ -4,7 +4,7 @@ Modular preset, prompt, skill, transform, and presentation context manager for D
 
 ## Status
 
-The installable/test-gated DSH bundle foundation, Settings-backed Host profile Domain, native AgentPreset discovery/identity/authoring work (M3A–M3C), and the complete prompt stack (M4A Prompt Library, M4B PromptBinding Domain, M4C1 placement compatibility, M4C2 Agent-scoped prompt runtime) are complete. PromptBindings are now model-effective through the native DSH prompt assembly seam. The current milestone is M5A: a model-inert Skill Policy Runtime foundation that pins the public Skill/Scope contract, adds a targeted default-profile runtime read, and publishes Context Manager invalidation before M5B changes any native skill behavior.
+The installable/test-gated DSH bundle foundation, Settings-backed Host profile Domain, native AgentPreset discovery/identity/authoring work (M3A–M3C), the complete prompt stack (M4A–M4C2), and the M5A Skill Policy Runtime foundation are complete. PromptBindings are model-effective through the native DSH prompt assembly seam; skill bindings remain model-inert until M5B. M5A pins the five-generation public Skill/Scope contract, adds the targeted default-profile runtime read, and publishes Context Manager authority invalidation. The next implementation milestone is M5B: the Agent-scoped Skill policy overlay.
 
 Context Manager is an editor, not a policy engine. It preserves explicit user intent, reports unresolved or malformed resources as diagnostics, and does not silently fallback, repair, normalize, reorder, or delete user-authored configuration.
 
@@ -96,7 +96,7 @@ DSH Settings revision fencing is an in-process guarantee. If multiple DSH proces
 2. **Complete** — Host-side Context Manager domain and settings-backed reusable profile model.
 3. **Complete** — M3A native AgentPreset roster resolution, M3B live Session effective identity, and M3C DSH-owned copy-only native preset authoring bridge.
 4. **Complete** — Storage-backed Prompt Library, PromptBinding Domain state, five-generation placement compatibility, and Agent-scoped prompt/runtime-context composition.
-5. **M5A current** — Skill Policy Runtime foundation: five-generation Skill/Scope contracts, targeted effective-profile hot-path reads, and Context Manager invalidation. M5B adds Agent-scoped Pinned / Auto / Manual / Off invocation policy; M5C adds durable Pinned full-instruction replacement.
+5. **M5A complete / M5B next** — Skill Policy Runtime foundation is in place: five-generation Skill/Scope contracts, targeted effective-profile hot-path reads, and Context Manager invalidation. M5B adds Agent-scoped Pinned / Auto / Manual / Off invocation policy; M5C adds durable Pinned full-instruction replacement.
 6. Host Remote API for browser-safe Domain/runtime views and explicit mutations.
 7. Web client package and additive right-side Drawer.
 8. Preset / Prompt / Skill editor and effective-context preview.
