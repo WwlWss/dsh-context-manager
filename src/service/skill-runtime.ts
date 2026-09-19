@@ -22,6 +22,11 @@ declare module '@deepseek-ai/cordis' {
   }
 }
 
+interface ActiveSkillRuntime {
+  readonly ctx: Context
+  readonly bridge: AgentRuntimeBridge
+}
+
 function agentWorkspaceCwd(agent: RuntimeAgent): string | undefined {
   const raw = agent as unknown as {
     session?: {
@@ -34,6 +39,36 @@ function agentWorkspaceCwd(agent: RuntimeAgent): string | undefined {
   return typeof cwd === 'string' ? cwd : undefined
 }
 
+function trackControl(
+  controls: Set<SkillProviderControl>,
+  control: SkillProviderControl,
+): void {
+  controls.add(control)
+  control.signal.addEventListener(
+    'abort',
+    () => {
+      controls.delete(control)
+    },
+    { once: true },
+  )
+}
+
+/**
+ * DSH provider invalidation is registry-wide. One CM authority edit therefore
+ * selects one live registration as the coordinator instead of invalidating
+ * once per Agent.
+ */
+function invalidateRegistryOnce(controls: Set<SkillProviderControl>): void {
+  for (const control of controls) {
+    if (control.signal.aborted) {
+      controls.delete(control)
+      continue
+    }
+    control.invalidate()
+    return
+  }
+}
+
 /**
  * M5B Agent-scoped Skill policy runtime.
  *
@@ -42,13 +77,10 @@ function agentWorkspaceCwd(agent: RuntimeAgent): string | undefined {
  * invalidation is cached by the native SkillRegistry.
  */
 export class ContextManagerSkillRuntime extends Service {
-  private readonly ownerCtx: Context
-  private activeBridge?: AgentRuntimeBridge
-  private readonly controls = new Set<SkillProviderControl>()
+  private active?: ActiveSkillRuntime
 
   constructor(ctx: Context) {
     super(ctx, 'dshContextSkillRuntime')
-    this.ownerCtx = ctx
 
     ctx.inject([
       'dshContextManager',
@@ -57,10 +89,14 @@ export class ContextManagerSkillRuntime extends Service {
       'skills',
     ], async (runtimeCtx) => {
       await runtimeCtx.effect(async () => {
+        // Controls belong to this exact dependency activation. A later
+        // reactivation must not share invalidation state with an older bridge
+        // that is still unwinding.
+        const controls = new Set<SkillProviderControl>()
         const stopChange = runtimeCtx.on(
           'dsh-context-manager/change',
           () => {
-            this.invalidateRegistryOnce()
+            invalidateRegistryOnce(controls)
           },
         )
 
@@ -73,40 +109,47 @@ export class ContextManagerSkillRuntime extends Service {
                 runtimeCtx,
                 agent,
                 () => this.resolveProfile(runtimeCtx, agent),
-                control => this.trackControl(control),
+                control => trackControl(controls, control),
               )
               return () => installed.dispose()
             },
           )
         } catch (error) {
           stopChange()
+          controls.clear()
           throw error
         }
 
-        if (bridge !== undefined) this.activeBridge = bridge
+        if (bridge !== undefined) {
+          this.active = Object.freeze({
+            ctx: runtimeCtx,
+            bridge,
+          })
+        }
 
         return async () => {
           stopChange()
-          if (this.activeBridge === bridge) this.activeBridge = undefined
+          if (this.active?.bridge === bridge) this.active = undefined
           await bridge?.dispose()
-          this.controls.clear()
+          controls.clear()
         }
       }, 'dshContextSkillRuntime.lifecycle()')
     })
   }
 
   async inspect(agentId: string): Promise<SkillRuntimeInspection> {
-    const bridge = this.activeBridge
-    if (bridge === undefined) {
+    const active = this.active
+    if (active === undefined) {
       return Object.freeze({ status: 'runtime-unavailable' })
     }
 
-    const agent = [...bridge.agents.keys()].find(candidate => candidate.id === agentId)
+    const agent = [...active.bridge.agents.keys()]
+      .find(candidate => candidate.id === agentId)
     if (agent === undefined) {
       return Object.freeze({ status: 'agent-not-live', agentId })
     }
 
-    const profile = this.resolveProfile(this.ownerCtx, agent)
+    const profile = this.resolveProfile(active.ctx, agent)
     if (profile.status !== 'active') {
       return Object.freeze({
         status: 'resolved',
@@ -118,7 +161,7 @@ export class ContextManagerSkillRuntime extends Service {
     }
 
     const inspected = await inspectAgentSkillPolicy(
-      this.ownerCtx,
+      active.ctx,
       agent,
       profile,
       agentWorkspaceCwd(agent),
@@ -141,32 +184,5 @@ export class ContextManagerSkillRuntime extends Service {
       ctx.dshContextManager.defaultProfileCandidate(),
       ctx.dshContextSessionPresetIdentity.snapshot(agent.id),
     )
-  }
-
-  private trackControl(control: SkillProviderControl): void {
-    this.controls.add(control)
-    control.signal.addEventListener(
-      'abort',
-      () => {
-        this.controls.delete(control)
-      },
-      { once: true },
-    )
-  }
-
-  /**
-   * DSH provider invalidation is registry-wide. One CM authority edit therefore
-   * selects one live registration as the coordinator instead of invalidating
-   * once per Agent.
-   */
-  private invalidateRegistryOnce(): void {
-    for (const control of this.controls) {
-      if (control.signal.aborted) {
-        this.controls.delete(control)
-        continue
-      }
-      control.invalidate()
-      return
-    }
   }
 }
