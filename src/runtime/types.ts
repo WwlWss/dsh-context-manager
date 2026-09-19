@@ -102,3 +102,63 @@ export type PromptRuntimeInspection =
       readonly profile: EffectiveProfileResolution
       readonly bindings: readonly PromptRuntimeBindingInspection[]
     }
+
+
+export interface SkillRuntimeInvocation {
+  readonly modelInvocable: boolean
+  readonly userInvocable: boolean
+}
+
+export interface SkillRuntimeWinner {
+  readonly provider: string
+  readonly invocation: SkillRuntimeInvocation
+}
+
+export type SkillRuntimeBindingInspection =
+  | {
+      readonly state: 'native-pass-through'
+      readonly skillName: string
+      readonly mode: 'auto'
+      readonly winner: SkillRuntimeWinner
+    }
+  | {
+      readonly state: 'policy-applied'
+      readonly skillName: string
+      readonly mode: 'manual' | 'off' | 'pinned'
+      readonly nativeProvider: string
+      readonly expectedInvocation: SkillRuntimeInvocation
+    }
+  | {
+      readonly state: 'policy-not-effective'
+      readonly skillName: string
+      readonly mode: 'manual' | 'off' | 'pinned'
+      readonly nativeProvider: string
+      readonly expectedInvocation: SkillRuntimeInvocation
+      readonly winner?: SkillRuntimeWinner
+    }
+  | {
+      readonly state: 'missing-native-skill'
+      readonly skillName: string
+      readonly mode: import('../domain/model.js').SkillMode
+    }
+  | {
+      readonly state: 'catalog-incomplete'
+      readonly skillName: string
+      readonly mode: import('../domain/model.js').SkillMode
+    }
+
+export type SkillRuntimeInspection =
+  | {
+      readonly status: 'runtime-unavailable'
+    }
+  | {
+      readonly status: 'agent-not-live'
+      readonly agentId: string
+    }
+  | {
+      readonly status: 'resolved'
+      readonly agentId: string
+      readonly profile: EffectiveProfileResolution
+      readonly catalogComplete: boolean
+      readonly bindings: readonly SkillRuntimeBindingInspection[]
+    }
