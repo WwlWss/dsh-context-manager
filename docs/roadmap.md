@@ -305,7 +305,7 @@ Special composition constraints, including complete-persona or runtime-context s
 
 ### 4C2. Agent-scoped Prompt Runtime
 
-**Status:** in progress. See [m4c2-plan.md](m4c2-plan.md).
+**Status:** complete in merged PR #14. See [m4c2-plan.md](m4c2-plan.md).
 
 Purpose: make PromptBindings model-effective for the first time while preserving future Workspace/Session binding extensibility.
 
@@ -379,41 +379,57 @@ M4 is complete only after M4C2 proves real model-visible behavior. M4A/M4B alone
 
 ## Milestone 5 — Skill policy runtime
 
-Goal: make Pinned / Auto / Manual / Off real.
+Goal: make Pinned / Auto / Manual / Off real while keeping DSH's native Skill registry and source providers authoritative.
 
-### Pinned
+The implementation is split deliberately so compatibility/performance work lands before any model-visible skill-policy change. See [m5-plan.md](m5-plan.md).
 
-Pinned skill instructions are deliberately injected as Context Manager-owned prompt/context content. They must not rely on pretending native discovery itself means pinned full instructions.
+### 5A — Public contract + runtime foundation
 
-### Auto
+**Status:** current; model-inert for skills.
 
-Preserve native model discovery + user invocation.
+M5A establishes the prerequisites shared by M5B and M5C:
 
-### Manual
+- pin the public SkillRegistry / Scope seams across all five retained DSH generations;
+- execute scope precedence, same-layer rank/tie behavior, provider invalidation/disposal, invocation-policy preservation, policy-neutral `get()`, `renderSkillContent()`, and `scopeParentOf()` in CI;
+- add a targeted default-profile Domain read so request-time runtime code parses only the configured default profile rather than the complete reusable profile library;
+- move M4C2 prompt assembly to that targeted read without changing EffectiveProfileResolver outcomes;
+- publish a payload-free `dsh-context-manager/change` authority invalidation from the existing Settings attach/change/detach lifecycle.
 
-User-invocable but absent from model-facing discovery.
+M5A does **not** register a Context Manager SkillProvider, change invocation policy, hide skills, or inject Pinned instructions.
 
-### Off
+### 5B — Agent-scoped Skill policy overlay
 
-Absent from both managed model discovery and managed user invocation.
+**Status:** planned after M5A is green.
 
-Preferred implementation:
+Use one Context Manager provider in each live Agent scope to shadow only managed non-Auto skills. Resolve the underlying native winner through the Agent scope's parent view so the overlay does not recursively select itself and the original filesystem/provider remains authoritative.
 
-- scoped overlay/shadow policy over native `ctx.skills`;
-- preserve original providers and stock behavior outside the managed agent/session scope;
-- never rewrite skill source files merely to change a profile binding.
+Mode semantics:
 
-Before shipping hard policy claims, test:
+- **Auto** — contribute no Context Manager shadow. Preserve the native winning skill's exact invocation policy; do not force `true / true`.
+- **Manual** — if the native skill exists, shadow it as `{ modelInvocable: false, userInvocable: true }`.
+- **Off** — if the native skill exists, shadow it as `{ modelInvocable: false, userInvocable: false }`.
+- **Pinned** — if the native skill exists, also shadow it as `{ modelInvocable: false, userInvocable: false }`. Pinned instructions are supplied separately by M5C, not by native discovery/invocation.
+- A missing bound skill remains a runtime diagnostic. Context Manager must not fabricate a definition.
 
-- same-name global/preset/agent registrations;
-- provider invalidation;
-- live agent creation and disposal;
-- resumed sessions;
-- native tool-skill invocation paths;
-- explicit user invocation paths;
-- leakage from farther scopes.
+The planned shadow rank is `Number.MAX_VALUE`, the lowest public finite rank. This gives ordinary same-layer Agent-local candidates with any lower rank precedence over Context Manager, but it is not an absolute same-layer guarantee: another `Number.MAX_VALUE` candidate ties and provider registration order decides. M5B must test and describe the exact guarantee it can prove rather than claiming stronger isolation.
 
-If the supported DSH version cannot faithfully hide a farther registration, mark that runtime capability unavailable instead of presenting a fake Off switch.
+On `dsh-context-manager/change`, each live Agent provider may call its own registration-scoped `SkillProviderControl.invalidate()`. Do not create a `skills/change -> Context Manager invalidation -> skills/change` feedback loop; native provider changes already invalidate SkillRegistry's catalog.
+
+M5B lifecycle tests must cover existing/new Agents, preset standing scopes, same-name precedence, profile/basePreset switches, native provider invalidation, scope disposal, HMR/unload/reload, user/model invocation paths, and leakage from farther scopes.
+
+### 5C — Pinned durable full-instruction bundle
+
+**Status:** planned after M5B.
+
+Pinned means full instructions are deliberately included by Context Manager even though the native skill is hidden from both model discovery and native user invocation.
+
+M5C must load the underlying native definition through the parent-scope view and render it with native `renderSkillContent()`. The bundle is deterministic (skill name code-unit order unless an explicit binding order is introduced later) and owned as one durable Context Manager replacement contribution per Agent/current step state.
+
+Do not append a new pinned message on every pre-step. Repeated steps, profile edits, `Pinned -> Off/Manual/Auto`, exact `basePreset A -> B -> A` changes, resume, and HMR must replace or explicitly clear the owned bundle so historical duplicates cannot accumulate.
+
+The exact current public Session/Surface/Agent pre-step seam must be re-audited when M5C begins; the conceptual replacement design is not permission to bind to stale internal APIs.
+
+M5 is complete only after model discovery, user invocation, Pinned instruction visibility, native-provider changes, and lifecycle cleanup are proven through real supported DSH paths.
 
 ---
 
