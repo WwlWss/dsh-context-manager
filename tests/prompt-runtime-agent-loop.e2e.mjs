@@ -175,6 +175,21 @@ function latestRuntimeContextText(request) {
   return undefined
 }
 
+function currentSystemText(request) {
+  if (typeof request?.system === 'string') return request.system
+  const messages = request?.messages ?? []
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index]
+    if (message?.role !== 'system') continue
+    return (message.content ?? [])
+      .filter(block => block.type === 'text')
+      .map(block => block.text)
+      .join('')
+  }
+  return ''
+}
+
+
 function waitForIdle(ctx, agent) {
   return new Promise(resolve => {
     const dispose = ctx.on('agent/status', ({ agent: subject, status }) => {
@@ -332,9 +347,11 @@ try {
 
   await runtimeFiber.dispose()
   await turn(ctx, agent, 'turn-11-unloaded')
-  text = requestText(adapter.requests.at(-1))
-  assert.equal(text.includes('CM_SECOND'), false)
-  assert.equal(text.includes('CM_RUNTIME'), false)
+  const unloadedRequest = adapter.requests.at(-1)
+  assert.equal(currentSystemText(unloadedRequest).includes('CM_SECOND'), false)
+  const unloadedRuntime = latestRuntimeContextText(unloadedRequest)
+  assert.ok(unloadedRuntime?.includes('Current runtime context: none'))
+  assert.equal(unloadedRuntime?.includes('CM_RUNTIME'), false)
 
   runtimeFiber = ctx.plugin(ContextManagerPromptRuntime)
   await runtimeFiber

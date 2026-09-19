@@ -77,7 +77,10 @@ try {
     }
   })
 
-  const assembled = await ctx.systemPrompt.assemble({ scope: scopeKey })
+  const rootPrompt = ctx.get('systemPrompt')
+  const scopedPrompt = scope.ctx.get('systemPrompt')
+
+  const assembled = await rootPrompt.assemble({ scope: scopeKey })
   assert.ok(visible.has('after-persona'))
   assert.ok(visible.has('runtime-context'))
   assert.equal(
@@ -89,9 +92,9 @@ try {
     'CM context smoke',
   )
 
-  const suppress = scope.ctx.systemPrompt.suppressRuntimeContext()
+  const suppress = scopedPrompt.suppressRuntimeContext()
   try {
-    const suppressed = await ctx.systemPrompt.assemble({ scope: scopeKey })
+    const suppressed = await rootPrompt.assemble({ scope: scopeKey })
     assert.equal(visible.has('runtime-context'), false)
     assert.equal(
       suppressed.contexts.some(item => item.name === promptBindingContributionName('context')),
@@ -102,7 +105,7 @@ try {
   }
 
   dispose()
-  const cleaned = await ctx.systemPrompt.assemble({ scope: scopeKey })
+  const cleaned = await rootPrompt.assemble({ scope: scopeKey })
   assert.equal(
     cleaned.sections.some(item => item.name.startsWith('dsh-context-manager:')),
     false,
