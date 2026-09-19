@@ -196,64 +196,90 @@ try {
   let runtimeFiber = ctx.plugin(ContextManagerSkillRuntime)
   await runtimeFiber
 
-  const agent = await ctx.agentLoop.create(SessionId('m5b-e2e'), {
+  const autoAgent = await ctx.agentLoop.create(SessionId('m5b-e2e-auto'), {
     provider: 'mock',
     model: 'mock',
   })
 
-  let inspection = await waitForRuntime(ctx.dshContextSkillRuntime, agent.id)
+  let inspection = await waitForRuntime(ctx.dshContextSkillRuntime, autoAgent.id)
   assert.equal(inspection.status, 'resolved')
   assert.equal(inspection.profile.status, 'active')
   assert.equal(inspection.bindings[0]?.state, 'native-pass-through')
 
   // Auto preserves native true/false exactly: model sees/loads it, user gesture
   // remains disabled.
-  await turn(ctx, agent, 'auto catalog')
+  await turn(ctx, autoAgent, 'auto catalog')
   let text = requestText(adapter.requests.at(-1))
   assert.ok(text.includes(DESCRIPTION))
   assert.equal(text.includes(BODY), false)
 
-  let toolResult = await executeSkill(ctx, agent, 'auto')
+  let toolResult = await executeSkill(ctx, autoAgent, 'auto')
   assert.equal(toolResult.isError, false)
   assert.ok(JSON.stringify(toolResult.content).includes(BODY))
 
-  await turn(ctx, agent, '/target')
+  await turn(ctx, autoAgent, '/target')
   text = requestText(adapter.requests.at(-1))
   assert.equal(text.includes(BODY), false)
 
-  // Manual hides model discovery/load but permits explicit user invocation.
+  // Each following mode uses a fresh Session so durable catalog history from
+  // Auto cannot be mistaken for the current mode's visible catalog.
   setMode(ctx, 'manual')
-  await turn(ctx, agent, 'manual catalog')
+  const manualAgent = await ctx.agentLoop.create(SessionId('m5b-e2e-manual'), {
+    provider: 'mock',
+    model: 'mock',
+  })
+  await waitForRuntime(ctx.dshContextSkillRuntime, manualAgent.id)
+
+  await turn(ctx, manualAgent, 'manual catalog')
   text = requestText(adapter.requests.at(-1))
   assert.equal(text.includes(DESCRIPTION), false)
 
-  toolResult = await executeSkill(ctx, agent, 'manual')
+  toolResult = await executeSkill(ctx, manualAgent, 'manual')
   assert.equal(toolResult.isError, true)
 
-  await turn(ctx, agent, '/target')
+  await turn(ctx, manualAgent, '/target')
   text = requestText(adapter.requests.at(-1))
   assert.ok(text.includes(BODY))
 
-  inspection = await ctx.dshContextSkillRuntime.inspect(agent.id)
+  inspection = await ctx.dshContextSkillRuntime.inspect(manualAgent.id)
   assert.equal(inspection.status, 'resolved')
   assert.equal(inspection.bindings[0]?.state, 'policy-applied')
 
-  // Off hides both native invocation surfaces.
   setMode(ctx, 'off')
-  toolResult = await executeSkill(ctx, agent, 'off')
+  const offAgent = await ctx.agentLoop.create(SessionId('m5b-e2e-off'), {
+    provider: 'mock',
+    model: 'mock',
+  })
+  await waitForRuntime(ctx.dshContextSkillRuntime, offAgent.id)
+
+  await turn(ctx, offAgent, 'off catalog')
+  text = requestText(adapter.requests.at(-1))
+  assert.equal(text.includes(DESCRIPTION), false)
+
+  toolResult = await executeSkill(ctx, offAgent, 'off')
   assert.equal(toolResult.isError, true)
 
-  await turn(ctx, agent, '/target')
+  await turn(ctx, offAgent, '/target')
   text = requestText(adapter.requests.at(-1))
   assert.equal(text.includes(BODY), false)
 
   // Pinned is intentionally identical to Off in M5B. M5C will provide the
   // separate durable full-instruction path.
   setMode(ctx, 'pinned')
-  toolResult = await executeSkill(ctx, agent, 'pinned')
+  const pinnedAgent = await ctx.agentLoop.create(SessionId('m5b-e2e-pinned'), {
+    provider: 'mock',
+    model: 'mock',
+  })
+  await waitForRuntime(ctx.dshContextSkillRuntime, pinnedAgent.id)
+
+  await turn(ctx, pinnedAgent, 'pinned catalog')
+  text = requestText(adapter.requests.at(-1))
+  assert.equal(text.includes(DESCRIPTION), false)
+
+  toolResult = await executeSkill(ctx, pinnedAgent, 'pinned')
   assert.equal(toolResult.isError, true)
 
-  await turn(ctx, agent, '/target')
+  await turn(ctx, pinnedAgent, '/target')
   text = requestText(adapter.requests.at(-1))
   assert.equal(text.includes(BODY), false)
 
@@ -261,7 +287,7 @@ try {
   // behavior even while the stored binding remains Pinned.
   state.presetId = 'preset-b'
   ctx.emit('dsh-context-manager/change')
-  toolResult = await executeSkill(ctx, agent, 'preset-mismatch')
+  toolResult = await executeSkill(ctx, pinnedAgent, 'preset-mismatch')
   assert.equal(toolResult.isError, false)
   assert.ok(JSON.stringify(toolResult.content).includes(BODY))
 
@@ -271,14 +297,14 @@ try {
   // Runtime unload must restore stock Skill behavior and reload must not leave
   // duplicate providers behind.
   await runtimeFiber.dispose()
-  toolResult = await executeSkill(ctx, agent, 'unloaded')
+  toolResult = await executeSkill(ctx, pinnedAgent, 'unloaded')
   assert.equal(toolResult.isError, false)
 
   runtimeFiber = ctx.plugin(ContextManagerSkillRuntime)
   await runtimeFiber
-  await waitForRuntime(ctx.dshContextSkillRuntime, agent.id)
+  await waitForRuntime(ctx.dshContextSkillRuntime, pinnedAgent.id)
 
-  toolResult = await executeSkill(ctx, agent, 'reloaded-pinned')
+  toolResult = await executeSkill(ctx, pinnedAgent, 'reloaded-pinned')
   assert.equal(toolResult.isError, true)
 
   await runtimeFiber.dispose()
