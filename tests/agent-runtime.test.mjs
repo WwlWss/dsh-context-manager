@@ -73,7 +73,9 @@ test('Agent runtime bridge adopts existing Agents and later created Agents once 
   agents.splice(0, 1)
   await emitDisposed(root, first)
   agents.push(second)
-  await emitCreated(root, second)
+  root.emit('agent/created', { agent: second })
+  // Legacy DSH publishes this event fire-and-forget. A synchronous Host
+  // attachment must therefore be visible before emit() returns.
   assert.deepEqual(attached, [first, second])
   assert.equal(bridge.agents.size, 1)
   assert.equal(bridge.agents.has(second), true)
