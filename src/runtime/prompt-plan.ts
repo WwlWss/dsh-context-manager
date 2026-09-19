@@ -1,4 +1,3 @@
-import { ContextManagerError } from '../domain/errors.js'
 import type {
   ContextProfile,
   PromptPlacement,
@@ -24,12 +23,14 @@ function freezeBinding<T extends PromptBindingPlanState>(binding: T): Readonly<T
 function resourceFailure(
   error: unknown,
 ): { state: 'missing-resource' | 'invalid-resource'; message: string } | undefined {
-  if (!(error instanceof ContextManagerError)) return undefined
-  if (error.code === 'prompt-resource-not-found') {
-    return { state: 'missing-resource', message: error.message }
+  if (typeof error !== 'object' || error === null) return undefined
+  const candidate = error as { code?: unknown; message?: unknown }
+  const message = typeof candidate.message === 'string' ? candidate.message : String(error)
+  if (candidate.code === 'prompt-resource-not-found') {
+    return { state: 'missing-resource', message }
   }
-  if (error.code === 'invalid-prompt-resource') {
-    return { state: 'invalid-resource', message: error.message }
+  if (candidate.code === 'invalid-prompt-resource') {
+    return { state: 'invalid-resource', message }
   }
   return undefined
 }

@@ -8,6 +8,9 @@ import {
   installAgentPromptRuntime,
   promptBindingContributionName,
 } from '../src/adapters/prompt-runtime.ts'
+import {
+  observeNativePromptPlacementCompatibility,
+} from '../src/adapters/prompt-placement.ts'
 
 const generation = process.env.DSH_M4C2_GENERATION
 if (generation !== 'legacy' && generation !== 'named') {
@@ -46,8 +49,11 @@ try {
     resourceRevision: 1,
   })
 
+  const placement = observeNativePromptPlacementCompatibility(scope.ctx)
+  assert.equal(placement.status, 'available')
+
   let visible
-  const dispose = installAgentPromptRuntime(agent, placements => {
+  const dispose = installAgentPromptRuntime(agent, placement.targets, placements => {
     visible = placements
     const eligible = placements.has('runtime-context')
       ? [systemBinding, contextBinding]

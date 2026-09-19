@@ -9,6 +9,15 @@ import {
   promptBindingContributionName,
 } from '../src/adapters/prompt-runtime.ts'
 
+
+const TARGETS = Object.freeze({
+  'before-persona': Object.freeze({ channel: 'section', order: -0.5 }),
+  'after-persona': Object.freeze({ channel: 'section', order: 0.5 }),
+  'before-tool-guidance': Object.freeze({ channel: 'section', order: 99.5 }),
+  'after-tool-guidance': Object.freeze({ channel: 'section', order: 199.5 }),
+  'runtime-context': Object.freeze({ channel: 'runtime-context', order: 120.5 }),
+})
+
 class NativeSystemPromptFixture extends Service {
   constructor(ctx, { suppressContext = false, complete = false } = {}) {
     super(ctx, 'systemPrompt')
@@ -86,7 +95,7 @@ test('fresh inspection captures the exact resolution used by native assembly', a
   const binding = eligible('x', 'after-persona', 'hello')
   const resolution = { profile, plan: { bindings: [binding], eligible: [binding] } }
 
-  const dispose = installAgentPromptRuntime(agent, () => resolution)
+  const dispose = installAgentPromptRuntime(agent, TARGETS, () => resolution)
   const inspected = await inspectAgentPromptRuntime(agent)
 
   assert.equal(inspected.resolution, resolution)
@@ -112,7 +121,7 @@ test('fresh inspection observes native complete and runtime-context suppression 
   const section = eligible('system', 'after-persona', 'system')
   const context = eligible('context', 'runtime-context', 'context')
 
-  const dispose = installAgentPromptRuntime(agent, visible => {
+  const dispose = installAgentPromptRuntime(agent, TARGETS, visible => {
     seenVisible = visible
     const eligibleRows = visible.has('runtime-context') ? [section, context] : [section]
     return {

@@ -1,9 +1,6 @@
 import type { Context } from '@deepseek-ai/cordis'
 
-import {
-  observeNativePromptPlacementCompatibility,
-  type NativePromptPlacementTarget,
-} from './prompt-placement.js'
+import type { NativePromptPlacementTarget } from './prompt-placement.js'
 import type { RuntimeAgent } from './agent-runtime.js'
 import type { PromptPlacement } from '../domain/model.js'
 import type { PromptPlan } from '../runtime/types.js'
@@ -64,6 +61,10 @@ export interface PromptRuntimeAssemblyResolution {
 export type PromptRuntimeResolver = (
   visiblePlacements: ReadonlySet<PromptPlacement>,
 ) => PromptRuntimeAssemblyResolution
+
+export type NativePromptPlacementTargets = Readonly<
+  Record<PromptPlacement, Readonly<NativePromptPlacementTarget>>
+>
 
 function unsupportedRuntimeApi(detail: string): TypeError {
   return new TypeError(`dsh-context-manager: unsupported systemPrompt runtime API; ${detail}`)
@@ -258,13 +259,9 @@ function disposeReverse(disposers: readonly (() => void)[]): void {
  */
 export function installAgentPromptRuntime(
   agent: RuntimeAgent,
+  targets: NativePromptPlacementTargets,
   resolve: PromptRuntimeResolver,
 ): () => void {
-  const compatibility = observeNativePromptPlacementCompatibility(agent.ctx)
-  if (compatibility.status !== 'available') {
-    throw unsupportedRuntimeApi('systemPrompt capability disappeared from Agent scope')
-  }
-
   const runtime = requireRuntime(agent.ctx)
   const disposers: Array<() => void> = []
 
@@ -276,7 +273,7 @@ export function installAgentPromptRuntime(
       'after-tool-guidance',
       'runtime-context',
     ] as const) {
-      disposers.push(registerSlot(runtime, compatibility.targets[placement], placement))
+      disposers.push(registerSlot(runtime, targets[placement], placement))
     }
 
     const stopAssembly = (agent.ctx as unknown as PromptAssemblyEventContext).on(

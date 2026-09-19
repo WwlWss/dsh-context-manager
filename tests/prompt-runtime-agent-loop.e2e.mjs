@@ -158,6 +158,20 @@ function requestText(request) {
   return JSON.stringify(request?.messages ?? [])
 }
 
+function latestRuntimeContextText(request) {
+  const messages = request?.messages ?? []
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index]
+    if (message?.role !== 'user') continue
+    const text = (message.content ?? [])
+      .filter(block => block.type === 'text')
+      .map(block => block.text)
+      .join('')
+    if (text.includes('Current runtime context')) return text
+  }
+  return undefined
+}
+
 function waitForIdle(ctx, agent) {
   return new Promise(resolve => {
     const dispose = ctx.on('agent/status', ({ agent: subject, status }) => {
@@ -285,8 +299,9 @@ try {
   const suppress = agent.ctx.systemPrompt.suppressRuntimeContext()
   await turn(ctx, agent, 'turn-9-runtime-suppressed')
   text = requestText(adapter.requests.at(-1))
-  assert.equal(text.includes('CM_RUNTIME'), false)
-  assert.ok(text.includes('Current runtime context: none'))
+  const clearedRuntime = latestRuntimeContextText(adapter.requests.at(-1))
+  assert.ok(clearedRuntime?.includes('Current runtime context: none'))
+  assert.equal(clearedRuntime?.includes('CM_RUNTIME'), false)
 
   inspection = await ctx.dshContextPromptRuntime.inspect(agent.id)
   assert.equal(inspection.status, 'resolved')

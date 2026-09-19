@@ -10,6 +10,7 @@ import {
   installAgentPromptRuntime,
   promptBindingContributionName,
 } from '../adapters/prompt-runtime.js'
+import { observeNativePromptPlacementCompatibility } from '../adapters/prompt-placement.js'
 import type { PromptPlacement } from '../domain/model.js'
 import { resolveEffectiveProfile } from '../runtime/effective-profile.js'
 import { resolvePromptPlan } from '../runtime/prompt-plan.js'
@@ -49,10 +50,19 @@ export class ContextManagerPromptRuntime extends Service {
       await runtimeCtx.effect(async () => {
         const bridge = await attachAgentRuntimeBridge(
           runtimeCtx,
-          agent => installAgentPromptRuntime(
-            agent,
-            visible => this.resolveAssembly(runtimeCtx, agent, visible),
-          ),
+          agent => {
+            const placement = observeNativePromptPlacementCompatibility(agent.ctx)
+            if (placement.status !== 'available') {
+              throw new TypeError(
+                'dsh-context-manager: systemPrompt placement capability disappeared from Agent scope',
+              )
+            }
+            return installAgentPromptRuntime(
+              agent,
+              placement.targets,
+              visible => this.resolveAssembly(runtimeCtx, agent, visible),
+            )
+          },
         )
         if (bridge !== undefined) this.activeBridge = bridge
         return async () => {

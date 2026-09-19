@@ -9,6 +9,15 @@ import {
   promptBindingContributionName,
 } from '../src/adapters/prompt-runtime.ts'
 
+
+const TARGETS = Object.freeze({
+  'before-persona': Object.freeze({ channel: 'section', order: -0.5 }),
+  'after-persona': Object.freeze({ channel: 'section', order: 0.5 }),
+  'before-tool-guidance': Object.freeze({ channel: 'section', order: 99.5 }),
+  'after-tool-guidance': Object.freeze({ channel: 'section', order: 199.5 }),
+  'runtime-context': Object.freeze({ channel: 'runtime-context', order: 120.5 }),
+})
+
 class FakeSystemPrompt extends Service {
   constructor(ctx) {
     super(ctx, 'systemPrompt')
@@ -68,7 +77,7 @@ test('prompt runtime registers exactly five fixed empty placeholders and one exp
   const agent = fakeAgent()
   await agent.ctx.plugin(FakeSystemPrompt)
   const systemPrompt = agent.ctx.get('systemPrompt')
-  const dispose = installAgentPromptRuntime(agent, () => ({}))
+  const dispose = installAgentPromptRuntime(agent, TARGETS, () => ({}))
 
   assert.equal(systemPrompt.sections.length, 4)
   assert.equal(systemPrompt.contexts.length, 1)
@@ -90,7 +99,7 @@ test('prompt runtime expands bindings independently at placeholder positions', a
   const agent = fakeAgent()
   await agent.ctx.plugin(FakeSystemPrompt)
   const systemPrompt = agent.ctx.get('systemPrompt')
-  const dispose = installAgentPromptRuntime(agent, () => ({
+  const dispose = installAgentPromptRuntime(agent, TARGETS, () => ({
     plan: {
       bindings: [],
       eligible: [
@@ -146,7 +155,7 @@ test('native runtime-context suppression prevents the resolver from seeing that 
   await agent.ctx.plugin(FakeSystemPrompt)
   const systemPrompt = agent.ctx.get('systemPrompt')
   let visible
-  const dispose = installAgentPromptRuntime(agent, placements => {
+  const dispose = installAgentPromptRuntime(agent, TARGETS, placements => {
     visible = [...placements]
     return {}
   })
