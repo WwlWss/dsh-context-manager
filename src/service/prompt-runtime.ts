@@ -103,6 +103,12 @@ export class ContextManagerPromptRuntime extends Service {
       (resolution.plan?.bindings ?? []).map(binding => [binding.bindingId, binding]),
     )
     const bindings: PromptRuntimeBindingInspection[] = []
+    const sectionByName = new Map(
+      inspected.assembly.sections.map(section => [section.name, section]),
+    )
+    const contextByName = new Map(
+      inspected.assembly.contexts.map(context => [context.name, context]),
+    )
 
     const sorted = Object.entries(profile.profile.prompts).sort(([leftId, left], [rightId, right]) => {
       if (left.order < right.order) return -1
@@ -142,10 +148,9 @@ export class ContextManagerPromptRuntime extends Service {
       if (existing === undefined || existing.state !== 'eligible') continue
 
       const name = promptBindingContributionName(bindingId)
-      const collection = binding.placement === 'runtime-context'
-        ? inspected.assembly.contexts
-        : inspected.assembly.sections
-      const final = collection.find(item => item.name === name)
+      const final = binding.placement === 'runtime-context'
+        ? contextByName.get(name)
+        : sectionByName.get(name)
       const nativeState = final === undefined
         ? 'suppressed'
         : final.text === existing.content
@@ -153,7 +158,12 @@ export class ContextManagerPromptRuntime extends Service {
           : 'transformed'
 
       bindings.push(Object.freeze({
-        ...existing,
+        state: 'eligible',
+        bindingId: existing.bindingId,
+        resourceId: existing.resourceId,
+        placement: existing.placement,
+        order: existing.order,
+        resourceRevision: existing.resourceRevision,
         nativeState,
       }))
     }
