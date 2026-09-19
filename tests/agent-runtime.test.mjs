@@ -64,14 +64,45 @@ test('Agent runtime bridge adopts existing Agents and later created Agents once 
   await emitCreated(root, first)
   assert.deepEqual(attached, [first])
 
+  agents.splice(0, 1)
+  await emitDisposed(root, first)
   agents.push(second)
   await emitCreated(root, second)
   assert.deepEqual(attached, [first, second])
-  assert.equal(bridge.agents.size, 2)
+  assert.equal(bridge.agents.size, 1)
+  assert.equal(bridge.agents.has(second), true)
 
   await bridge.dispose()
-  assert.deepEqual(cleaned, [second, first])
+  assert.deepEqual(cleaned, [second])
   assert.equal(bridge.agents.size, 0)
+})
+
+test('Agent runtime bridge coalesces initial adoption with a concurrent created announcement', async () => {
+  const root = new Context()
+  const current = agent('race')
+  await root.plugin(FakeAgents, [current])
+
+  const started = Promise.withResolvers()
+  const release = Promise.withResolvers()
+  let calls = 0
+
+  const bridgePromise = attachAgentRuntimeBridge(root, async () => {
+    calls += 1
+    started.resolve()
+    await release.promise
+    return () => {}
+  })
+
+  await started.promise
+  const created = emitCreated(root, current)
+  release.resolve()
+
+  const [bridge] = await Promise.all([bridgePromise, created])
+  assert.ok(bridge)
+  assert.equal(calls, 1)
+  assert.equal(bridge.agents.size, 1)
+
+  await bridge.dispose()
 })
 
 test('Agent runtime bridge drops disposed Agent identity without re-disposing its already-owned scope effects', async () => {
@@ -115,23 +146,32 @@ test('Agent runtime bridge initial adoption rolls back earlier Agents when a lat
   assert.deepEqual(cleaned, ['a'])
 })
 
-test('Agent runtime bridge cleans an attachment that finishes after bridge disposal begins', async () => {
+test('Agent runtime bridge waits for an in-flight attachment before disposal completes', async () => {
   const root = new Context()
-  await root.plugin(FakeAgents, [])
+  const agents = []
+  await root.plugin(FakeAgents, agents)
+  const started = Promise.withResolvers()
   const pending = Promise.withResolvers()
   const cleaned = []
 
   const bridge = await attachAgentRuntimeBridge(root, async current => {
-    if (current.id === 'late') await pending.promise
+    started.resolve()
+    await pending.promise
     return () => { cleaned.push(current.id) }
   })
   assert.ok(bridge)
 
   const late = agent('late')
+  agents.push(late)
   const created = emitCreated(root, late)
-  const disposing = bridge.dispose()
-  pending.resolve()
+  await started.promise
 
+  let disposeSettled = false
+  const disposing = bridge.dispose().then(() => { disposeSettled = true })
+  await Promise.resolve()
+  assert.equal(disposeSettled, false)
+
+  pending.resolve()
   await created
   await disposing
   assert.deepEqual(cleaned, ['late'])
