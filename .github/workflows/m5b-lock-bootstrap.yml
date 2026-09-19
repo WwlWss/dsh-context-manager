@@ -4,7 +4,7 @@ on:
   pull_request:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   lockfile-bootstrap:
@@ -13,6 +13,8 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.head_ref }}
       - uses: actions/setup-node@v7
         with:
           node-version: 22.20.0
@@ -22,8 +24,14 @@ jobs:
           corepack prepare pnpm@11.7.0 --activate
       - name: Regenerate lockfile from M5B manifest
         run: pnpm install --lockfile-only --no-frozen-lockfile
-      - uses: actions/upload-artifact@v4
-        with:
-          name: m5b-pnpm-lock
-          path: pnpm-lock.yaml
-          if-no-files-found: error
+      - name: Commit generated lockfile when changed
+        shell: bash
+        run: |
+          if git diff --quiet -- pnpm-lock.yaml; then
+            exit 0
+          fi
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add pnpm-lock.yaml
+          git commit -m "build: refresh pnpm lock for M5B peers"
+          git push origin HEAD:${{ github.head_ref }}
