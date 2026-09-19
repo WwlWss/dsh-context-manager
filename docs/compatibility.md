@@ -300,19 +300,20 @@ The five retained published generations all expose the required public seams:
 - finite numeric candidate `rank`;
 - payload-free `skills/change` invalidation;
 - canonical `renderSkillContent()`;
-- DSH Scope ancestry including `scopeParentOf()`.
+- DSH Scope ancestry including `scopeParentOf()` and the public dynamic-parent binding/rebind seam.
 
 The M5A CI lane compiles those declarations and executes the actual published SkillRegistry for `0.1.1-rc.2`, `0.1.2-rc.1`, `0.1.5-rc.1`, `0.1.5-rc.2`, and `0.1.6-alpha.2`. Runtime evidence pins these semantics:
 
 - the nearest scope layer wins a duplicate name over farther layers;
 - candidate rank decides duplicates only within one layer;
-- `Number.MAX_VALUE` is a valid finite rank, but another equal-rank candidate ties and provider registration order decides;
+- `Number.MAX_VALUE` is a valid finite rank; because lower ranks win it is the lowest-priority finite rank, but another equal-rank candidate ties and provider registration order decides;
+- provider candidates must name the provider that returned them, which constrains the Context Manager proxy-candidate shape;
 - all four model/user invocation boolean combinations survive catalog resolution unchanged;
 - `get()` does not itself enforce invocation policy;
 - provider invalidation clears completed catalog state and emits `skills/change` only while that exact registration remains active;
 - disposal aborts the borrowed provider control and a late `invalidate()` no longer affects the registry;
 - `renderSkillContent()` remains the canonical full-instruction rendering seam;
-- `scopeParentOf()` exposes the parent view future M5B needs to resolve the native winner without recursively selecting its own Agent-scoped shadow.
+- dynamic parent rebind is immediately visible through `scopeParentOf()`, and SkillRegistry catalog reads follow the new scope chain without an explicit registry invalidation; this is the preset-recomposition behavior future M5B depends on.
 
 M5B must preserve **Auto** as native pass-through rather than forcing `true / true`. Manual becomes `false / true`; Off and Pinned become `false / false` in native invocation policy when an underlying skill exists. Pinned full instructions are a separate M5C durable Context Manager contribution, not native discovery or invocation. Missing bound skills remain diagnostics rather than fabricated definitions.
 
