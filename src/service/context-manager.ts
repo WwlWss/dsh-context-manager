@@ -40,6 +40,10 @@ declare module '@deepseek-ai/cordis' {
   interface Context {
     dshContextManager: ContextManagerService
   }
+
+  interface Events {
+    'dsh-context-manager/change'(): void
+  }
 }
 
 interface WritableState {
@@ -72,9 +76,11 @@ export class ContextManagerService extends Service {
         setSource: source => {
           this.source = source
         },
-        // PR2 keeps no second state cache. Consumers derive a snapshot on read;
-        // later Remote code can add an explicit change publication seam.
-        onChange: () => {},
+        // Runtime consumers own their own derived caches. Publish only an
+        // invalidation signal and make them pull current authoritative state.
+        onChange: () => {
+          this.ownerCtx.emit('dsh-context-manager/change')
+        },
       },
     )
   }
