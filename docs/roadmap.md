@@ -239,7 +239,7 @@ The library deliberately keeps the legacy-compatible single-domain layout. Curre
 
 ### 4B. PromptBinding
 
-**Status:** in progress.
+**Status:** complete in merged PR #12.
 
 Add object-shaped profile bindings with a profile-local binding identity that is deliberately separate from PromptResource identity:
 
@@ -284,6 +284,8 @@ Rules:
 - M4B remains model-inert. Persisting a PromptBinding does not query Prompt Library, register a system-prompt section, alter Agent/Session state, or contribute runtime context.
 
 ### 4C1. DSH system-prompt placement compatibility adapter
+
+**Status:** in progress. See [m4c1-plan.md](m4c1-plan.md).
 
 Purpose: map the stable Context Manager placement vocabulary onto the public DSH system-prompt/runtime-context ordering contract without leaking DSH generation-specific numeric order into stored data.
 
@@ -333,11 +335,11 @@ Hard runtime invariants:
 - roster health is not the match authority for an already-running Agent. If a live Session still records a deleted native preset and the profile names that exact preset, the overlay remains eligible;
 - runtime contributions resolve current bindings/resources and the current live preset identity on every prompt assembly rather than capturing a permanent profile or preset identity at Agent creation;
 - native DSH preset switching is an external runtime fact: if DSH changes a live Agent from preset A to B, the next assembly must re-evaluate the exact `basePreset` fence without Context Manager calling `select()`/`recompose()` itself;
-- provider closures capture their owning Agent when registered. Do not expect `AssembleContext` to carry an Agent object; on the reviewed 0.1.6 source its public identity is assembly scope/signal, not Agent ownership;
+- provider closures capture their owning Agent when registered. The base system-prompt `AssembleContext` declares `scope` / `signal`, while `@deepseek-ai/dsh-agent` publicly augments it with optional `agent` and ordinary `assembleContextFor()` supplies both `agent` and `scope`; Context Manager still uses the registration closure as the authoritative ownership seam rather than making provider ownership depend on optional assembly metadata;
 - HMR/unload must remove every Context Manager registration from already-live Agents and leave stock DSH behavior;
 - reload must attach idempotently to Agents that already existed before the plugin reloaded.
 
-Prefer a small fixed set of aggregate Agent-scoped providers (one per supported system anchor plus one runtime-context provider) over one native registration per PromptResource. Resolve the selected profile/resources once per DSH assembly and share that result across the providers; per-assembly memoization keyed by the public `AssembleContext` object is allowed, cross-step state caching is not authoritative. The owning Agent must come from the Agent-scoped registration closure, not from an assumed `context.agent` field.
+Prefer a small fixed set of aggregate Agent-scoped providers (one per supported system anchor plus one runtime-context provider) over one native registration per PromptResource. Resolve the selected profile/resources once per DSH assembly and share that result across the providers; per-assembly memoization keyed by the public `AssembleContext` object is allowed, cross-step state caching is not authoritative. The owning Agent must come from the Agent-scoped registration closure. `context.agent` may be present on ordinary DSH Agent assemblies through public module augmentation, but it is not Context Manager's registration-ownership mechanism.
 
 Runtime/effective output must distinguish at least:
 

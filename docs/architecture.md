@@ -106,7 +106,7 @@ Runtime-context modules should use DSH runtime-context contributions where the a
 
 Runtime profile selection and DSH registration ownership are different concepts.
 
-The global `defaultProfileId` is only the farthest fallback **selection source** for an effective profile. It must never be implemented as a global `systemPrompt` registration. Every Context Manager prompt/context contribution is Agent-scoped from the first runtime implementation. Provider registration captures the owning Agent in its closure; the public prompt `AssembleContext` is an assembly-scoped context/signal carrier and must not be treated as if it exposed `context.agent`.
+The global `defaultProfileId` is only the farthest fallback **selection source** for an effective profile. It must never be implemented as a global `systemPrompt` registration. Every Context Manager prompt/context contribution is Agent-scoped from the first runtime implementation. Provider registration captures the owning Agent in its closure. The base system-prompt `AssembleContext` carries `scope` / `signal`; the public `@deepseek-ai/dsh-agent` augmentation adds optional `agent`, and normal `assembleContextFor()` supplies it. Context Manager nevertheless treats the provider closure as the registration-ownership seam rather than depending on optional assembly metadata to recover its owner.
 
 Conceptually:
 
