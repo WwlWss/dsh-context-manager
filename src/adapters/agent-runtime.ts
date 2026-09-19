@@ -182,20 +182,28 @@ export async function attachAgentRuntimeBridge(
     }
   } catch (error) {
     disposed = true
+    stopCreated?.()
+    stopDisposed?.()
+
+    const rollbackFailures: unknown[] = []
+    const pendingResults = await Promise.allSettled([...pending.values()])
+    for (const result of pendingResults) {
+      if (result.status === 'rejected') rollbackFailures.push(result.reason)
+    }
+
+    const cleanups = [...attached.values()]
+    attached.clear()
     try {
-      stopCreated?.()
-      stopDisposed?.()
-    } finally {
-      const cleanups = [...attached.values()]
-      attached.clear()
-      try {
-        await cleanupAll(cleanups)
-      } catch (cleanupError) {
-        throw new AggregateError(
-          [error, cleanupError],
-          'failed to attach Context Manager Agent runtime and roll back',
-        )
-      }
+      await cleanupAll(cleanups)
+    } catch (cleanupError) {
+      rollbackFailures.push(cleanupError)
+    }
+
+    if (rollbackFailures.length > 0) {
+      throw new AggregateError(
+        [error, ...rollbackFailures],
+        'failed to attach Context Manager Agent runtime and roll back',
+      )
     }
     throw error
   }
