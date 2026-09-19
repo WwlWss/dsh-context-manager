@@ -6,11 +6,11 @@ DeepSeek Harness evolves quickly. Context Manager separates **installable/tested
 
 | Track | DSH reference | How it is used |
 | --- | --- | --- |
-| Legacy regression | `dsh-v0.1.1-rc.2` | The committed development dependency set. The full type/build/Domain suite exercises the legacy module-level `installSettingsSection(...)` generation. Focused published-package lanes exercise M3A/M3B/M3C, M4C1 placement, and the M4C2 Agent/SystemPrompt contract. A real 0.1.1 AgentLoop recording-adapter E2E proves Context Manager system/runtime-context contributions reach the legacy model request path. |
-| Prior modern regression | `dsh-v0.1.2-rc.1` | Dedicated ephemeral CI keeps the first modern Settings generation and native Session `agentPreset` projection under regression. The full Settings suite, AgentPreset M3A/M3C checks, M3B runtime, M4C1 placement, M4C2 Agent/SystemPrompt compile contract and real scoped SystemPrompt smoke, and bundle composition smoke run here. |
-| 0.1.5 published regression | `dsh-v0.1.5-rc.1` | Retained because it remains an important published/default-install line. CI reruns modern Settings, AgentPreset M3A/M3C checks, M3B Session runtime, M4C1 placement, M4C2 Agent/SystemPrompt compile contract and real scoped SystemPrompt smoke, and full bundle composition smoke against it. |
-| Current stable regression | `dsh-v0.1.5-rc.2` | Install-tested published line retained as the stable regression anchor. CI runs modern Settings, M3A/M3C, M3B projection/runtime, M4A Storage, M4C1 placement, M4C2 Agent/SystemPrompt compile contract plus real scoped SystemPrompt smoke, strict packed-package peer installation, and full DSH bundle composition. |
-| Install-tested forward alpha | `dsh-v0.1.6-alpha.2` | Published forward-compatibility line validated by CI across modern Settings, AgentPreset, Session projection/runtime, Prompt Library Storage, M4C1 placement, and M4C2 Agent/SystemPrompt compatibility. A real 0.1.6 AgentLoop recording-adapter E2E proves the modern model-visible Surface/runtime-context path, dynamic profile/resource resolution, native suppression, and unload/reload behavior. Strict packed-package and bundle composition lanes remain in place. |
+| Legacy regression | `dsh-v0.1.1-rc.2` | The committed development dependency set. The full type/build/Domain suite exercises the legacy module-level `installSettingsSection(...)` generation. Focused published-package lanes exercise M3A/M3B/M3C, M4C1 placement, M4C2 Agent/SystemPrompt, and the M5A Skill/Scope contract. A real 0.1.1 AgentLoop recording-adapter E2E proves Context Manager system/runtime-context contributions reach the legacy model request path. |
+| Prior modern regression | `dsh-v0.1.2-rc.1` | Dedicated ephemeral CI keeps the first modern Settings generation and native Session `agentPreset` projection under regression. The full Settings suite, AgentPreset M3A/M3C checks, M3B runtime, M4C1 placement, M4C2 Agent/SystemPrompt smoke, M5A Skill/Scope contract, and bundle composition smoke run here. |
+| 0.1.5 published regression | `dsh-v0.1.5-rc.1` | Retained because it remains an important published/default-install line. CI reruns modern Settings, AgentPreset M3A/M3C checks, M3B Session runtime, M4C1 placement, M4C2 Agent/SystemPrompt smoke, M5A Skill/Scope contract, and full bundle composition smoke against it. |
+| Current stable regression | `dsh-v0.1.5-rc.2` | Install-tested published line retained as the stable regression anchor. CI runs modern Settings, M3A/M3C, M3B projection/runtime, M4A Storage, M4C1 placement, M4C2 Agent/SystemPrompt smoke, the M5A Skill/Scope contract, strict packed-package peer installation, and full DSH bundle composition. |
+| Install-tested forward alpha | `dsh-v0.1.6-alpha.2` | Published forward-compatibility line validated by CI across modern Settings, AgentPreset, Session projection/runtime, Prompt Library Storage, M4C1 placement, M4C2 Agent/SystemPrompt, and the M5A Skill/Scope contract. A real 0.1.6 AgentLoop recording-adapter E2E proves the modern model-visible Surface/runtime-context path, dynamic profile/resource resolution, native suppression, and unload/reload behavior. Strict packed-package and bundle composition lanes remain in place. |
 | Latest official repository | `master` / `ddefc45f...` | Source-forward architecture target reviewed from official source. The tree identifies as `0.1.6-alpha.2`, preserves the M2-M4C2 seams consumed by Context Manager, adds native live AgentPreset selection, and keeps the base prompt `AssembleContext` at scope/signal while `@deepseek-ai/dsh-agent` publicly augments it with optional Agent identity. Source review remains distinct from package/runtime evidence. |
 
 Support claims must name what was actually tested. A GitHub source tree and an installable npm package remain distinct evidence even when their package version currently matches.
@@ -288,13 +288,37 @@ M4C2 prompt runtime uses DSH-owned prompt/runtime-context composition rather tha
 
 M4C2 implements the prompt/runtime-context overlay under these constraints; arbitrary historical-depth insertion and later transform/preview features remain outside this milestone.
 
-## Skills guardrails
+## M5A Skill/Scope compatibility baseline
 
-DSH remains the owner of the native Skill registry/providers. Context Manager's future Pinned / Auto / Manual / Off behavior must be an explicit overlay over public Skill capabilities, not a rewrite of skill files or providers.
+DSH remains the owner of the native Skill registry/providers. M5A is still model-inert for skills, but it pins the exact public contract that M5B/M5C will consume before any policy overlay ships.
 
-Before claiming hard Manual/Off semantics, tests must cover scope precedence, same-name shadowing, provider invalidation, cold/resumed sessions, disposal, and invocation leakage. If the current DSH version cannot faithfully express the requested policy, the capability must be reported unavailable rather than simulated.
+The five retained published generations all expose the required public seams:
 
-These are future-runtime requirements; the current build only persists skill binding intent.
+- `SkillRegistry.registerProvider(create)` with registration-scoped `SkillProviderControl.signal` and `invalidate()`;
+- `SkillRegistry.list()`, `snapshot()`, and policy-neutral `get()`;
+- explicit `SkillInvocationPolicy.modelInvocable` / `userInvocable`;
+- finite numeric candidate `rank`;
+- payload-free `skills/change` invalidation;
+- canonical `renderSkillContent()`;
+- DSH Scope ancestry including `scopeParentOf()`.
+
+The M5A CI lane compiles those declarations and executes the actual published SkillRegistry for `0.1.1-rc.2`, `0.1.2-rc.1`, `0.1.5-rc.1`, `0.1.5-rc.2`, and `0.1.6-alpha.2`. Runtime evidence pins these semantics:
+
+- the nearest scope layer wins a duplicate name over farther layers;
+- candidate rank decides duplicates only within one layer;
+- `Number.MAX_VALUE` is a valid finite rank, but another equal-rank candidate ties and provider registration order decides;
+- all four model/user invocation boolean combinations survive catalog resolution unchanged;
+- `get()` does not itself enforce invocation policy;
+- provider invalidation clears completed catalog state and emits `skills/change` only while that exact registration remains active;
+- disposal aborts the borrowed provider control and a late `invalidate()` no longer affects the registry;
+- `renderSkillContent()` remains the canonical full-instruction rendering seam;
+- `scopeParentOf()` exposes the parent view future M5B needs to resolve the native winner without recursively selecting its own Agent-scoped shadow.
+
+M5B must preserve **Auto** as native pass-through rather than forcing `true / true`. Manual becomes `false / true`; Off and Pinned become `false / false` in native invocation policy when an underlying skill exists. Pinned full instructions are a separate M5C durable Context Manager contribution, not native discovery or invocation. Missing bound skills remain diagnostics rather than fabricated definitions.
+
+The intended M5B implementation remains an Agent-scoped overlay over public Skill capabilities, not a rewrite of skill files or source providers. Before claiming hard scoping, tests must cover real Agent lifecycle, same-name Agent-local collisions (including the equal-`MAX_VALUE` boundary), provider invalidation, preset/profile switching, cold/resumed behavior where public seams permit it, disposal/HMR, and user/model invocation leakage. If the supported DSH contract cannot faithfully express a requested policy, report that limitation instead of simulating it.
+
+M5A production code does not import `@deepseek-ai/dsh-skill` or `@deepseek-ai/dsh-scope`; those packages are installed only in the disposable compatibility lane until M5B actually consumes them.
 
 ## Session and model-visible Surface boundary
 
