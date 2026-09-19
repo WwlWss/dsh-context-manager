@@ -256,7 +256,7 @@ interface PromptBinding {
 
 Profiles store `prompts: Record<PromptBindingId, PromptBinding>`. A missing `prompts` field is interpreted as an empty map, so this additive Domain field does not require a Settings envelope schema-version bump.
 
-The identity split is intentional. M4A permits arbitrary exact PromptResource ids, while prompt binding ids are DSH Settings path keys and must obey the current Settings path-safety boundary. A resource id such as `__proto__` therefore remains a valid reference value even though that same string cannot safely be used as a binding key. The split also avoids imposing a one-resource-once-per-profile restriction: several bindings may reference the same PromptResource at different placements/orders.
+The identity split is intentional. M4A permits arbitrary exact PromptResource ids, while prompt binding ids are used as DSH Settings path keys by structured mutations. Those mutation paths must obey the current Settings path-safety boundary. A resource id such as `__proto__` therefore remains a valid reference value, while a structured mutation targeting that same string as a binding key is refused. Externally stored data is still parsed as Stored/Domain input rather than silently rewritten solely because one key is not structurally editable by the current Settings implementation. The split also avoids imposing a one-resource-once-per-profile restriction: several bindings may reference the same PromptResource at different placements/orders.
 
 The stored placement vocabulary is semantic Context Manager state, not a native DSH numeric order:
 
@@ -273,6 +273,7 @@ Rules:
 - `resourceId` is stored literally and is not resolved against Prompt Library during M4B writes;
 - missing PromptResource references remain valid stored intent; resource health belongs to later resolved/runtime diagnostics;
 - `order` is a signed safe integer local to the semantic placement. M4B does not persist native DSH numeric section order;
+- within one semantic placement, local ordering is deterministic: `order` ascending, then `PromptBindingId` by locale-independent JavaScript string/code-unit order. M4C runtime resolution and M8 preview must share this ordering contract rather than inventing separate tie-breaks;
 - unknown binding siblings survive structured creation and every narrow edit;
 - adding a binding is an explicit operation that supplies the complete current binding shape;
 - changing resourceId/enabled/placement/order requires an existing object-shaped binding and edits only that leaf;

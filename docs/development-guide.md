@@ -266,6 +266,8 @@ Use `ctx.systemPrompt` public composition seams. DSH owns final prompt assembly.
 
 Prompt placement is persisted as stable Context Manager semantic anchors, never as native DSH numeric section orders. A dedicated compatibility adapter owns the mapping for each supported public DSH contract. Keep runtime-context contributions separate from system-prompt sections; they have different native assembly semantics.
 
+Within one semantic placement, PromptBinding local order is deterministic persisted semantics: sort by `order` ascending, then by binding id using locale-independent JavaScript relational string comparison (`<` / `>`), i.e. code-unit order rather than `localeCompare()`. Cross-placement sequencing comes from the semantic anchors/native composition. Runtime resolution and effective preview must consume the same resolved ordering instead of sorting independently.
+
 M4B is a Domain milestone only. PromptBindings remain model-inert until the runtime adapter exists.
 
 ### Effective profile resolver

@@ -548,6 +548,41 @@ test('prompt binding ids are Settings path identities, not PromptResource ids', 
   assert.equal(manager.snapshot().profiles.prompts.prompts['safe-binding'].resourceId, '__proto__')
 })
 
+
+test('externally stored unsafe prompt binding ids stay readable but remain outside structured mutation paths', async () => {
+  const externallyStored = JSON.parse(`{
+    "name": "External prompts",
+    "basePreset": "standard",
+    "prompts": {
+      "__proto__": {
+        "resourceId": "resource",
+        "enabled": true,
+        "placement": "after-persona",
+        "order": 0
+      }
+    }
+  }`)
+  const { manager } = await boot({
+    [CONTEXT_MANAGER_SETTINGS_NAMESPACE]: {
+      schemaVersion: 1,
+      profiles: { external: externallyStored },
+    },
+  })
+
+  const snapshot = manager.snapshot()
+  assert.equal(snapshot.profiles.external.prompts['__proto__'].resourceId, 'resource')
+
+  const beforeRevision = snapshot.persistence.revision
+  const beforeStored = manager.getStoredProfile('external')
+  await assert.rejects(
+    manager.setPromptBindingOrder('external', '__proto__', 100, beforeRevision),
+    error => error instanceof ContextManagerError && error.code === 'unsafe-path-key',
+  )
+
+  assert.equal(manager.snapshot().persistence.revision, beforeRevision)
+  assert.deepEqual(manager.getStoredProfile('external'), beforeStored)
+})
+
 test('prompt leaf setters never synthesize a missing partial binding', async () => {
   const { manager } = await boot()
   await manager.createProfile('prompts', anima)
@@ -608,6 +643,61 @@ test('prompt binding order accepts safe integers including negatives and rejects
       error => error instanceof ContextManagerError && error.code === 'invalid-prompt-order',
     )
     assert.equal(manager.snapshot().persistence.revision, before)
+  }
+})
+
+
+test('prompt leaf setters validate runtime inputs without mutating stored state', async () => {
+  const { manager } = await boot()
+  await manager.createProfile('runtime-validation', anima)
+  await manager.addPromptBinding('runtime-validation', 'p', {
+    resourceId: 'resource',
+    enabled: true,
+    placement: 'after-persona',
+    order: 0,
+  }, manager.snapshot().persistence.revision)
+
+  const cases = [
+    {
+      code: 'invalid-prompt-placement',
+      mutate: revision => manager.setPromptBindingPlacement(
+        'runtime-validation',
+        'p',
+        'future-anchor',
+        revision,
+      ),
+    },
+    {
+      code: 'invalid-prompt-binding',
+      mutate: revision => manager.setPromptBindingEnabled(
+        'runtime-validation',
+        'p',
+        'yes',
+        revision,
+      ),
+    },
+    {
+      code: 'invalid-prompt-binding',
+      mutate: revision => manager.setPromptBindingResourceId(
+        'runtime-validation',
+        'p',
+        42,
+        revision,
+      ),
+    },
+  ]
+
+  for (const item of cases) {
+    const beforeRevision = manager.snapshot().persistence.revision
+    const beforeStored = manager.getStoredProfile('runtime-validation')
+
+    await assert.rejects(
+      item.mutate(beforeRevision),
+      error => error instanceof ContextManagerError && error.code === item.code,
+    )
+
+    assert.equal(manager.snapshot().persistence.revision, beforeRevision)
+    assert.deepEqual(manager.getStoredProfile('runtime-validation'), beforeStored)
   }
 })
 
