@@ -189,9 +189,48 @@ jobs:
           node --test ./tests/prompt-library.test.mjs
           node ./tests/prompt-library-upstream-runtime.mjs
 
+  prompt-placement-contract:
+    name: Prompt placement Host contract (${{ matrix.version }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { version: 0.1.1-rc.2, cordis: 4.0.1, fixture: legacy, generation: legacy }
+          - { version: 0.1.2-rc.1, cordis: 4.0.2, fixture: named, generation: named }
+          - { version: 0.1.5-rc.1, cordis: 4.0.2, fixture: named, generation: named }
+          - { version: 0.1.5-rc.2, cordis: 4.0.2, fixture: named, generation: named }
+          - { version: 0.1.6-alpha.2, cordis: 4.0.2, fixture: named, generation: named }
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22.20.0
+      - name: Enable pinned pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.7.0 --activate
+      - run: pnpm install --frozen-lockfile
+      - name: Install selected SystemPrompt generation
+        run: |
+          pnpm add --save-dev --save-exact \
+            @deepseek-ai/cordis@${{ matrix.cordis }} \
+            @deepseek-ai/dsh-system-prompt@${{ matrix.version }}
+      - name: Compile public SystemPrompt contract
+        run: |
+          pnpm exec tsc --ignoreConfig --noEmit --strict --skipLibCheck --module NodeNext --moduleResolution NodeNext --target ES2024 tests/prompt-placement-upstream-${{ matrix.fixture }}-contract.ts
+      - name: Build and run M4C1 compatibility behavior
+        env:
+          DSH_PROMPT_GENERATION: ${{ matrix.generation }}
+        run: |
+          pnpm run build
+          node --test ./tests/prompt-placement.test.mjs
+          node ./tests/prompt-placement-upstream-runtime.mjs
+
   package:
     name: verify packed bundle
-    needs: [verify, settings-modern, agent-presets-contract, session-preset-contract, prompt-library-contract]
+    needs: [verify, settings-modern, agent-presets-contract, session-preset-contract, prompt-library-contract, prompt-placement-contract]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
