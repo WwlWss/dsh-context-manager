@@ -351,7 +351,7 @@ jobs:
           node ./tests/skill-runtime-upstream-runtime.mjs
 
   skill-policy-runtime-contract:
-    name: M5B Skill policy runtime (\${{ matrix.version }})
+    name: M5B Skill policy runtime (${{ matrix.version }})
     strategy:
       fail-fast: false
       matrix:
@@ -376,12 +376,12 @@ jobs:
       - name: Install selected Skill/Scope generation
         run: |
           pnpm add --save-dev --save-exact \
-            @deepseek-ai/cordis@\${{ matrix.cordis }} \
-            @deepseek-ai/schemastery@\${{ matrix.schemastery }} \
-            @deepseek-ai/dsh-invariants@\${{ matrix.version }} \
-            @deepseek-ai/dsh-llm@\${{ matrix.version }} \
-            @deepseek-ai/dsh-scope@\${{ matrix.version }} \
-            @deepseek-ai/dsh-skill@\${{ matrix.version }}
+            @deepseek-ai/cordis@${{ matrix.cordis }} \
+            @deepseek-ai/schemastery@${{ matrix.schemastery }} \
+            @deepseek-ai/dsh-invariants@${{ matrix.version }} \
+            @deepseek-ai/dsh-llm@${{ matrix.version }} \
+            @deepseek-ai/dsh-scope@${{ matrix.version }} \
+            @deepseek-ai/dsh-skill@${{ matrix.version }}
       - name: Build M5B production runtime
         run: pnpm run build
       - name: Run M5B policy behavior
