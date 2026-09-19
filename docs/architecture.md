@@ -178,16 +178,22 @@ Keep DSH's existing skill registry and filesystem provider intact by default.
 
 Context Manager models four user states:
 
-- **Pinned**: full instructions are deliberately included through a Context Manager prompt/context module.
-- **Auto**: model- and user-invocable through native DSH skill discovery.
+- **Pinned**: native model/user invocation both disabled; full instructions are deliberately included through a separate Context Manager-owned durable contribution.
+- **Auto**: native pass-through. Preserve the winning skill's exact invocation policy instead of forcing model/user visibility on.
 - **Manual**: user-invocable, hidden from model-facing discovery.
 - **Off**: hidden from both model and user invocation in the managed scope.
 
-The persisted unit is a **skill binding object**, currently `{ mode }`, not a scalar mode. Later skill-specific placement/order/activation metadata extends that object. Narrow mutations change leaves and preserve unknown siblings.
+The persisted unit is a **skill binding object**, currently `{ mode }`, not a scalar mode. Later skill-specific placement/order/activation metadata extends that object. Narrow mutations change leaves and preserve unknown siblings. Missing referenced skills remain diagnostics; Context Manager does not invent replacement definitions.
 
-Native DSH invocation policy already separates model and user visibility. The preferred implementation is a scoped policy overlay/shadow for skills whose managed state differs from their source definition, preserving original providers and stock behavior outside the managed scope.
+Native DSH invocation policy already separates model and user visibility. The preferred M5B implementation is one scoped overlay/shadow provider per live Agent for managed non-Auto skills, preserving original providers and stock behavior outside the managed scope. The overlay resolves the underlying winner through the parent-scope view so it cannot recursively rediscover itself.
 
-Before shipping this behavior, verify live sessions, cold/resumed sessions, preset standing scopes, invalidation, and duplicate-name precedence. Do not claim hard scoping until those tests prove that an Off skill cannot leak through a farther layer.
+M5A deliberately remains model-inert for skills. It pins the five-generation Skill/Scope contract, introduces a targeted default-profile read for request hot paths, and publishes a Context Manager authority invalidation event. M5B owns native invocation policy; M5C owns the durable Pinned instruction bundle.
+
+The lowest public finite rank is `Number.MAX_VALUE`, but an equal-rank same-layer candidate still ties on provider registration order. Do not describe Agent-local precedence more strongly than the actual M5B lifecycle tests prove.
+
+Before shipping hard policy behavior, verify live Agent creation/adoption/disposal, cold/resumed sessions where a public seam applies, preset standing scopes, provider invalidation, exact base-preset switching, duplicate-name precedence, HMR/unload restoration, and model/user invocation leakage. Do not create a `skills/change` feedback loop: Context Manager Settings changes are its authority invalidation source, while native SkillRegistry invalidation already owns catalog refresh.
+
+Pinned full instructions must use native `renderSkillContent()` and one owned replacement/clearable bundle. Do not append a fresh durable copy on every pre-step.
 
 ## Settings and persistence
 
