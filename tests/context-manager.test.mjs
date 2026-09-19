@@ -860,3 +860,90 @@ test('prompt binding Domain snapshots are immutable', async () => {
     snapshot.profiles.prompts.prompts.other = snapshot.profiles.prompts.prompts.p
   }, TypeError)
 })
+
+
+test('Context Manager change event follows authoritative Settings attach, commit, external publish, and detach', async () => {
+  const ctx = new Context()
+  const settingsFiber = ctx.plugin(MemorySettings, {})
+  await settingsFiber
+
+  const calls = []
+  ctx.on('dsh-context-manager/change', (...args) => {
+    calls.push(args)
+  })
+
+  const managerFiber = ctx.plugin(ContextManagerService)
+  await managerFiber
+  const manager = ctx.get('dshContextManager')
+
+  assert.ok(calls.length >= 1)
+  assert.deepEqual(calls.at(-1), [])
+
+  const afterAttach = calls.length
+  await manager.createProfile('anima', anima)
+  assert.ok(calls.length > afterAttach)
+  assert.deepEqual(calls.at(-1), [])
+
+  const settings = ctx.get('settings')
+  const afterCommit = calls.length
+  settings.externalEdit({
+    [CONTEXT_MANAGER_SETTINGS_NAMESPACE]: {
+      schemaVersion: 1,
+      defaultProfileId: 'anima',
+      profiles: { anima },
+    },
+  })
+  await new Promise(resolve => setImmediate(resolve))
+  assert.ok(calls.length > afterCommit)
+  assert.deepEqual(calls.at(-1), [])
+
+  const afterExternal = calls.length
+  await settingsFiber.dispose()
+  assert.ok(calls.length > afterExternal)
+  assert.deepEqual(calls.at(-1), [])
+
+  await managerFiber.dispose()
+})
+
+test('Context Manager unload does not synthesize a late change event', async () => {
+  const ctx = new Context()
+  const settingsFiber = ctx.plugin(MemorySettings, {})
+  await settingsFiber
+
+  let changes = 0
+  ctx.on('dsh-context-manager/change', () => {
+    changes += 1
+  })
+
+  const managerFiber = ctx.plugin(ContextManagerService)
+  await managerFiber
+  changes = 0
+
+  await managerFiber.dispose()
+  assert.equal(changes, 0)
+
+  await settingsFiber.dispose()
+})
+
+
+test('targeted default profile read does not depend on Settings describe()', async () => {
+  const { manager, settings } = await boot({
+    [CONTEXT_MANAGER_SETTINGS_NAMESPACE]: {
+      schemaVersion: 1,
+      defaultProfileId: 'anima',
+      profiles: {
+        anima,
+        broken: { name: 42, basePreset: [] },
+      },
+    },
+  })
+
+  settings.describe = () => {
+    throw new Error('runtime targeted read must not call Settings describe()')
+  }
+
+  const candidate = manager.defaultProfileCandidate()
+  assert.equal(candidate.status, 'candidate')
+  assert.equal(candidate.profileId, 'anima')
+  assert.equal(candidate.profile.name, 'Anima Development')
+})

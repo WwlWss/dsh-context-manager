@@ -4,7 +4,7 @@ Modular preset, prompt, skill, transform, and presentation context manager for D
 
 ## Status
 
-The installable/test-gated DSH bundle foundation, the Settings-backed Host profile Domain, the DSH Settings compatibility seam, native AgentPreset roster/configured resolution (M3A), live Session effective AgentPreset identity observation (M3B), native AgentPreset authoring bridge (M3C), and the storage-backed Prompt Library (M4A) are complete. The next implementation milestone is M4B: PromptBinding Domain state. Context Manager is still model-inert at this point; prompt resources exist durably, but no Context Manager prompt is contributed to a model request until the later M4C runtime milestone.
+The installable/test-gated DSH bundle foundation, Settings-backed Host profile Domain, native AgentPreset discovery/identity/authoring work (M3A–M3C), the complete prompt stack (M4A–M4C2), and the M5A Skill Policy Runtime foundation are complete. PromptBindings are model-effective through the native DSH prompt assembly seam; skill bindings remain model-inert until M5B. M5A pins the five-generation public Skill/Scope contract, adds the targeted default-profile runtime read, and publishes Context Manager authority invalidation. The next implementation milestone is M5B: the Agent-scoped Skill policy overlay.
 
 Context Manager is an editor, not a policy engine. It preserves explicit user intent, reports unresolved or malformed resources as diagnostics, and does not silently fallback, repair, normalize, reorder, or delete user-authored configuration.
 
@@ -37,7 +37,7 @@ Project documentation:
 
 The Host service stores a global reusable profile library plus an optional `defaultProfileId` through DSH Settings. Project/Session binding is intentionally not faked as a Settings feature; those scopes are later milestones.
 
-A profile currently contains only state whose meaning is defined by the Domain: display metadata, a native `basePreset` reference, and desired skill bindings. Each binding is currently an object such as `{ mode: "manual" }`, not a scalar string. These values remain model-inert: saving `basePreset: standard` or `docker: { mode: "off" }` does not yet mount a preset or alter the native skill registry.
+A profile contains Domain-defined display metadata, a native `basePreset` reference, desired skill bindings, and PromptBindings that reference durable Prompt Library resources. Skill bindings remain object-shaped values such as `{ mode: "manual" }`; in M5A they are still model-inert. PromptBindings, by contrast, became model-effective in M4C2 through Agent-scoped native prompt assembly. Saving `docker: { mode: "off" }` still does not alter the native skill registry until M5B.
 
 The object-shaped binding is deliberate. Later versions can add sibling data such as placement, ordering, activation, or triggers, while `setSkillMode()` changes only the `.mode` leaf and preserves unknown siblings. Removing the whole binding is a separate explicit operation.
 
@@ -95,8 +95,8 @@ DSH Settings revision fencing is an in-process guarantee. If multiple DSH proces
 1. **Complete** — Installable DSH bundle scaffold, build contract tests, and CI.
 2. **Complete** — Host-side Context Manager domain and settings-backed reusable profile model.
 3. **Complete** — M3A native AgentPreset roster resolution, M3B live Session effective identity, and M3C DSH-owned copy-only native preset authoring bridge.
-4. **M4A complete / M4B next** — Storage-backed Prompt Library is complete; PromptBinding Domain state comes next, followed by placement compatibility and Agent-scoped runtime composition.
-5. Scoped skill policy model for Pinned / Auto / Manual / Off, with leakage and resume tests.
+4. **Complete** — Storage-backed Prompt Library, PromptBinding Domain state, five-generation placement compatibility, and Agent-scoped prompt/runtime-context composition.
+5. **M5A complete / M5B next** — Skill Policy Runtime foundation is in place: five-generation Skill/Scope contracts, targeted effective-profile hot-path reads, and Context Manager invalidation. M5B adds Agent-scoped Pinned / Auto / Manual / Off invocation policy; M5C adds durable Pinned full-instruction replacement.
 6. Host Remote API for browser-safe Domain/runtime views and explicit mutations.
 7. Web client package and additive right-side Drawer.
 8. Preset / Prompt / Skill editor and effective-context preview.
@@ -119,7 +119,7 @@ pnpm install --frozen-lockfile
 pnpm run check
 ```
 
-`pnpm run check` performs type checking, a clean production build, and package/domain/runtime tests against the legacy development dependency set. CI additionally runs modern Settings regressions through the install-tested forward alpha `0.1.6-alpha.2`, five AgentPreset Host-contract plus real-native-runtime lanes, five Session preset identity lanes, five Prompt Library Storage Domain compile/runtime lanes, strict packed-package peer installation checks for the stable and forward-alpha Settings lines, and bundle composition smoke tests against `0.1.2-rc.1`, `0.1.5-rc.1`, `0.1.5-rc.2`, and `0.1.6-alpha.2`.
+`pnpm run check` performs type checking, a clean production build, and package/domain/runtime tests against the legacy development dependency set. CI additionally runs modern Settings regressions through the install-tested forward alpha `0.1.6-alpha.2`, five AgentPreset Host-contract plus real-native-runtime lanes, five Session preset identity lanes, five Prompt Library Storage Domain lanes, five Prompt placement/runtime lanes, the five-generation M5 Skill/Scope contract lane, strict packed-package peer installation checks for the stable and forward-alpha Settings lines, and bundle composition smoke tests against `0.1.2-rc.1`, `0.1.5-rc.1`, `0.1.5-rc.2`, and `0.1.6-alpha.2`.
 
 Before changing runtime integration or adding a Web capability, read [docs/development-guide.md](docs/development-guide.md). It records the project's persistence, lifecycle, DSH-integration, transform, client, performance, and testing rules.
 

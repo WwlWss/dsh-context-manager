@@ -11,11 +11,13 @@ import {
 import { assertSafePathKey, ContextManagerError } from '../domain/errors.js'
 import type {
   ContextManagerSnapshot,
+  DefaultProfileCandidate,
   PromptBindingInput,
   PromptPlacement,
   SkillMode,
 } from '../domain/model.js'
 import {
+  normalizeDefaultProfileCandidate,
   normalizeSettings,
   parseProfileForWrite,
   parsePromptBinding,
@@ -38,6 +40,10 @@ declare module '@deepseek-ai/cordis' {
   interface Context {
     dshContextManager: ContextManagerService
   }
+
+  interface Events {
+    'dsh-context-manager/change'(): void
+  }
 }
 
 interface WritableState {
@@ -47,11 +53,11 @@ interface WritableState {
 }
 
 /**
- * Authoritative Host-side domain service for Context Manager.
+ * Authoritative Host-side Domain service for Context Manager.
  *
- * This milestone is deliberately model-inert: it stores explicit user intent
- * and derives diagnostics, but does not mount presets, alter system prompts,
- * or shadow skills. Runtime/effective state belongs to later adapters.
+ * This service itself is model-inert: it stores explicit user intent and
+ * derives diagnostics. Model-visible prompt/skill behavior belongs to the
+ * separate runtime services (M4C2, M5B, and M5C), not to this Settings owner.
  */
 export class ContextManagerService extends Service {
   private readonly ownerCtx: Context
@@ -70,9 +76,11 @@ export class ContextManagerService extends Service {
         setSource: source => {
           this.source = source
         },
-        // PR2 keeps no second state cache. Consumers derive a snapshot on read;
-        // later Remote code can add an explicit change publication seam.
-        onChange: () => {},
+        // Runtime consumers own their own derived caches. Publish only an
+        // invalidation signal and make them pull current authoritative state.
+        onChange: () => {
+          this.ownerCtx.emit('dsh-context-manager/change')
+        },
       },
     )
   }
@@ -85,6 +93,15 @@ export class ContextManagerService extends Service {
   snapshot(): ContextManagerSnapshot {
     const { stored, persistence } = this.readState()
     return normalizeSettings(stored, persistence)
+  }
+
+  /**
+   * Targeted immutable Domain read for runtime consumers that only need the
+   * configured default profile. Unlike snapshot(), this does not normalize or
+   * enumerate unrelated profiles.
+   */
+  defaultProfileCandidate(): DefaultProfileCandidate {
+    return normalizeDefaultProfileCandidate(this.source())
   }
 
   /** List every stored profile payload, including ones the Domain cannot parse. */

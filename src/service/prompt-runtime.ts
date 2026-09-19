@@ -182,7 +182,7 @@ export class ContextManagerPromptRuntime extends Service {
     visiblePlacements: ReadonlySet<PromptPlacement>,
   ) {
     const profile = resolveEffectiveProfile(
-      ctx.dshContextManager.snapshot(),
+      ctx.dshContextManager.defaultProfileCandidate(),
       ctx.dshContextSessionPresetIdentity.snapshot(agent.id),
     )
     if (profile.status !== 'active') return Object.freeze({ profile })

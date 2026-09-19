@@ -65,6 +65,25 @@ const runtimeState = {
   ]),
 }
 
+function managerDefaultProfileCandidate() {
+  const configured = runtimeState.defaultProfileId
+  const profile = runtimeState.profiles[configured]
+  if (configured === undefined) {
+    return { status: 'no-default-profile' }
+  }
+  if (profile === undefined) {
+    return {
+      status: 'missing-default-profile',
+      profileId: configured,
+    }
+  }
+  return {
+    status: 'candidate',
+    profileId: configured,
+    profile: structuredClone(profile),
+  }
+}
+
 function managerSnapshot() {
   const configured = runtimeState.defaultProfileId
   const profile = runtimeState.profiles[configured]
@@ -96,6 +115,9 @@ class FakeManager extends Service {
   }
   snapshot() {
     return managerSnapshot()
+  }
+  defaultProfileCandidate() {
+    return managerDefaultProfileCandidate()
   }
 }
 
