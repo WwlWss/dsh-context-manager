@@ -88,7 +88,7 @@ Likewise, M6A adds no Remote event. Retained 0.1.1 has no Gateway Remote-event s
 - the contribution contains exactly the M6A `contextManager/protocol` endpoint;
 - the strict descriptor names service, namespace, method, implementation, direct invocation, zero parameters, and a strict result codec;
 - the Host entry exports the Remote service and protocol DTO type;
-- the generated Host reflection surface contains only `dshContextRemote` and the one M6A invocation, not M2-M5 Host services;
+- the generated Host reflection service/event surface stays empty while its one M6A invocation targets `dshContextRemote`; M2-M5 Host services are not published as Typert reflection;
 - git-install `prepare` emits the same runtime + Typert artifacts from a clean `lib/`.
 
 ### Retained DSH runtime matrix
