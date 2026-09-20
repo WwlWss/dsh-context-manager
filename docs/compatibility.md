@@ -420,3 +420,31 @@ Real ToolSkill + AgentLoop E2E runs on the oldest retained generation and the fo
 - unload/reload restores and reapplies policy without duplicate providers.
 
 M5C may build on the same effective-profile and parent-view seams, but Pinned full-instruction durability is not part of M5B.
+
+
+## M6A Typert Remote compatibility
+
+M6A adds the first browser-facing Host boundary without adding a browser bundle. Production consumes only the public `@deepseek-ai/dsh-typert-protocol` service/decorator contract, and the package publishes generated `./typert` plus `./remote` artifacts for DSH's Typert loader/Client assemblies.
+
+The retained Remote generations share `TypertRemoteService`, the direct `Remote` marker, generated invocation descriptors, and the Registry/Gateway split. Two public shape changes matter:
+
+- `0.1.1-rc.2` through the retained 0.1.5 lines use eager strict codecs with `schema`;
+- `0.1.6-alpha.1+` uses lazy strict codecs with `create()`.
+
+The M6A build emits one dual-shape strict codec containing both fields. Older registries read `schema`; the forward-alpha registry reads `create()`. Runtime code does not inspect a DSH version.
+
+Context Manager is not built inside the DSH monorepo. The retained generator only discovers referenced projects rooted under a workspace `packages/` directory and only recognizes the Typert protocol metadata symbol through a registered workspace package or the exact ambient module declaration. M6A therefore runs the official oldest-retained generator inside a disposable build-only workspace that contains a copy of the real Remote controller plus a minimal ambient declaration of the public decorator/service identity. This is a compiler-discovery adapter only: it is not shipped, owns no runtime behavior, and does not replace the official protocol dependency.
+
+The standalone runtime bundle also does not retain decorator syntax. It invokes the same public `Remote()` function and executes the standard initializer returned by that decorator when the Service instance is constructed. The disposable compiler copy receives the equivalent annotation so the official generator remains authoritative for the strict descriptor and Zod boundary.
+
+The five-generation M6A lane uses one generated baseline artifact and then switches only the disposable Host runtime dependencies before exercising the real published Typert Registry and Gateway:
+
+- `0.1.1-rc.2`;
+- `0.1.2-rc.1`;
+- `0.1.5-rc.1`;
+- `0.1.5-rc.2`;
+- `0.1.6-alpha.2`.
+
+The fixture requires the strict `contextManager/protocol` descriptor to be present, verifies invalid result rejection through both codec shapes, invokes the live Service through `typertGateway.invoke()`, withdraws the strict contribution, and proves it can be registered again. Gateway SRC reflection may remain available after withdrawal because the live Service still owns its public runtime marker; that fallback is not the package's formal Client contract.
+
+The unified `RemoteError` business-failure vocabulary and forwarded Remote-event transport are later than the oldest retained line. M6B/M6C therefore must not make either capability a correctness prerequisite: Context Manager business failures need a cross-generation JSON result vocabulary, and notifications may only tell a Client to pull a fresh authoritative snapshot.
