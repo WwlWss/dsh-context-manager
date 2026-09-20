@@ -8,6 +8,16 @@ export interface ManagedSkillInvocationPolicy {
   readonly userInvocable: boolean
 }
 
+const MANUAL_INVOCATION = Object.freeze({
+  modelInvocable: false,
+  userInvocable: true,
+})
+
+const DISABLED_INVOCATION = Object.freeze({
+  modelInvocable: false,
+  userInvocable: false,
+})
+
 /**
  * Return the native invocation override for one Context Manager mode.
  *
@@ -19,16 +29,10 @@ export function managedSkillInvocationPolicy(
 ): ManagedSkillInvocationPolicy | undefined {
   switch (mode) {
     case 'manual':
-      return Object.freeze({
-        modelInvocable: false,
-        userInvocable: true,
-      })
+      return MANUAL_INVOCATION
     case 'off':
     case 'pinned':
-      return Object.freeze({
-        modelInvocable: false,
-        userInvocable: false,
-      })
+      return DISABLED_INVOCATION
     case 'auto':
     case undefined:
       return undefined
