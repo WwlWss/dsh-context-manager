@@ -292,7 +292,14 @@ try {
   await turn(ctx, agent, 'preset restored')
   text = requestText(adapter.requests.at(-1))
   assert.equal(count(text, state.body), 1)
-  assert.equal(text.includes(DESCRIPTION), false)
+
+  // The mismatch turn legitimately exposed the native catalog and that earlier
+  // description can remain in durable Session history. Verify current policy
+  // through M5B inspection instead of pretending history is retroactively
+  // erased when Pinned becomes active again.
+  policyInspection = await ctx.dshContextSkillRuntime.inspect(agent.id)
+  assert.equal(policyInspection.status, 'resolved')
+  assert.equal(policyInspection.bindings[0]?.state, 'policy-applied')
 
   const disposeComplete = agent.ctx.systemPrompt.section({
     name: 'm5c:test-complete',
