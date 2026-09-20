@@ -187,7 +187,7 @@ The persisted unit is a **skill binding object**, currently `{ mode }`, not a sc
 
 Native DSH invocation policy already separates model and user visibility. M5B uses one scoped overlay/shadow provider per live Agent for managed non-Auto skills, preserving original providers and stock behavior outside the managed scope. The overlay resolves the underlying winner through the parent-scope view so it cannot recursively rediscover itself.
 
-M5A is the model-inert compatibility/runtime foundation. M5B owns native invocation policy through the Agent-scoped overlay. M5C owns the separate Pinned full-instruction path: it resolves the underlying native parent-scope winner, requires the M5B Pinned policy proxy to be the effective Agent-view winner, renders with native `renderSkillContent()`, and contributes one Agent-scoped system-prompt slot.
+M5A is the model-inert compatibility/runtime foundation. M5B owns native invocation policy through the Agent-scoped overlay. M5C owns the separate Pinned full-instruction path: it resolves the underlying native parent-scope winner, requires the M5B Pinned policy proxy to be the effective Agent-view winner both before and after asynchronous body loading, renders only still-effective bodies with native `renderSkillContent()`, and contributes one Agent-scoped system-prompt slot.
 
 `Number.MAX_VALUE` is the largest finite numeric rank accepted by the public contract and therefore the lowest-priority finite rank because lower ranks win. An equal-rank same-layer candidate still ties on provider registration order. Do not describe Agent-local precedence more strongly than the actual M5B lifecycle tests prove.
 
