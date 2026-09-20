@@ -46,13 +46,6 @@ interface PromptAssemblyEventContext {
       next: () => Promise<PinnedPromptAssembly>,
     ) => Promise<PinnedPromptAssembly> | PinnedPromptAssembly,
   ): () => void
-  on(
-    event: 'agent/pre-step',
-    listener: (
-      request: unknown,
-      next: () => Promise<unknown>,
-    ) => Promise<unknown> | unknown,
-  ): () => void
 }
 
 export interface PinnedSkillBundleResolution {
@@ -279,15 +272,6 @@ function finalPinnedSignature(assembly: PinnedPromptAssembly): string {
     .digest('hex')
 }
 
-function isEnterDecision(value: unknown): value is {
-  readonly kind: 'enter'
-  readonly messages: unknown[]
-  readonly startsRequestSeries?: true
-} {
-  if (typeof value !== 'object' || value === null) return false
-  const candidate = value as Record<string, unknown>
-  return candidate.kind === 'enter' && Array.isArray(candidate.messages)
-}
 
 export interface AgentPinnedSkillRuntimeInspection {
   readonly resolution?: PinnedSkillBundleResolution
@@ -337,6 +321,18 @@ export async function inspectAgentPinnedSkillRuntime(
   })
 }
 
+export interface AgentPinnedSkillRuntime {
+  /**
+   * Admit the final pinned contribution observed for the current real request.
+   *
+   * Returns true exactly when native request-series reconciliation is needed.
+   * The first admitted request returns true so resumed Sessions are reconciled
+   * without relying on process-local history.
+   */
+  admitRequestSeries(): boolean
+  dispose(): void
+}
+
 /**
  * Install one fixed Agent-scoped pinned instruction slot and its async
  * replacement waterfall.
@@ -346,7 +342,7 @@ export function installAgentPinnedSkillRuntime(
   agent: RuntimeAgent,
   targets: NativePromptPlacementTargets,
   readProfile: PinnedEffectiveProfileReader,
-): () => void {
+): AgentPinnedSkillRuntime {
   const runtime = requireRuntime(agent.ctx)
   const lifecycle = new AbortController()
   const disposers: Array<() => void> = []
@@ -400,29 +396,6 @@ export function installAgentPinnedSkillRuntime(
     )
     disposers.push(stopAssembly)
 
-    const stopPreStep = (agent.ctx as unknown as PromptAssemblyEventContext).on(
-      'agent/pre-step',
-      async (_request, next) => {
-        const decision = await next()
-        if (!isEnterDecision(decision)) return decision
-
-        const signature = observedRequestSignature
-        if (signature === undefined) return decision
-
-        // Force native system-prompt consolidation only when this CM-owned
-        // contribution changed. The first admitted request also starts a fresh
-        // series, which safely reconciles a resumed Session whose prior pinned
-        // state is not process-local.
-        const changed = admittedRequestSignature !== signature
-        admittedRequestSignature = signature
-        if (!changed || decision.startsRequestSeries === true) return decision
-        return {
-          ...decision,
-          startsRequestSeries: true as const,
-        }
-      },
-    )
-    disposers.push(stopPreStep)
   } catch (error) {
     lifecycle.abort(error)
     for (const dispose of [...disposers].reverse()) dispose()
@@ -430,21 +403,31 @@ export function installAgentPinnedSkillRuntime(
   }
 
   let disposed = false
-  return () => {
-    if (disposed) return
-    disposed = true
-    lifecycle.abort(new Error('Context Manager pinned Skill runtime disposed'))
-    const errors: unknown[] = []
-    for (const dispose of [...disposers].reverse()) {
-      try {
-        dispose()
-      } catch (error) {
-        errors.push(error)
+  return Object.freeze({
+    admitRequestSeries(): boolean {
+      if (disposed) return false
+      const signature = observedRequestSignature
+      if (signature === undefined) return false
+      const changed = admittedRequestSignature !== signature
+      admittedRequestSignature = signature
+      return changed
+    },
+    dispose(): void {
+      if (disposed) return
+      disposed = true
+      lifecycle.abort(new Error('Context Manager pinned Skill runtime disposed'))
+      const errors: unknown[] = []
+      for (const dispose of [...disposers].reverse()) {
+        try {
+          dispose()
+        } catch (error) {
+          errors.push(error)
+        }
       }
-    }
-    if (errors.length === 1) throw errors[0]
-    if (errors.length > 1) {
-      throw new AggregateError(errors, 'failed to dispose Context Manager pinned Skill runtime')
-    }
-  }
+      if (errors.length === 1) throw errors[0]
+      if (errors.length > 1) {
+        throw new AggregateError(errors, 'failed to dispose Context Manager pinned Skill runtime')
+      }
+    },
+  })
 }
