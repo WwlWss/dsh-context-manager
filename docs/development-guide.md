@@ -493,8 +493,10 @@ CI deliberately separates compatibility concerns instead of relying on one broad
 5. the M4A Prompt Library Storage Domain matrix covers those same five generations with both a compile contract and real Storage/StorageJson/StorageDomain durable reopen runtime test;
 6. M4C1/M4C2 focused lanes cover all five generations for SystemPrompt placement/runtime contracts, with real AgentLoop endpoint E2E on the legacy and forward-alpha lines;
 7. the M5A Skill/Scope lane compiles and executes the public SkillRegistry/Scope contract on all five generations, including nearest-scope precedence, dynamic parent rebind/cache behavior, same-layer rank/ties, provider-candidate ownership, invalidation/disposal, policy preservation, policy-neutral `get()`, `renderSkillContent()`, and `scopeParentOf()`;
-8. strict packed-package peer installation is verified against both the retained stable Settings line `0.1.5-rc.2` and the forward-alpha line `0.1.6-alpha.2`;
-9. full DSH CLI/bundle composition smoke covers `0.1.2-rc.1`, `0.1.5-rc.1`, `0.1.5-rc.2`, and `0.1.6-alpha.2`.
+8. the M5B policy runtime lane executes managed Auto/Manual/Off/Pinned overlay behavior on all five retained generations, with real ToolSkill + AgentLoop endpoint coverage on the oldest and forward-alpha lines;
+9. the M5C pinned-runtime lane executes parent-native resolution, M5B-policy effectiveness gating, canonical rendering, literal-safe prompt substitution, incomplete/missing-definition behavior, multi-Agent isolation, cancellation, and native complete-prompt suppression on all five retained generations; real AgentLoop coverage additionally runs the legacy `0.1.1-rc.2` path, `0.1.5-rc.1` as the first retained in-history system-prompt path, and `0.1.6-alpha.2` as the forward-alpha path, including request-series reconciliation and hot unload/reload;
+10. strict packed-package peer installation is verified against both the retained stable Settings line `0.1.5-rc.2` and the forward-alpha line `0.1.6-alpha.2`;
+11. full DSH CLI/bundle composition smoke covers `0.1.2-rc.1`, `0.1.5-rc.1`, `0.1.5-rc.2`, and `0.1.6-alpha.2`.
 
 Keep the exact authoritative matrix and reviewed source SHA in [compatibility.md](compatibility.md). When a new public generation is added, update CI and these maintainer docs together rather than letting the handbook lag behind the executable support claim.
 
