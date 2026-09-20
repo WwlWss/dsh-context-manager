@@ -163,7 +163,7 @@ test('force() survives reject and a failed proposal until request/header admits 
   await root.fiber.dispose()
 })
 
-test('authoritative Context Manager, Skill, and SystemPrompt changes fence the next admitted request once', async () => {
+test('unfiltered Host change events do not fence an unchanged CM contribution', async () => {
   const root = new Context()
   const fiber = root.plugin(ContextManagerRequestSeries)
   await fiber
@@ -182,17 +182,69 @@ test('authoritative Context Manager, Skill, and SystemPrompt changes fence the n
     'system-prompt/change',
   ]) {
     root.emit(event)
-
-    let decision = await preStep(agent, { kind: 'enter', messages: [{ role: 'user' }] })
-    assert.equal(decision.startsRequestSeries, true)
-    admitRequest(agent)
-
-    decision = await preStep(agent, { kind: 'enter', messages: [{ role: 'user' }] })
+    const decision = await preStep(agent, {
+      kind: 'enter',
+      messages: [{ role: 'user' }],
+    })
     assert.deepEqual(decision, { kind: 'enter', messages: [{ role: 'user' }] })
   }
 
   stop()
   await agentFiber.dispose()
+  await fiber.dispose()
+  await root.fiber.dispose()
+})
+
+test('one Agent contribution change fences only that Agent', async () => {
+  const root = new Context()
+  const fiber = root.plugin(ContextManagerRequestSeries)
+  await fiber
+  const first = fakeAgent(root, 'agent-a')
+  const second = fakeAgent(root, 'agent-b')
+
+  let firstObserved = 'same'
+  let firstAdmitted = 'same'
+  let secondObserved = 'same'
+  let secondAdmitted = 'same'
+
+  const stopFirst = root.dshContextRequestSeries.register(
+    first.agent,
+    () => firstObserved !== firstAdmitted,
+    () => {
+      firstAdmitted = firstObserved
+    },
+    () => false,
+  )
+  const stopSecond = root.dshContextRequestSeries.register(
+    second.agent,
+    () => secondObserved !== secondAdmitted,
+    () => {
+      secondAdmitted = secondObserved
+    },
+    () => false,
+  )
+
+  secondObserved = 'changed'
+
+  let decision = await preStep(first.agent, {
+    kind: 'enter',
+    messages: [{ role: 'user' }],
+  })
+  assert.equal(decision.startsRequestSeries, undefined)
+
+  decision = await preStep(second.agent, {
+    kind: 'enter',
+    messages: [{ role: 'user' }],
+  })
+  assert.equal(decision.startsRequestSeries, true)
+  admitRequest(second.agent)
+  assert.equal(secondAdmitted, 'changed')
+  assert.equal(firstAdmitted, 'same')
+
+  stopSecond()
+  stopFirst()
+  await second.fiber.dispose()
+  await first.fiber.dispose()
   await fiber.dispose()
   await root.fiber.dispose()
 })
