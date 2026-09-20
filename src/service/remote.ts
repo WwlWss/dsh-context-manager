@@ -8,12 +8,6 @@ export interface ContextManagerRemoteProtocol {
   readonly apiVersion: number
 }
 
-declare module '@deepseek-ai/cordis' {
-  interface Context {
-    dshContextRemote: ContextManagerRemoteService
-  }
-}
-
 /**
  * M6A Host Remote owner.
  *
