@@ -16,8 +16,7 @@ test('M6A production controller installs the public Remote marker without decora
   const methods = remoteMethods(service)
   assert.deepEqual(methods, [{
     method: 'protocol',
-    kind: 'direct',
-    exportName: 'protocol',
+    invocation: { kind: 'direct' },
   }])
 
   assert.deepEqual(service.protocol(), {
