@@ -208,7 +208,7 @@ try {
 
   await ctx.plugin(FakeManager)
   await ctx.plugin(FakePresetIdentity)
-  const policyFiber = ctx.plugin(ContextManagerSkillRuntime)
+  let policyFiber = ctx.plugin(ContextManagerSkillRuntime)
   await policyFiber
   let pinnedFiber = ctx.plugin(ContextManagerPinnedSkillRuntime)
   await pinnedFiber
