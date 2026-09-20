@@ -463,3 +463,58 @@ test('incomplete parent discovery propagates and inspection refuses to overclaim
   await current.scope.dispose()
   await root.fiber.dispose()
 })
+
+
+test('M5B provider disposal aborts an in-flight lazy parent body load', async () => {
+  const root = new Context()
+  await root.plugin(SkillRegistry)
+
+  const started = Promise.withResolvers()
+  const stopNative = scopedSkills(root).registerProvider(() => ({
+    name: 'abort-provider',
+    async list() {
+      return [
+        candidate('abort-provider', 'target', {
+          modelInvocable: true,
+          userInvocable: true,
+        }, 'unused'),
+      ]
+    },
+    async get(selected, options) {
+      started.resolve(options.signal)
+      return await new Promise((resolve, reject) => {
+        if (options.signal?.aborted) {
+          reject(options.signal.reason)
+          return
+        }
+        options.signal?.addEventListener(
+          'abort',
+          () => reject(options.signal.reason),
+          { once: true },
+        )
+      })
+    },
+  }))
+
+  const current = mintAgent(root, 'agent-abort')
+  const state = {
+    presetId: 'standard',
+    skills: { target: 'manual' },
+  }
+  const runtime = await bootRuntime(root, [current.agent], state)
+
+  const catalog = await scopedSkills(root).snapshot({ scope: current.agent })
+  assert.equal(catalog.skills.find(skill => skill.name === 'target')?.provider, CM_PROVIDER)
+
+  const pending = scopedSkills(root).get('target', { scope: current.agent })
+  const signal = await started.promise
+  assert.equal(signal.aborted, false)
+
+  await runtime.fiber.dispose()
+  assert.equal(signal.aborted, true)
+  await assert.rejects(pending)
+
+  stopNative()
+  await current.scope.dispose()
+  await root.fiber.dispose()
+})
