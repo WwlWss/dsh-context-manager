@@ -39,6 +39,7 @@ export class ContextManagerPinnedSkillRuntime extends Service {
       'dshContextManager',
       'dshContextSessionPresetIdentity',
       'dshContextSkillRuntime',
+      'dshContextRequestSeries',
       'agents',
       'skills',
       'systemPrompt',
@@ -53,12 +54,45 @@ export class ContextManagerPinnedSkillRuntime extends Service {
                 'dsh-context-manager: systemPrompt placement capability disappeared from Agent scope',
               )
             }
-            return installAgentPinnedSkillRuntime(
+
+            const installed = installAgentPinnedSkillRuntime(
               runtimeCtx,
               agent,
               placement.targets,
               () => this.resolveProfile(runtimeCtx, agent),
             )
+            let stopSeries: (() => void) | undefined
+            try {
+              stopSeries = runtimeCtx.dshContextRequestSeries.register(
+                agent,
+                () => installed.admitRequestSeries(),
+                () => installed.admittedAnyRequest,
+              )
+            } catch (error) {
+              installed.dispose()
+              throw error
+            }
+
+            return () => {
+              const errors: unknown[] = []
+              try {
+                installed.dispose()
+              } catch (error) {
+                errors.push(error)
+              }
+              try {
+                stopSeries?.()
+              } catch (error) {
+                errors.push(error)
+              }
+              if (errors.length === 1) throw errors[0]
+              if (errors.length > 1) {
+                throw new AggregateError(
+                  errors,
+                  'failed to dispose Context Manager pinned Skill Agent runtime',
+                )
+              }
+            }
           },
         )
 
