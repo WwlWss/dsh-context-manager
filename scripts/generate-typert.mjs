@@ -1,4 +1,4 @@
-import { cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -117,10 +117,18 @@ try {
   writeFileSync(resolve(packageRoot, 'tsconfig.json'), json(project))
   writeFileSync(resolve(packageSrc, 'index.ts'), "export * from './protocol-controller.js'\n")
   writeFileSync(resolve(packageSrc, 'typert-protocol-shim.d.ts'), protocolShim)
-  cpSync(
+  const productionController = readFileSync(
     resolve(root, 'src/remote/protocol-controller.ts'),
-    resolve(packageSrc, 'protocol-controller.ts'),
+    'utf8',
   )
+  const generatorController = productionController.replace(
+    '  protocol(): {',
+    "  @Remote('protocol')\n  protocol(): {",
+  )
+  if (generatorController === productionController) {
+    throw new Error('Typert generation fixture could not locate protocol() insertion point')
+  }
+  writeFileSync(resolve(packageSrc, 'protocol-controller.ts'), generatorController)
 
   const generated = new WorkspaceTypertGenerator(workspace)
     .generate(['dsh-context-manager'], ['host'])
