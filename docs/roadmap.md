@@ -419,17 +419,17 @@ M5B lifecycle tests must cover existing/new Agents, preset standing scopes, same
 
 ### 5C — Pinned durable full-instruction bundle
 
-**Status:** next.
+**Status:** complete in PR #17; model-effective Pinned full-instruction runtime.
 
 Pinned means full instructions are deliberately included by Context Manager even though the native skill is hidden from both model discovery and native user invocation.
 
-M5C must load the underlying native definition through the parent-scope view and render it with native `renderSkillContent()`. The bundle is deterministic (skill name code-unit order unless an explicit binding order is introduced later) and owned as one durable Context Manager replacement contribution per Agent/current step state.
+M5C loads the underlying native definition through the dynamic parent-scope view and renders it with native `renderSkillContent()`. Injection is allowed only when M5B's Agent-view policy proxy is actually effective for that Pinned skill; conflicts remain diagnostic and do not create a half-effective Pinned state. The bundle is deterministic in code-unit skill-name order.
 
-Do not append a new pinned message on every pre-step. Repeated steps, profile edits, `Pinned -> Off/Manual/Auto`, exact `basePreset A -> B -> A` changes, resume, and HMR must replace or explicitly clear the owned bundle so historical duplicates cannot accumulate.
+The retained-version re-audit rejected durable `agent/pre-step` message injection because accepted messages enter Session history, and rejected a new direct Session Surface adapter because the replacement contract changed across retained generations. M5C instead owns one Agent-scoped system-prompt slot. A literal-safe prompt-variable indirection preserves arbitrary `{{...}}` Skill text on legacy SystemPrompt generations.
 
-The exact current public Session/Surface/Agent pre-step seam must be re-audited when M5C begins; the conceptual replacement design is not permission to bind to stale internal APIs.
+For routes with `systemPromptUpdate: 'in-history'`, a longer-lived request-series coordinator compares the final CM-owned pinned contribution between real requests and adds `startsRequestSeries: true` only when reconciliation is required. Native DSH SystemPromptProjection then clears/consolidates stale system nodes. Retiring an active M5C contribution leaves one next-request fence so hot-unload does not leak old pinned instructions.
 
-M5 is complete only after model discovery, user invocation, Pinned instruction visibility, native-provider changes, and lifecycle cleanup are proven through real supported DSH paths.
+M5 is complete after model discovery, user invocation, Pinned instruction visibility, native-provider changes, dynamic scope changes, in-history reconciliation, and lifecycle cleanup are proven through supported DSH paths.
 
 ---
 
