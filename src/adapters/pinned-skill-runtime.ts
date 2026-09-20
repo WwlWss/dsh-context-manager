@@ -451,9 +451,11 @@ export function installAgentPinnedSkillRuntime(
       pendingRequestContributionPresent = false
     },
     retireRequestSeries(): boolean {
+      // Assembly-only observation is not admission. A contribution needs a
+      // cleanup fence only after it reached a non-empty pre-step proposal or
+      // was already acknowledged by native request/header.
       return admittedContributionPresent
         || pendingRequestContributionPresent
-        || observedRequestContributionPresent
     },
     dispose(): void {
       if (disposed) return

@@ -18,7 +18,9 @@ Therefore M5C uses one Agent-scoped, Context-Manager-owned **system-prompt repla
 
 On retained DSH 0.1.2+ lines, `startsRequestSeries?: true` is a public `PreStepDecision` field and the AgentLoop consumes it when building the next request. This matters for routes that can keep system-prompt updates in history: without a series boundary, a newer prompt can coexist with an older active system node.
 
-M5C therefore owns a separate process-local request-series coordinator. It fences the next accepted request when `dsh-context-manager/change`, `skills/change`, or `system-prompt/change` announces an authoritative input change; these notifications do **not** cause SkillRegistry invalidation and therefore do not form an invalidation loop. M5C also fingerprints its final CM-owned contribution after the prompt waterfall with SHA-256 as a fallback for changes visible only during assembly. DSH assembles the prompt before dispatching `agent/pre-step`, so the current request's final fingerprint is already available when the coordinator decides whether that same request must set `startsRequestSeries: true`. External force flags and fingerprint changes coalesce into one boundary. If an M5C contribution retires after model-visible state was actually admitted by a non-empty `enter` decision, the coordinator keeps one next-request fence so stale native system-prompt state is reconciled after the slot itself disappears. An assembly that was only observed and then rejected/emptied is not treated as model-visible admitted state.
+M5C therefore owns a separate process-local request-series coordinator. It fences the next accepted request when `dsh-context-manager/change`, `skills/change`, or `system-prompt/change` announces an authoritative input change; these notifications do **not** cause SkillRegistry invalidation and therefore do not form an invalidation loop. M5C also fingerprints its final CM-owned contribution after the prompt waterfall with SHA-256 as a fallback for changes visible only during assembly. DSH assembles the prompt before dispatching `agent/pre-step`, so the current request's final fingerprint is already available when the coordinator decides whether that same request must set `startsRequestSeries: true`. External force revisions and fingerprint changes coalesce into one boundary.
+
+A non-empty `agent/pre-step` enter is only a **proposal**, not admission: retained DSH resolves `agent/request` and `prepareCall()` afterwards, and failure/cancellation there commits neither the pending prompt nor user batch. The coordinator therefore records a pending fingerprint/force revision at pre-step and advances its admitted baseline only after the same Agent publishes the fenced request's public durable `session/event` with `type === 'request/header'`. Because an explicit `startsRequestSeries` request always logs a header (`series`, or `change` with `startsSeries`), that event is the native acknowledgement for exactly the boundary CM asked DSH to create. The pre-step wrapper is prepended so it observes the final downstream decision; a later rejection cannot consume state. If an M5C contribution retires after a pinned contribution reached either a pending non-empty proposal or a durably acknowledged request, the coordinator keeps one next-request fence so stale native system-prompt state is reconciled after the slot itself disappears. An assembly that was only observed, rejected, or emptied is not treated as admitted state.
 
 The first request after attaching/re-attaching M5C is explicitly fenced, so a resumed 0.1.2+ Session does not depend on process-local knowledge of its prior pinned state. Only signatures/booleans are retained between steps; full Skill bodies are never cached. Unchanged pinned state with no authoritative change does not force a new request series.
 
@@ -76,7 +78,7 @@ A native `complete: true` system-prompt section suppresses this slot after the c
 
 The AgentLoop passes the turn AbortSignal through `assembleContextFor(agent, signal)` on every retained generation. M5C forwards that signal to parent Skill discovery/body loading.
 
-There is no M5C cross-step Skill/body cache. The only cross-step state is the previously admitted SHA-256 fingerprint of the final CM-owned pinned prompt contribution. The current assembly is fingerprinted before `agent/pre-step`, allowing the current accepted request to start a new series when that fingerprint changed.
+There is no M5C cross-step Skill/body cache. The only cross-step prompt state is the observed/pending/admitted SHA-256 fingerprint of the final CM-owned pinned contribution plus request-series force revisions. The current assembly is fingerprinted before `agent/pre-step`, allowing the current proposal to request a new series when that fingerprint changed; the admitted baseline is updated only after the corresponding durable `request/header` event.
 
 Caching/invalidating remains native-owned:
 - Context Manager profile state is re-read each assembly;
@@ -119,7 +121,7 @@ M5C reuses `attachAgentRuntimeBridge()`:
 - roll back partial attachment failures;
 - unload/reload without duplicate slots/listeners.
 
-The request-series coordinator is a separate bundle-level service so it can outlive one M5C Agent contribution during hot detach/recompose. That is what makes M5C runtime unload/reload and HMR safe on in-history routes. A **permanent unload of the entire Context Manager bundle** necessarily tears down that coordinator as well; an unloaded plugin cannot intercept a later `agent/pre-step`. M5C therefore does not claim a post-unload cleanup action after total bundle removal and deliberately does not compensate by writing Session Surface replacements. Re-loading the bundle is safe because the first admitted request is fenced and consolidates the native system-prompt state.
+The request-series coordinator is a separate bundle-level service so it can outlive one M5C Agent contribution during hot detach/recompose. That is what makes M5C runtime unload/reload and HMR safe on in-history routes. A **permanent unload of the entire Context Manager bundle** necessarily tears down that coordinator as well. The retained DSH public seams do not provide a durable "start the next request series" marker that an unloaded plugin can leave behind across a later cold Agent resume. Directly appending/replacing core `system/message` is not a valid substitute: on current retained lines that event is step-enclosed by the native Session invariant, while a surface-generation bump only affects the currently attached AgentLoop and a resumed loop initializes its baseline from the already-mutated generation. M5C therefore does not claim post-unload cleanup after total bundle removal and deliberately does not write synthetic core Session events or version-shaped Surface replacements. Re-loading the bundle is safe because the first durably admitted request is fenced and consolidates the native system-prompt state.
 
 Repeated steps and changes therefore behave as follows:
 
@@ -130,9 +132,9 @@ Pinned -> Off/Manual/Auto             : next assembly clears bundle + one native
 basePreset A -> B mismatch            : next assembly clears bundle + one native consolidation
 basePreset A -> B -> A                : bundle disappears then returns, each transition consolidated
 complete prompt suppress/restore      : final slot signature changes and is consolidated
-M5C runtime hot-detach                : CM slot/listeners disappear; the longer-lived request-series owner may retain one admitted-state fence
-M5C runtime reload/resume             : first admitted request consolidates once, then steady state
-whole bundle permanent unload         : no post-unload listener is claimed; Context Manager does not write Session Surface cleanup events after it no longer owns the runtime
+M5C runtime hot-detach                : CM slot/listeners disappear; the longer-lived request-series owner may retain one pending/admitted-state fence
+M5C runtime reload/resume             : first durably admitted request consolidates once, then steady state
+whole bundle permanent unload         : providers/hooks disappear immediately, but no cross-resume cleanup of already-admitted in-history prompt bytes is claimed
 ```
 
 ## Planned code
@@ -188,7 +190,7 @@ Real AgentLoop E2E on the oldest retained line, the first retained in-history li
 - mode/body/suppression changes clear or replace stale pinned system nodes even with `systemPromptUpdate: 'in-history'`;
 - preset mismatch bypasses both M5B policy and M5C body injection;
 - M5C runtime hot-unload restores stock prompt behavior while the bundle-level request-series owner remains active; reload restores one pinned bundle;
-- full bundle reload fences its first admitted request; permanent total removal makes no claim that the already-unloaded plugin can intercept a later request.
+- full bundle reload fences its first durably admitted request; permanent total removal restores stock providers/hooks immediately but makes no claim that the already-unloaded plugin can rewrite already-admitted in-history prompt bytes on a later request.
 
 ## Exit criteria
 
