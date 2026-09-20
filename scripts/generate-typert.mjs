@@ -74,7 +74,14 @@ const protocolShim = `declare module '@deepseek-ai/dsh-typert-protocol' {
     constructor(ctx: Context, serviceKey: string, options?: TypertGatewayBindingOptions)
   }
 
-  export function Remote(exportName?: string): MethodDecorator
+  export function Remote(exportName?: string): <
+    This,
+    Args extends unknown[],
+    Result,
+  >(
+    value: (this: This, ...args: Args) => Result,
+    context: ClassMethodDecoratorContext<This, (this: This, ...args: Args) => Result>,
+  ) => ((this: This, ...args: Args) => Result) | void
 }
 `
 
@@ -115,9 +122,8 @@ try {
     resolve(packageSrc, 'protocol-controller.ts'),
   )
 
-  const generated = new WorkspaceTypertGenerator(workspace, {
-    checkDiagnostics: false,
-  }).generate(['dsh-context-manager'], ['host'])
+  const generated = new WorkspaceTypertGenerator(workspace)
+    .generate(['dsh-context-manager'], ['host'])
 
   if (generated.length !== 1 || generated[0].face !== 'host' || generated[0].remote === undefined) {
     throw new Error('Typert generator did not produce exactly one Host artifact with Remote descriptors')
