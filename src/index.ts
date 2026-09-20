@@ -3,9 +3,11 @@ import type { Context } from '@deepseek-ai/cordis'
 import { ContextManagerService } from './service/context-manager.js'
 import { ContextManagerPresetAuthoring } from './service/preset-authoring.js'
 import { ContextManagerPresetDirectory } from './service/preset-directory.js'
+import { ContextManagerPinnedSkillRuntime } from './service/pinned-skill-runtime.js'
 import { ContextManagerPromptLibrary } from './service/prompt-library.js'
 import { ContextManagerPromptPlacementCapability } from './service/prompt-placement.js'
 import { ContextManagerPromptRuntime } from './service/prompt-runtime.js'
+import { ContextManagerRequestSeries } from './service/request-series.js'
 import { ContextManagerSessionPresetIdentity } from './service/session-preset.js'
 import { ContextManagerSkillRuntime } from './service/skill-runtime.js'
 
@@ -27,6 +29,9 @@ export type {
   PromptRuntimeBindingInspection,
   PromptRuntimeInspection,
   PromptRuntimeNativeState,
+  PinnedSkillBindingInspection,
+  PinnedSkillRuntimeInspection,
+  PinnedSkillRuntimeNativeState,
   SkillRuntimeBindingInspection,
   SkillRuntimeInspection,
   SkillRuntimeInvocation,
@@ -48,9 +53,11 @@ export type {
 export { ContextManagerService, CONTEXT_MANAGER_SETTINGS_NAMESPACE } from './service/context-manager.js'
 export { ContextManagerPresetAuthoring } from './service/preset-authoring.js'
 export { ContextManagerPresetDirectory } from './service/preset-directory.js'
+export { ContextManagerPinnedSkillRuntime } from './service/pinned-skill-runtime.js'
 export { ContextManagerPromptLibrary } from './service/prompt-library.js'
 export { ContextManagerPromptPlacementCapability } from './service/prompt-placement.js'
 export { ContextManagerPromptRuntime } from './service/prompt-runtime.js'
+export { ContextManagerRequestSeries } from './service/request-series.js'
 export { ContextManagerSessionPresetIdentity } from './service/session-preset.js'
 export { ContextManagerSkillRuntime } from './service/skill-runtime.js'
 
@@ -64,6 +71,8 @@ export function apply(ctx: Context): void {
   ctx.plugin(ContextManagerPromptLibrary)
   ctx.plugin(ContextManagerPromptPlacementCapability)
   ctx.plugin(ContextManagerPromptRuntime)
+  ctx.plugin(ContextManagerRequestSeries)
   ctx.plugin(ContextManagerSkillRuntime)
+  ctx.plugin(ContextManagerPinnedSkillRuntime)
   ctx.logger('dsh-context-manager').info('Context Manager Host services loaded')
 }

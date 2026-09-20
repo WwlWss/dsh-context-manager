@@ -1,18 +1,19 @@
 import type { Context } from '@deepseek-ai/cordis'
-import type SkillRegistry from '@deepseek-ai/dsh-skill'
 import type {
   SkillCandidate,
   SkillDefinition,
   SkillInvocationPolicy,
-  SkillLookupOptions,
   SkillProvider,
   SkillProviderControl,
   SkillProviderObservation,
   SkillSummary,
 } from '@deepseek-ai/dsh-skill'
-import { scopeParentOf } from '@deepseek-ai/dsh-scope'
 
 import type { RuntimeAgent } from './agent-runtime.js'
+import {
+  parentSkillViewOptions,
+  requireSkillRegistry,
+} from './skill-view.js'
 import {
   managedSkillInvocationPolicy,
   profileSkillMode,
@@ -38,36 +39,6 @@ export interface AgentSkillPolicyProvider {
 }
 
 export type EffectiveProfileReader = () => EffectiveProfileResolution
-
-function skillsService(ctx: Context): SkillRegistry {
-  const skills = ctx.get('skills')
-  if (skills === undefined) {
-    throw new TypeError('dsh-context-manager: SkillRegistry service unavailable')
-  }
-  return skills as SkillRegistry
-}
-
-function combinedSignal(
-  caller: AbortSignal | undefined,
-  lifecycle: AbortSignal,
-): AbortSignal {
-  if (caller === undefined || caller === lifecycle) return lifecycle
-  return AbortSignal.any([caller, lifecycle])
-}
-
-function parentOptions(
-  agent: RuntimeAgent,
-  options: SkillLookupOptions,
-  lifecycle: AbortSignal,
-) {
-  const parent = scopeParentOf(agent)
-  const signal = combinedSignal(options.signal, lifecycle)
-  return {
-    ...(options.cwd === undefined ? {} : { cwd: options.cwd }),
-    signal,
-    ...(parent === undefined ? {} : { scope: parent }),
-  }
-}
 
 function proxyCandidate(
   native: SkillSummary,
@@ -103,8 +74,8 @@ export function installAgentSkillPolicyProvider(
   readProfile: EffectiveProfileReader,
   onControl?: (control: SkillProviderControl) => void,
 ): AgentSkillPolicyProvider {
-  const rootSkills = skillsService(rootCtx)
-  const scopedSkills = skillsService(agent.ctx)
+  const rootSkills = requireSkillRegistry(rootCtx)
+  const scopedSkills = requireSkillRegistry(agent.ctx)
   let borrowed: SkillProviderControl | undefined
 
   const stop = scopedSkills.registerProvider((control) => {
@@ -122,7 +93,7 @@ export function installAgentSkillPolicyProvider(
           .filter(([, mode]) => mode !== 'auto')
         if (managed.length === 0) return Object.freeze([])
 
-        const snapshot = await rootSkills.snapshot(parentOptions(agent, options, control.signal))
+        const snapshot = await rootSkills.snapshot(parentSkillViewOptions(agent, options, control.signal))
         const nativeByName = new Map(snapshot.skills.map(skill => [skill.name, skill]))
         const candidates: SkillCandidate[] = []
 
@@ -143,7 +114,7 @@ export function installAgentSkillPolicyProvider(
       async get(candidate, options): Promise<SkillDefinition | undefined> {
         const native = await rootSkills.get(
           candidate.name,
-          parentOptions(agent, options, control.signal),
+          parentSkillViewOptions(agent, options, control.signal),
         )
         if (native === undefined) return undefined
 
@@ -195,14 +166,6 @@ function sameInvocation(
     && left.userInvocable === right.userInvocable
 }
 
-function parentViewOptions(agent: RuntimeAgent, cwd: string | undefined) {
-  const parent = scopeParentOf(agent)
-  return {
-    ...(cwd === undefined ? {} : { cwd }),
-    ...(parent === undefined ? {} : { scope: parent }),
-  }
-}
-
 export interface AgentSkillPolicyInspection {
   readonly complete: boolean
   readonly bindings: readonly SkillRuntimeBindingInspection[]
@@ -224,12 +187,12 @@ export async function inspectAgentSkillPolicy(
     })
   }
 
-  const rootSkills = skillsService(rootCtx)
+  const rootSkills = requireSkillRegistry(rootCtx)
   // Resolve the parent first. The Agent-view snapshot invokes this CM
   // provider, which reads the same parent view; sequencing lets SkillRegistry
   // reuse the completed parent catalog instead of concurrently discovering the
   // same native providers twice.
-  const parentSnapshot = await rootSkills.snapshot(parentViewOptions(agent, cwd))
+  const parentSnapshot = await rootSkills.snapshot(parentSkillViewOptions(agent, cwd === undefined ? {} : { cwd }))
   const agentSnapshot = await rootSkills.snapshot({
     ...(cwd === undefined ? {} : { cwd }),
     scope: agent,

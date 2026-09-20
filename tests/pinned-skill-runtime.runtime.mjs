@@ -1,0 +1,1042 @@
+import assert from 'node:assert/strict'
+import { test } from 'node:test'
+
+import { Context, Service } from '@deepseek-ai/cordis'
+import SystemPrompt, { renderPrompt } from '@deepseek-ai/dsh-system-prompt'
+import SkillRegistry from '@deepseek-ai/dsh-skill'
+import { bindScopeParent, createScope } from '@deepseek-ai/dsh-scope'
+
+import {
+  ContextManagerPinnedSkillRuntime,
+  ContextManagerRequestSeries,
+  ContextManagerSkillRuntime,
+} from '../lib/index.js'
+
+const generation = process.env.DSH_M5C_GENERATION
+if (generation !== 'legacy' && generation !== 'named') {
+  throw new Error('DSH_M5C_GENERATION must be legacy or named')
+}
+
+const SLOT = 'dsh-context-manager:slot:pinned-skills'
+const VARIABLE = 'dsh_context_manager_pinned_skill_bundle'
+
+class FakeAgents extends Service {
+  constructor(ctx, agents) {
+    super(ctx, 'agents')
+    this.agents = agents
+  }
+
+  get(id) {
+    return this.agents.find(agent => agent.id === id)
+  }
+
+  list() {
+    return [...this.agents]
+  }
+}
+
+class FakeContextManager extends Service {
+  constructor(ctx, state) {
+    super(ctx, 'dshContextManager')
+    this.state = state
+  }
+
+  defaultProfileCandidate() {
+    return {
+      status: 'candidate',
+      profileId: 'profile',
+      profile: Object.freeze({
+        name: 'Profile',
+        basePreset: 'preset-a',
+        skills: Object.freeze(
+          Object.fromEntries(
+            Object.entries(this.state.skills).map(([name, mode]) => [
+              name,
+              Object.freeze({ mode }),
+            ]),
+          ),
+        ),
+        prompts: Object.freeze({}),
+      }),
+    }
+  }
+}
+
+class FakeSessionPresetIdentity extends Service {
+  constructor(ctx, state) {
+    super(ctx, 'dshContextSessionPresetIdentity')
+    this.state = state
+  }
+
+  snapshot(sessionId) {
+    return {
+      status: 'known',
+      sessionId,
+      presetId: this.state.presetId,
+    }
+  }
+}
+
+function scopedSkills(ctx) {
+  const skills = ctx.get('skills')
+  if (skills === undefined) throw new Error('skills service missing')
+  return skills
+}
+
+function candidate(provider, name, content, extra = {}) {
+  return {
+    ...extra,
+    name,
+    description: `${name} description`,
+    invocation: {
+      modelInvocable: true,
+      userInvocable: true,
+    },
+    source: 'custom',
+    provider,
+    rank: 0,
+    locator: { content },
+  }
+}
+
+function provider(name, rows, counters = { list: 0, get: 0 }) {
+  return {
+    name,
+    counters,
+    async list() {
+      counters.list += 1
+      return rows
+    },
+    async get(selected) {
+      counters.get += 1
+      return {
+        name: selected.name,
+        description: selected.description,
+        invocation: selected.invocation,
+        source: selected.source,
+        provider: selected.provider,
+        ...(selected.resourceBase === undefined ? {} : { resourceBase: selected.resourceBase }),
+        content: selected.locator.content,
+      }
+    },
+  }
+}
+
+function mintAgent(root, id, parentKey) {
+  const agent = {
+    id,
+    ctx: undefined,
+    session: {
+      header: {
+        cwd: `/workspace/${id}`,
+      },
+    },
+  }
+  const binding = parentKey === undefined ? undefined : bindScopeParent(agent, parentKey)
+  const scope = createScope(root, agent)
+  agent.ctx = scope.ctx
+  return { agent, scope, binding }
+}
+
+async function installBase(root) {
+  await root.plugin(
+    SystemPrompt,
+    generation === 'legacy'
+      ? { persona: 'Native persona' }
+      : { personaPrefix: 'Native persona' },
+  )
+  await root.plugin(SkillRegistry)
+}
+
+async function bootRuntime(root, agents, state) {
+  await root.plugin(FakeContextManager, state)
+  await root.plugin(FakeSessionPresetIdentity, state)
+  await root.plugin(FakeAgents, agents)
+  const seriesFiber = root.plugin(ContextManagerRequestSeries)
+  await seriesFiber
+  const policyFiber = root.plugin(ContextManagerSkillRuntime)
+  await policyFiber
+  const pinnedFiber = root.plugin(ContextManagerPinnedSkillRuntime)
+  await pinnedFiber
+  let pinnedDisposed = false
+  const disposePinned = async () => {
+    if (pinnedDisposed) return
+    pinnedDisposed = true
+    await pinnedFiber.dispose()
+  }
+  return {
+    runtime: root.get('dshContextPinnedSkillRuntime'),
+    policyRuntime: root.get('dshContextSkillRuntime'),
+    disposePinned,
+    async dispose() {
+      await disposePinned()
+      await policyFiber.dispose()
+      await seriesFiber.dispose()
+    },
+  }
+}
+
+async function assemble(root, agent) {
+  return await root.systemPrompt.assemble({
+    scope: agent,
+    agent,
+  })
+}
+
+test('M5C renders parent-native Pinned bodies in code-unit order and preserves literal braces', async () => {
+  const root = new Context()
+  await installBase(root)
+
+  const presetKey = {}
+  const preset = createScope(root, presetKey)
+  const native = provider('native-provider', [
+    candidate('native-provider', 'zeta', 'ZETA {{unknown}}', {
+      resourceBase: { kind: 'directory', path: '/skills/zeta' },
+    }),
+    candidate('native-provider', 'alpha', 'ALPHA {{malformed value}}'),
+  ])
+  const stopNative = scopedSkills(preset.ctx).registerProvider(() => native)
+  const current = mintAgent(root, 'agent-a', presetKey)
+  const second = mintAgent(root, 'agent-b', presetKey)
+
+  const afterToolOrder = generation === 'legacy'
+    ? 199.5
+    : root.systemPrompt.getSectionOrder('TOOLS_SDK') - 0.5
+  const stopLeft = root.systemPrompt.section({
+    name: 'm5c:test-left-anchor',
+    order: afterToolOrder,
+    text: 'LEFT_ANCHOR',
+  })
+  const stopRight = root.systemPrompt.section({
+    name: 'm5c:test-right-anchor',
+    order: afterToolOrder + 0.5,
+    text: 'RIGHT_ANCHOR',
+  })
+
+  const state = {
+    presetId: 'preset-a',
+    skills: {
+      zeta: 'pinned',
+      alpha: 'pinned',
+      ignored: 'off',
+    },
+  }
+  const runtime = await bootRuntime(root, [current.agent, second.agent], state)
+
+  let assembly = await assemble(root, current.agent)
+  const secondAssembly = await assemble(root, second.agent)
+  assert.notEqual(secondAssembly.sections.findIndex(section => section.name === SLOT), -1)
+  const slot = assembly.sections.find(section => section.name === SLOT)
+  assert.ok(slot)
+  assert.equal(slot.text, `{{${VARIABLE}}}`)
+
+  const bundle = assembly.variables[VARIABLE]
+  assert.equal(typeof bundle, 'string')
+  assert.ok(bundle.includes('<skill_content name="alpha">'))
+  assert.ok(bundle.includes('<skill_content name="zeta">'))
+  assert.ok(bundle.indexOf('name="alpha"') < bundle.indexOf('name="zeta"'))
+  assert.ok(bundle.includes('ALPHA {{malformed value}}'))
+  assert.ok(bundle.includes('ZETA {{unknown}}'))
+  assert.ok(bundle.includes('Base directory for this skill: /skills/zeta'))
+
+  const names = assembly.sections.map(section => section.name)
+  assert.ok(names.indexOf('m5c:test-left-anchor') < names.indexOf(SLOT))
+  assert.ok(names.indexOf(SLOT) < names.indexOf('m5c:test-right-anchor'))
+
+  const rendered = renderPrompt(assembly)
+  assert.ok(rendered.includes('ALPHA {{malformed value}}'))
+  assert.ok(rendered.includes('ZETA {{unknown}}'))
+  assert.equal(native.counters.get, 4, 'two isolated Agents each load both Pinned bodies')
+
+  state.skills = {
+    zeta: 'off',
+    alpha: 'manual',
+  }
+  assembly = await assemble(root, current.agent)
+  assert.equal(assembly.sections.some(section => section.name === SLOT), false)
+  assert.equal(assembly.variables[VARIABLE], '')
+  assert.equal(native.counters.get, 4, 'non-Pinned assembly must not load bodies')
+
+  const inspected = await runtime.runtime.inspect('agent-a')
+  assert.equal(inspected.status, 'resolved')
+  assert.equal(inspected.nativeState, 'empty')
+  assert.equal(JSON.stringify(inspected).includes('ALPHA'), false)
+
+  await runtime.dispose()
+  stopRight()
+  stopLeft()
+  stopNative()
+  await second.scope.dispose()
+  await current.scope.dispose()
+  await preset.dispose()
+  await root.fiber.dispose()
+})
+
+test('M5C follows dynamic parent rebind and ignores Agent-local same-name Skills', async () => {
+  const root = new Context()
+  await installBase(root)
+
+  const presetAKey = {}
+  const presetBKey = {}
+  const presetA = createScope(root, presetAKey)
+  const presetB = createScope(root, presetBKey)
+  const stopA = scopedSkills(presetA.ctx).registerProvider(() =>
+    provider('preset-a-provider', [candidate('preset-a-provider', 'target', 'BODY_A')]),
+  )
+  const stopB = scopedSkills(presetB.ctx).registerProvider(() =>
+    provider('preset-b-provider', [candidate('preset-b-provider', 'target', 'BODY_B')]),
+  )
+
+  const current = mintAgent(root, 'agent-reparent', presetAKey)
+  const state = {
+    presetId: 'preset-a',
+    skills: { target: 'pinned' },
+  }
+  const runtime = await bootRuntime(root, [current.agent], state)
+
+  let text = renderPrompt(await assemble(root, current.agent))
+  assert.ok(text.includes('BODY_A'))
+
+  current.binding.rebind(presetBKey)
+  text = renderPrompt(await assemble(root, current.agent))
+  assert.ok(text.includes('BODY_B'))
+  assert.equal(text.includes('BODY_A'), false)
+
+  const stopLocal = scopedSkills(current.agent.ctx).registerProvider(() =>
+    provider('agent-local-provider', [candidate('agent-local-provider', 'target', 'LOCAL_BODY')]),
+  )
+  text = renderPrompt(await assemble(root, current.agent))
+  assert.equal(text.includes('BODY_B'), false)
+  assert.equal(text.includes('LOCAL_BODY'), false)
+
+  const inspected = await runtime.runtime.inspect('agent-reparent')
+  assert.equal(inspected.status, 'resolved')
+  assert.deepEqual(inspected.bindings, [{
+    state: 'policy-not-effective',
+    skillName: 'target',
+    nativeProvider: 'preset-b-provider',
+    winnerProvider: 'agent-local-provider',
+  }])
+
+  await runtime.dispose()
+  stopLocal()
+  stopB()
+  stopA()
+  await current.scope.dispose()
+  await presetB.dispose()
+  await presetA.dispose()
+  await root.fiber.dispose()
+})
+
+test('M5C revalidates the Agent-view winner after native body loading', async () => {
+  const root = new Context()
+  await installBase(root)
+
+  const presetKey = {}
+  const preset = createScope(root, presetKey)
+  const getStarted = Promise.withResolvers()
+  const releaseGet = Promise.withResolvers()
+
+  const stopNative = scopedSkills(preset.ctx).registerProvider(() => ({
+    name: 'native-provider',
+    async list() {
+      return [candidate('native-provider', 'target', 'STALE_NATIVE_BODY')]
+    },
+    async get(selected) {
+      getStarted.resolve()
+      await releaseGet.promise
+      return {
+        name: selected.name,
+        description: selected.description,
+        invocation: selected.invocation,
+        source: selected.source,
+        provider: selected.provider,
+        content: selected.locator.content,
+      }
+    },
+  }))
+
+  const current = mintAgent(root, 'agent-winner-race', presetKey)
+  const state = {
+    presetId: 'preset-a',
+    skills: { target: 'pinned' },
+  }
+  const runtime = await bootRuntime(root, [current.agent], state)
+
+  const pending = assemble(root, current.agent)
+  await getStarted.promise
+
+  // The first Agent snapshot already proved the CM proxy effective. While the
+  // native body is still loading, install a nearer Agent-local winner. The
+  // final Agent-view snapshot must observe this new winner and discard the
+  // previously loaded parent body.
+  const stopLocal = scopedSkills(current.agent.ctx).registerProvider(() =>
+    provider('agent-local-race-provider', [
+      candidate('agent-local-race-provider', 'target', 'LOCAL_RACE_BODY'),
+    ]),
+  )
+  releaseGet.resolve()
+
+  const assembly = await pending
+  const text = renderPrompt(assembly)
+  assert.equal(text.includes('STALE_NATIVE_BODY'), false)
+  assert.equal(text.includes('LOCAL_RACE_BODY'), false)
+  assert.equal(assembly.sections.some(section => section.name === SLOT), false)
+  assert.equal(assembly.variables[VARIABLE], '')
+
+  const inspected = await runtime.runtime.inspect('agent-winner-race')
+  assert.equal(inspected.status, 'resolved')
+  assert.deepEqual(inspected.bindings, [{
+    state: 'policy-not-effective',
+    skillName: 'target',
+    nativeProvider: 'native-provider',
+    winnerProvider: 'agent-local-race-provider',
+  }])
+  assert.equal(inspected.nativeState, 'empty')
+
+  await runtime.dispose()
+  stopLocal()
+  stopNative()
+  await current.scope.dispose()
+  await preset.dispose()
+  await root.fiber.dispose()
+})
+
+test('M5C fails closed when Agent parent rebinds during async catalog resolution', async () => {
+  const root = new Context()
+  await installBase(root)
+
+  const presetAKey = {}
+  const presetBKey = {}
+  const presetA = createScope(root, presetAKey)
+  const presetB = createScope(root, presetBKey)
+
+  const started = Promise.withResolvers()
+  const release = Promise.withResolvers()
+  let blockFirstList = true
+
+  const stopA = scopedSkills(presetA.ctx).registerProvider(() => ({
+    name: 'preset-a-provider',
+    async list() {
+      if (blockFirstList) {
+        blockFirstList = false
+        started.resolve()
+        await release.promise
+      }
+      return [candidate('preset-a-provider', 'target', 'STALE_PARENT_A_BODY')]
+    },
+    async get(selected) {
+      return {
+        name: selected.name,
+        description: selected.description,
+        invocation: selected.invocation,
+        source: selected.source,
+        provider: selected.provider,
+        content: selected.locator.content,
+      }
+    },
+  }))
+  const stopB = scopedSkills(presetB.ctx).registerProvider(() =>
+    provider('preset-b-provider', [
+      candidate('preset-b-provider', 'target', 'CURRENT_PARENT_B_BODY'),
+    ]),
+  )
+
+  const current = mintAgent(root, 'agent-parent-race', presetAKey)
+  const state = {
+    presetId: 'preset-a',
+    skills: { target: 'pinned' },
+  }
+  const runtime = await bootRuntime(root, [current.agent], state)
+
+  const pending = assemble(root, current.agent)
+  await started.promise
+  current.binding.rebind(presetBKey)
+  release.resolve()
+
+  const assembly = await pending
+  const text = renderPrompt(assembly)
+  assert.equal(text.includes('STALE_PARENT_A_BODY'), false)
+  assert.equal(assembly.sections.some(section => section.name === SLOT), false)
+  assert.equal(assembly.variables[VARIABLE], '')
+
+  const refreshed = renderPrompt(await assemble(root, current.agent))
+  assert.equal(refreshed.includes('STALE_PARENT_A_BODY'), false)
+  assert.ok(refreshed.includes('CURRENT_PARENT_B_BODY'))
+
+  await runtime.dispose()
+  stopB()
+  stopA()
+  await current.scope.dispose()
+  await presetB.dispose()
+  await presetA.dispose()
+  await root.fiber.dispose()
+})
+
+test('M5C fails closed when Agent parent rebinds during downstream prompt assembly', async () => {
+  const root = new Context()
+  await installBase(root)
+
+  const presetAKey = {}
+  const presetBKey = {}
+  const presetA = createScope(root, presetAKey)
+  const presetB = createScope(root, presetBKey)
+  const stopA = scopedSkills(presetA.ctx).registerProvider(() =>
+    provider('preset-a-provider', [
+      candidate('preset-a-provider', 'target', 'DOWNSTREAM_PARENT_A_BODY'),
+    ]),
+  )
+  const stopB = scopedSkills(presetB.ctx).registerProvider(() =>
+    provider('preset-b-provider', [
+      candidate('preset-b-provider', 'target', 'DOWNSTREAM_PARENT_B_BODY'),
+    ]),
+  )
+
+  const current = mintAgent(root, 'agent-parent-downstream-race', presetAKey)
+  const state = {
+    presetId: 'preset-a',
+    skills: { target: 'pinned' },
+  }
+  const runtime = await bootRuntime(root, [current.agent], state)
+
+  const started = Promise.withResolvers()
+  const release = Promise.withResolvers()
+  const stopDelay = current.agent.ctx.on(
+    'system-prompt/assemble',
+    async (_assembly, _context, next) => {
+      started.resolve()
+      await release.promise
+      return await next()
+    },
+  )
+
+  const pending = assemble(root, current.agent)
+  await started.promise
+  current.binding.rebind(presetBKey)
+  release.resolve()
+
+  const assembly = await pending
+  const text = renderPrompt(assembly)
+  assert.equal(text.includes('DOWNSTREAM_PARENT_A_BODY'), false)
+  assert.equal(assembly.sections.some(section => section.name === SLOT), false)
+  assert.equal(assembly.variables[VARIABLE], '')
+
+  stopDelay()
+  const refreshed = renderPrompt(await assemble(root, current.agent))
+  assert.equal(refreshed.includes('DOWNSTREAM_PARENT_A_BODY'), false)
+  assert.ok(refreshed.includes('DOWNSTREAM_PARENT_B_BODY'))
+
+  await runtime.dispose()
+  stopB()
+  stopA()
+  await current.scope.dispose()
+  await presetB.dispose()
+  await presetA.dispose()
+  await root.fiber.dispose()
+})
+
+test('M5C fails closed when Pinned changes to Off during async catalog resolution', async () => {
+  const root = new Context()
+  await installBase(root)
+
+  const started = Promise.withResolvers()
+  const release = Promise.withResolvers()
+  let blockFirstList = true
+  const stopNative = scopedSkills(root).registerProvider(() => ({
+    name: 'race-provider',
+    async list() {
+      if (blockFirstList) {
+        blockFirstList = false
+        started.resolve()
+        await release.promise
+      }
+      return [candidate('race-provider', 'target', 'STALE_PINNED_BODY')]
+    },
+    async get(selected) {
+      return {
+        name: selected.name,
+        description: selected.description,
+        invocation: selected.invocation,
+        source: selected.source,
+        provider: selected.provider,
+        content: selected.locator.content,
+      }
+    },
+  }))
+
+  const current = mintAgent(root, 'agent-profile-race')
+  const state = {
+    presetId: 'preset-a',
+    skills: { target: 'pinned' },
+  }
+  const runtime = await bootRuntime(root, [current.agent], state)
+
+  const pending = assemble(root, current.agent)
+  await started.promise
+  state.skills = { target: 'off' }
+  root.emit('dsh-context-manager/change')
+  release.resolve()
+
+  const assembly = await pending
+  const text = renderPrompt(assembly)
+  assert.equal(text.includes('STALE_PINNED_BODY'), false)
+  assert.equal(assembly.sections.some(section => section.name === SLOT), false)
+  assert.equal(assembly.variables[VARIABLE], '')
+
+  const inspected = await runtime.runtime.inspect('agent-profile-race')
+  assert.equal(inspected.status, 'resolved')
+  assert.equal(inspected.profile.status, 'active')
+  assert.deepEqual(inspected.bindings, [])
+  assert.equal(inspected.nativeState, 'empty')
+
+  await runtime.dispose()
+  stopNative()
+  await current.scope.dispose()
+  await root.fiber.dispose()
+})
+
+test('M5C fails closed when Pinned changes during downstream prompt assembly', async () => {
+  const root = new Context()
+  await installBase(root)
+
+  const stopNative = scopedSkills(root).registerProvider(() =>
+    provider('native-provider', [
+      candidate('native-provider', 'target', 'DOWNSTREAM_STALE_BODY'),
+    ]),
+  )
+
+  const current = mintAgent(root, 'agent-downstream-race')
+  const state = {
+    presetId: 'preset-a',
+    skills: { target: 'pinned' },
+  }
+  const runtime = await bootRuntime(root, [current.agent], state)
+
+  const started = Promise.withResolvers()
+  const release = Promise.withResolvers()
+  const stopDelay = current.agent.ctx.on(
+    'system-prompt/assemble',
+    async (_assembly, _context, next) => {
+      started.resolve()
+      await release.promise
+      return await next()
+    },
+  )
+
+  const pending = assemble(root, current.agent)
+  await started.promise
+  state.skills = { target: 'off' }
+  root.emit('dsh-context-manager/change')
+  release.resolve()
+
+  const assembly = await pending
+  const text = renderPrompt(assembly)
+  assert.equal(text.includes('DOWNSTREAM_STALE_BODY'), false)
+  assert.equal(assembly.sections.some(section => section.name === SLOT), false)
+  assert.equal(assembly.variables[VARIABLE], '')
+
+  stopDelay()
+  await runtime.dispose()
+  stopNative()
+  await current.scope.dispose()
+  await root.fiber.dispose()
+})
+
+test('M5C does not admit a refreshed profile fingerprint past the real request assembly', async () => {
+  const root = new Context()
+  await installBase(root)
+
+  const stopNative = scopedSkills(root).registerProvider(() =>
+    provider('native-provider', [
+      candidate('native-provider', 'target', 'REAL_REQUEST_PINNED_BODY'),
+    ]),
+  )
+  const current = mintAgent(root, 'agent-post-assembly-profile-race')
+  const state = {
+    presetId: 'preset-a',
+    skills: { target: 'pinned' },
+  }
+  const runtime = await bootRuntime(root, [current.agent], state)
+  const signal = new AbortController().signal
+
+  const assembleRequest = async () => await root.systemPrompt.assemble({
+    scope: current.agent,
+    agent: current.agent,
+    signal,
+  })
+  const propose = async () => await current.agent.ctx.waterfall(
+    current.agent.ctx,
+    'agent/pre-step',
+    {},
+    () => Promise.resolve({
+      kind: 'enter',
+      messages: [{ role: 'user' }],
+    }),
+  )
+
+  await assembleRequest()
+  let decision = await propose()
+  assert.equal(decision.startsRequestSeries, true)
+  current.agent.ctx.emit('session/event', {}, {
+    type: 'request/header',
+    data: {},
+  })
+
+  // The second real request has already assembled the old Pinned body. A
+  // Settings change now dirties the final projection, but a signal-free
+  // diagnostic assembly must not replace the fingerprint of the request DSH
+  // is actually about to send.
+  const staleRequest = await assembleRequest()
+  assert.ok(renderPrompt(staleRequest).includes('REAL_REQUEST_PINNED_BODY'))
+  state.skills = { target: 'off' }
+  root.emit('dsh-context-manager/change')
+
+  decision = await propose()
+  assert.equal(
+    decision.startsRequestSeries,
+    undefined,
+    'post-assembly refresh must not advance past the real request contribution',
+  )
+  current.agent.ctx.emit('session/event', {}, {
+    type: 'request/header',
+    data: {},
+  })
+
+  // The next real assembly sees Off. Its empty fingerprint differs from the
+  // still-admitted Pinned baseline and therefore owns the reconciliation fence.
+  const offRequest = await assembleRequest()
+  assert.equal(renderPrompt(offRequest).includes('REAL_REQUEST_PINNED_BODY'), false)
+  decision = await propose()
+  assert.equal(decision.startsRequestSeries, true)
+  current.agent.ctx.emit('session/event', {}, {
+    type: 'request/header',
+    data: {},
+  })
+
+  await assembleRequest()
+  decision = await propose()
+  assert.equal(decision.startsRequestSeries, undefined)
+
+  await runtime.dispose()
+  stopNative()
+  await current.scope.dispose()
+  await root.fiber.dispose()
+})
+
+test('M5C does not admit a refreshed parent fingerprint past the real request assembly', async () => {
+  const root = new Context()
+  await installBase(root)
+
+  const presetAKey = {}
+  const presetBKey = {}
+  const presetA = createScope(root, presetAKey)
+  const presetB = createScope(root, presetBKey)
+  const stopA = scopedSkills(presetA.ctx).registerProvider(() =>
+    provider('preset-a-provider', [
+      candidate('preset-a-provider', 'target', 'REAL_PARENT_A_BODY'),
+    ]),
+  )
+  const stopB = scopedSkills(presetB.ctx).registerProvider(() =>
+    provider('preset-b-provider', [
+      candidate('preset-b-provider', 'target', 'REAL_PARENT_B_BODY'),
+    ]),
+  )
+
+  const current = mintAgent(root, 'agent-post-assembly-parent-race', presetAKey)
+  const state = {
+    presetId: 'preset-a',
+    skills: { target: 'pinned' },
+  }
+  const runtime = await bootRuntime(root, [current.agent], state)
+  const signal = new AbortController().signal
+
+  const assembleRequest = async () => await root.systemPrompt.assemble({
+    scope: current.agent,
+    agent: current.agent,
+    signal,
+  })
+  const propose = async () => await current.agent.ctx.waterfall(
+    current.agent.ctx,
+    'agent/pre-step',
+    {},
+    () => Promise.resolve({
+      kind: 'enter',
+      messages: [{ role: 'user' }],
+    }),
+  )
+
+  await assembleRequest()
+  let decision = await propose()
+  assert.equal(decision.startsRequestSeries, true)
+  current.agent.ctx.emit('session/event', {}, {
+    type: 'request/header',
+    data: {},
+  })
+
+  const staleRequest = await assembleRequest()
+  assert.ok(renderPrompt(staleRequest).includes('REAL_PARENT_A_BODY'))
+  current.binding.rebind(presetBKey)
+  // Preset recomposition commonly has adjacent authority notifications. Even
+  // if one dirties the projection, it must not make a diagnostic B assembly
+  // stand in for the already-built A request.
+  root.emit('dsh-context-manager/change')
+
+  decision = await propose()
+  assert.equal(decision.startsRequestSeries, undefined)
+  current.agent.ctx.emit('session/event', {}, {
+    type: 'request/header',
+    data: {},
+  })
+
+  const currentRequest = await assembleRequest()
+  const currentText = renderPrompt(currentRequest)
+  assert.equal(currentText.includes('REAL_PARENT_A_BODY'), false)
+  assert.ok(currentText.includes('REAL_PARENT_B_BODY'))
+  decision = await propose()
+  assert.equal(decision.startsRequestSeries, true)
+
+  await runtime.dispose()
+  stopB()
+  stopA()
+  await current.scope.dispose()
+  await presetB.dispose()
+  await presetA.dispose()
+  await root.fiber.dispose()
+})
+
+test('M5C incomplete catalog injects no partial body and does no native get()', async () => {
+  const root = new Context()
+  await installBase(root)
+
+  let gets = 0
+  const stopNative = scopedSkills(root).registerProvider(() => ({
+    name: 'incomplete-provider',
+    async list() {
+      return {
+        candidates: [candidate('incomplete-provider', 'target', 'SHOULD_NOT_LOAD')],
+        complete: false,
+      }
+    },
+    async get() {
+      gets += 1
+      throw new Error('incomplete catalog body must not load')
+    },
+  }))
+
+  const current = mintAgent(root, 'agent-incomplete')
+  const state = {
+    presetId: 'preset-a',
+    skills: {
+      target: 'pinned',
+      missing: 'pinned',
+    },
+  }
+  const runtime = await bootRuntime(root, [current.agent], state)
+
+  const assembly = await assemble(root, current.agent)
+  assert.equal(assembly.sections.some(section => section.name === SLOT), false)
+  assert.equal(gets, 0)
+
+  const inspected = await runtime.runtime.inspect('agent-incomplete')
+  assert.equal(inspected.status, 'resolved')
+  assert.equal(inspected.catalogComplete, false)
+  assert.equal(inspected.nativeState, 'empty')
+  assert.deepEqual(
+    inspected.bindings.map(item => [item.skillName, item.state]),
+    [
+      ['missing', 'catalog-incomplete'],
+      ['target', 'catalog-incomplete'],
+    ],
+  )
+  assert.equal(gets, 0)
+
+  await runtime.dispose()
+  stopNative()
+  await current.scope.dispose()
+  await root.fiber.dispose()
+})
+
+test('M5C inspection reports missing/get-race states and native complete suppression without exposing bodies', async () => {
+  const root = new Context()
+  await installBase(root)
+
+  const stopNative = scopedSkills(root).registerProvider(() => ({
+    name: 'native-provider',
+    async list() {
+      return [
+        candidate('native-provider', 'present', 'SECRET_PINNED_BODY'),
+        candidate('native-provider', 'vanishes', 'never returned'),
+      ]
+    },
+    async get(selected) {
+      if (selected.name === 'vanishes') return undefined
+      return {
+        name: selected.name,
+        description: selected.description,
+        invocation: selected.invocation,
+        source: selected.source,
+        provider: selected.provider,
+        content: selected.locator.content,
+      }
+    },
+  }))
+
+  const current = mintAgent(root, 'agent-inspect')
+  const state = {
+    presetId: 'preset-a',
+    skills: {
+      missing: 'pinned',
+      present: 'pinned',
+      vanishes: 'pinned',
+    },
+  }
+  const runtime = await bootRuntime(root, [current.agent], state)
+
+  let inspected = await runtime.runtime.inspect('agent-inspect')
+  assert.equal(inspected.status, 'resolved')
+  assert.equal(inspected.nativeState, 'present')
+  assert.deepEqual(
+    inspected.bindings.map(item => [item.skillName, item.state]),
+    [
+      ['missing', 'missing-native-skill'],
+      ['present', 'loaded'],
+      ['vanishes', 'definition-unavailable'],
+    ],
+  )
+  assert.equal(JSON.stringify(inspected).includes('SECRET_PINNED_BODY'), false)
+
+  const scopedPrompt = current.agent.ctx.get('systemPrompt')
+  assert.ok(scopedPrompt)
+  const disposeComplete = scopedPrompt.section({
+    name: 'm5c:test-complete',
+    order: 0,
+    text: 'COMPLETE',
+    complete: true,
+  })
+  inspected = await runtime.runtime.inspect('agent-inspect')
+  assert.equal(inspected.status, 'resolved')
+  assert.equal(inspected.nativeState, 'native-suppressed')
+  disposeComplete()
+
+  await runtime.dispose()
+  stopNative()
+  await current.scope.dispose()
+  await root.fiber.dispose()
+})
+
+test('M5C runtime disposal aborts an in-flight native body load', async () => {
+  const root = new Context()
+  await installBase(root)
+
+  const started = Promise.withResolvers()
+  const stopNative = scopedSkills(root).registerProvider(() => ({
+    name: 'abort-provider',
+    async list() {
+      return [candidate('abort-provider', 'target', 'unused')]
+    },
+    async get(_candidate, options) {
+      started.resolve(options.signal)
+      return await new Promise((resolve, reject) => {
+        if (options.signal?.aborted) {
+          reject(options.signal.reason)
+          return
+        }
+        options.signal?.addEventListener('abort', () => reject(options.signal.reason), { once: true })
+      })
+    },
+  }))
+
+  const current = mintAgent(root, 'agent-abort')
+  const state = {
+    presetId: 'preset-a',
+    skills: { target: 'pinned' },
+  }
+  const runtime = await bootRuntime(root, [current.agent], state)
+
+  const pending = assemble(root, current.agent)
+  const rejected = assert.rejects(pending)
+  const signal = await started.promise
+  assert.equal(signal.aborted, false)
+
+  await runtime.dispose()
+  assert.equal(signal.aborted, true)
+  await rejected
+
+  stopNative()
+  await current.scope.dispose()
+  await root.fiber.dispose()
+})
+
+
+test('M5C retirement uses admitted rather than merely observed prompt state', async () => {
+  const root = new Context()
+  await installBase(root)
+
+  const stopNative = scopedSkills(root).registerProvider(() =>
+    provider('native-provider', [
+      candidate('native-provider', 'target', 'OBSERVED_BUT_NOT_ADMITTED'),
+    ]),
+  )
+
+  const current = mintAgent(root, 'agent-retire-observed-only')
+  const state = {
+    presetId: 'preset-a',
+    skills: { target: 'off' },
+  }
+  const runtime = await bootRuntime(root, [current.agent], state)
+
+  const signal = new AbortController().signal
+
+  // First accepted request establishes an admitted empty baseline and consumes
+  // the attach-time request-series fence.
+  await root.systemPrompt.assemble({
+    scope: current.agent,
+    agent: current.agent,
+    signal,
+  })
+  let decision = await current.agent.ctx.waterfall(
+    current.agent.ctx,
+    'agent/pre-step',
+    {},
+    () => Promise.resolve({
+      kind: 'enter',
+      messages: [{ role: 'user' }],
+    }),
+  )
+  assert.equal(decision.startsRequestSeries, true)
+  current.agent.ctx.emit('session/event', {}, {
+    type: 'request/header',
+    data: {},
+  })
+
+  // A later assembly observes Pinned content, but no accepted pre-step follows.
+  // This is not model-visible admitted state and must not create a retire fence.
+  state.skills = { target: 'pinned' }
+  await root.systemPrompt.assemble({
+    scope: current.agent,
+    agent: current.agent,
+    signal,
+  })
+
+  await runtime.disposePinned()
+
+  decision = await current.agent.ctx.waterfall(
+    current.agent.ctx,
+    'agent/pre-step',
+    {},
+    () => Promise.resolve({
+      kind: 'enter',
+      messages: [{ role: 'user' }],
+    }),
+  )
+  assert.equal(
+    decision.startsRequestSeries,
+    undefined,
+    'observed-only pinned content must not leave a post-unload request-series fence',
+  )
+
+  await runtime.dispose()
+  stopNative()
+  await current.scope.dispose()
+  await root.fiber.dispose()
+})

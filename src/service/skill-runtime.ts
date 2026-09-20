@@ -10,6 +10,7 @@ import {
   inspectAgentSkillPolicy,
   installAgentSkillPolicyProvider,
 } from '../adapters/skill-runtime.js'
+import { agentWorkspaceCwd } from '../adapters/skill-view.js'
 import { resolveEffectiveProfile } from '../runtime/effective-profile.js'
 import type {
   EffectiveProfileResolution,
@@ -25,18 +26,6 @@ declare module '@deepseek-ai/cordis' {
 interface ActiveSkillRuntime {
   readonly ctx: Context
   readonly bridge: AgentRuntimeBridge
-}
-
-function agentWorkspaceCwd(agent: RuntimeAgent): string | undefined {
-  const raw = agent as unknown as {
-    session?: {
-      header?: {
-        cwd?: unknown
-      }
-    }
-  }
-  const cwd = raw.session?.header?.cwd
-  return typeof cwd === 'string' ? cwd : undefined
 }
 
 function trackControl(
