@@ -248,6 +248,20 @@ For transformed conversation presentation, prefer an additive `conversation.view
 - Do not broadly catch programming/configuration errors just to keep a Fiber ACTIVE.
 - A disabled or uninstalled Context Manager must leave stock DSH behavior unchanged.
 
+## Host Remote boundary
+
+M6 introduces a separate Host Remote projection layer rather than decorating the existing Domain/runtime services directly. The existing services remain the in-process authorities; Remote controllers own only wire DTOs, browser-safe reads, explicit mutation signatures, and transport-facing capability handshakes.
+
+M6A publishes one generated Typert namespace, `contextManager`, with only the side-effect-free `protocol()` handshake. The package publishes generated `./typert` and `./remote` faces, but no `./client` face or `dsh.client` manifest. Gateway SRC reflection is only a compatibility fallback of DSH itself and is not Context Manager's declared browser contract.
+
+Context Manager is a standalone npm package rather than a DSH monorepo package. Retained Typert generators only discover projects under a workspace `packages/` tree and identify the public Remote decorator through a workspace/ambient protocol declaration. The build therefore creates one disposable generation workspace, analyzes a copy of the real Remote controller with the official generator, emits strict artifacts into `lib/`, and deletes the workspace. The build-only declaration shim is never published and owns no business behavior.
+
+Production runtime code does not retain decorator syntax. It invokes the public `Remote()` decorator function, captures the initializer supplied through the standard decorator context, and executes that initializer in the service constructor. The disposable generation copy receives the equivalent `@Remote` annotation so the official compiler still owns the strict descriptor and Zod boundary. This split exists only because the standalone tsdown build does not run DSH's monorepo decorator-lowering plugin.
+
+The generated strict codec is intentionally dual-shape across the retained Host lines: legacy registries consume `schema`, while 0.1.6-alpha.1+ consumes lazy `create()`. One published artifact carries both and no production runtime branch selects a DSH version.
+
+M6B/M6C must keep browser reads secret-safe, require explicit stale-write tokens, avoid Host filesystem paths, and project runtime diagnostics rather than exporting Host service objects. A future Remote notification is only a pull hint; authoritative state is always re-read.
+
 ## Compatibility boundary
 
 DSH is evolving quickly. Features that depend on optional DSH services should be capability-gated and tested against explicitly supported DSH versions. A missing optional integration may disable only that Context Manager feature; it must not be simulated by reaching into undocumented internal state.
