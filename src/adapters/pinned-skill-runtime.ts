@@ -137,6 +137,19 @@ function samePinnedPlan(
     && leftNames.every((name, index) => name === rightNames[index])
 }
 
+function samePinnedProjectionPlan(
+  left: EffectiveProfileResolution,
+  right: EffectiveProfileResolution,
+): boolean {
+  if (left.status === 'active' || right.status === 'active') {
+    return samePinnedPlan(left, right)
+  }
+  // Every non-active effective-profile state contributes the same empty M5C
+  // bundle. Distinguishing diagnostics here would create request-series churn
+  // without changing model-visible Context Manager content.
+  return true
+}
+
 function emptyPinnedResolution(
   profile: EffectiveProfileResolution,
 ): PinnedSkillBundleResolution {
@@ -397,6 +410,9 @@ export function installAgentPinnedSkillRuntime(
   let admittedContributionPresent = false
   let projectionRevision = 1
   let observedProjectionRevision = 0
+  let observedRequestAssemblyRevision = 0
+  let observedRequestProfile: EffectiveProfileResolution | undefined
+  let observedRequestParent: unknown
   let completePromptSuppressesPinned = false
 
   const markProjectionDirty = () => {
@@ -433,6 +449,7 @@ export function installAgentPinnedSkillRuntime(
       'system-prompt/assemble',
       async (rawAssembly, context, next) => {
         const assembly = requirePinnedAssembly(rawAssembly)
+        const assemblyProjectionRevision = projectionRevision
         const assemblyParent = scopeParentOf(agent)
         const resolution = await resolvePinnedSkillBundle(
           rootCtx,
@@ -493,6 +510,9 @@ export function installAgentPinnedSkillRuntime(
               : contribution
           observedRequestSignature = effectiveContribution.signature
           observedRequestContributionPresent = effectiveContribution.present
+          observedRequestAssemblyRevision = assemblyProjectionRevision
+          observedRequestProfile = finalResolution.profile
+          observedRequestParent = assemblyParent
         }
         return result
       },
@@ -513,7 +533,20 @@ export function installAgentPinnedSkillRuntime(
   return Object.freeze({
     async prepareRequestSeries(): Promise<boolean> {
       if (disposed) return false
-      while (observedProjectionRevision !== projectionRevision) {
+
+      // A signal-free diagnostic assembly may refine the current request's
+      // post-waterfall/post-complete fingerprint only while the authoritative
+      // inputs that produced the real request assembly are still unchanged.
+      // If revision/profile/parent changed after that assembly completed, the
+      // current request still carries the old assembly; admitting a refreshed
+      // fingerprint here would advance CM state past what DSH actually sends.
+      while (
+        observedRequestAssemblyRevision === projectionRevision
+        && observedRequestProfile !== undefined
+        && samePinnedProjectionPlan(observedRequestProfile, readProfile())
+        && observedRequestParent === scopeParentOf(agent)
+        && observedProjectionRevision !== projectionRevision
+      ) {
         const revision = projectionRevision
         await refreshFinalContribution(revision)
         if (disposed) return false
