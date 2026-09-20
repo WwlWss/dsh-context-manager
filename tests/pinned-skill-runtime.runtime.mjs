@@ -328,6 +328,80 @@ test('M5C follows dynamic parent rebind and ignores Agent-local same-name Skills
   await root.fiber.dispose()
 })
 
+test('M5C revalidates the Agent-view winner after native body loading', async () => {
+  const root = new Context()
+  await installBase(root)
+
+  const presetKey = {}
+  const preset = createScope(root, presetKey)
+  const getStarted = Promise.withResolvers()
+  const releaseGet = Promise.withResolvers()
+
+  const stopNative = scopedSkills(preset.ctx).registerProvider(() => ({
+    name: 'native-provider',
+    async list() {
+      return [candidate('native-provider', 'target', 'STALE_NATIVE_BODY')]
+    },
+    async get(selected) {
+      getStarted.resolve()
+      await releaseGet.promise
+      return {
+        name: selected.name,
+        description: selected.description,
+        invocation: selected.invocation,
+        source: selected.source,
+        provider: selected.provider,
+        content: selected.locator.content,
+      }
+    },
+  }))
+
+  const current = mintAgent(root, 'agent-winner-race', presetKey)
+  const state = {
+    presetId: 'preset-a',
+    skills: { target: 'pinned' },
+  }
+  const runtime = await bootRuntime(root, [current.agent], state)
+
+  const pending = assemble(root, current.agent)
+  await getStarted.promise
+
+  // The first Agent snapshot already proved the CM proxy effective. While the
+  // native body is still loading, install a nearer Agent-local winner. The
+  // final Agent-view snapshot must observe this new winner and discard the
+  // previously loaded parent body.
+  const stopLocal = scopedSkills(current.agent.ctx).registerProvider(() =>
+    provider('agent-local-race-provider', [
+      candidate('agent-local-race-provider', 'target', 'LOCAL_RACE_BODY'),
+    ]),
+  )
+  releaseGet.resolve()
+
+  const assembly = await pending
+  const text = renderPrompt(assembly)
+  assert.equal(text.includes('STALE_NATIVE_BODY'), false)
+  assert.equal(text.includes('LOCAL_RACE_BODY'), false)
+  assert.equal(assembly.sections.some(section => section.name === SLOT), false)
+  assert.equal(assembly.variables[VARIABLE], '')
+
+  const inspected = await runtime.runtime.inspect('agent-winner-race')
+  assert.equal(inspected.status, 'resolved')
+  assert.deepEqual(inspected.bindings, [{
+    state: 'policy-not-effective',
+    skillName: 'target',
+    nativeProvider: 'native-provider',
+    winnerProvider: 'agent-local-race-provider',
+  }])
+  assert.equal(inspected.nativeState, 'empty')
+
+  await runtime.dispose()
+  stopLocal()
+  stopNative()
+  await current.scope.dispose()
+  await preset.dispose()
+  await root.fiber.dispose()
+})
+
 test('M5C fails closed when Agent parent rebinds during async catalog resolution', async () => {
   const root = new Context()
   await installBase(root)
