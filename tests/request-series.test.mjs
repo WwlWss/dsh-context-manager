@@ -229,3 +229,85 @@ test('empty enter does not consume a pending request-series fence or guard basel
   await fiber.dispose()
   await root.fiber.dispose()
 })
+
+
+test('external authority fence acknowledges the request contribution without a redundant second boundary', async () => {
+  const root = new Context()
+  const fiber = root.plugin(ContextManagerRequestSeries)
+  await fiber
+  const { agent, fiber: agentFiber } = fakeAgent(root)
+
+  let observed = 'old'
+  let admitted = 'old'
+  const stop = root.dshContextRequestSeries.register(
+    agent,
+    () => {
+      const changed = observed !== admitted
+      admitted = observed
+      return changed
+    },
+    () => admitted !== 'empty',
+  )
+
+  root.emit('dsh-context-manager/change')
+
+  let decision = await preStep(agent, { kind: 'enter', messages: [{ role: 'user' }] })
+  assert.equal(decision.startsRequestSeries, true)
+
+  // Simulate the request assembly that follows this pre-step observing the
+  // authoritative new pinned contribution.
+  observed = 'new'
+
+  decision = await preStep(agent, { kind: 'enter', messages: [{ role: 'user' }] })
+  assert.equal(decision.startsRequestSeries, undefined)
+  assert.equal(admitted, 'new', 'the guard baseline still advances while acknowledged')
+
+  decision = await preStep(agent, { kind: 'enter', messages: [{ role: 'user' }] })
+  assert.equal(decision.startsRequestSeries, undefined)
+
+  stop()
+  await agentFiber.dispose()
+  await fiber.dispose()
+  await root.fiber.dispose()
+})
+
+test('a newer external authority event during acknowledgement still creates its own boundary', async () => {
+  const root = new Context()
+  const fiber = root.plugin(ContextManagerRequestSeries)
+  await fiber
+  const { agent, fiber: agentFiber } = fakeAgent(root)
+
+  let observed = 'old'
+  let admitted = 'old'
+  const stop = root.dshContextRequestSeries.register(
+    agent,
+    () => {
+      const changed = observed !== admitted
+      admitted = observed
+      return changed
+    },
+    () => admitted !== 'empty',
+  )
+
+  root.emit('skills/change')
+  let decision = await preStep(agent, { kind: 'enter', messages: [{ role: 'user' }] })
+  assert.equal(decision.startsRequestSeries, true)
+
+  observed = 'first-new'
+  // A second authority change happens before the acknowledgement pre-step.
+  root.emit('system-prompt/change')
+
+  decision = await preStep(agent, { kind: 'enter', messages: [{ role: 'user' }] })
+  assert.equal(decision.startsRequestSeries, true)
+  assert.equal(admitted, 'first-new')
+
+  observed = 'second-new'
+  decision = await preStep(agent, { kind: 'enter', messages: [{ role: 'user' }] })
+  assert.equal(decision.startsRequestSeries, undefined)
+  assert.equal(admitted, 'second-new')
+
+  stop()
+  await agentFiber.dispose()
+  await fiber.dispose()
+  await root.fiber.dispose()
+})
