@@ -66,26 +66,18 @@ try {
     },
   }))
 
-  const agentKey = {
+  const agent = {
     id: 'm5c-five-gen',
+    ctx: undefined,
     session: {
       header: {
         cwd: '/workspace/m5c',
       },
     },
   }
-  const binding = bindScopeParent(agentKey, presetKey)
-  const agentScope = createScope(ctx, agentKey)
-  const agent = {
-    ...agentKey,
-    ctx: agentScope.ctx,
-  }
-
-  // scopeParentOf() keys by object identity, so bind the actual Agent object as
-  // well; the small fixture keeps the parent explicit rather than relying on
-  // AgentLoop construction.
-  binding.dispose?.()
   const agentBinding = bindScopeParent(agent, presetKey)
+  const agentScope = createScope(ctx, agent)
+  agent.ctx = agentScope.ctx
 
   const placement = observeNativePromptPlacementCompatibility(agent.ctx)
   assert.equal(placement.status, 'available')
