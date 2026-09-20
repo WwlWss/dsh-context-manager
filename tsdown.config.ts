@@ -5,6 +5,7 @@ const hostPackages = new Set([
   '@deepseek-ai/dsh-settings',
   '@deepseek-ai/dsh-scope',
   '@deepseek-ai/dsh-skill',
+  '@deepseek-ai/dsh-typert-protocol',
   '@deepseek-ai/schemastery',
   'zod',
 ])
