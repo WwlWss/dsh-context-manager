@@ -79,13 +79,20 @@ export class ContextManagerPinnedSkillRuntime extends Service {
 
             return () => {
               const errors: unknown[] = []
+              // Retire the request-series contributor before unregistering the
+              // prompt slot/variable. Their native disposal emits
+              // system-prompt/change; if the series guard were still live,
+              // that notification would fabricate a post-unload fence even
+              // when the last model-visible admitted state contained no pinned
+              // contribution. A genuinely admitted contribution leaves its
+              // one-shot fence here before prompt teardown begins.
               try {
-                installed.dispose()
+                stopSeries?.()
               } catch (error) {
                 errors.push(error)
               }
               try {
-                stopSeries?.()
+                installed.dispose()
               } catch (error) {
                 errors.push(error)
               }
