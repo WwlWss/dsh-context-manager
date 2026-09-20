@@ -14,14 +14,27 @@ await ctx.plugin(ContextManagerRemoteController)
 
 const dispose = ctx.typert.register(TYPERT)
 const endpoint = 'contextManager/protocol'
+const generatedInvocation = TYPERT.invocations.find(candidate =>
+  candidate.namespace === 'contextManager' && candidate.method === 'protocol')
+assert.ok(generatedInvocation, 'generated Host contribution must carry the protocol invocation')
+assert.equal(generatedInvocation.result.mode, 'strict')
+assert.equal('schema' in generatedInvocation.result, true, 'legacy strict codec field must remain present')
+assert.equal('create' in generatedInvocation.result, true, 'current lazy strict codec field must be present')
+assert.throws(
+  () => generatedInvocation.result.schema.parse({ apiVersion: 'bad', transport: 'typert', strict: true }),
+  'legacy schema codec must reject an invalid protocol result',
+)
+assert.throws(
+  () => generatedInvocation.result.create().parse({ apiVersion: 'bad', transport: 'typert', strict: true }),
+  'current lazy codec must reject an invalid protocol result',
+)
+
 const descriptor = ctx.typert.local.get(endpoint)
 
 assert.ok(descriptor, 'generated Host contribution must register the strict endpoint')
 assert.equal(descriptor.namespace, 'contextManager')
 assert.equal(descriptor.method, 'protocol')
 assert.equal(descriptor.result.mode, 'strict')
-assert.equal('schema' in descriptor.result, true, 'legacy strict codec field must remain present')
-assert.equal('create' in descriptor.result, true, 'current lazy strict codec field must be present')
 
 const result = await ctx.typertGateway.invoke({
   namespace: 'contextManager',
