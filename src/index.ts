@@ -67,9 +67,9 @@ export { ContextManagerPromptRuntime } from './service/prompt-runtime.js'
 export { ContextManagerRequestSeries } from './service/request-series.js'
 export {
   CONTEXT_MANAGER_REMOTE_API_VERSION,
-  ContextManagerRemoteService,
-} from './service/remote.js'
-export type { ContextManagerRemoteProtocol } from './service/remote.js'
+} from './remote/types.js'
+export type { ContextManagerRemoteProtocol } from './remote/types.js'
+export { ContextManagerRemoteService } from './service/remote.js'
 export { ContextManagerSessionPresetIdentity } from './service/session-preset.js'
 export { ContextManagerSkillRuntime } from './service/skill-runtime.js'
 
