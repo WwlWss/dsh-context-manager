@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
 import { Context } from '@deepseek-ai/cordis'
+import { createScope } from '@deepseek-ai/dsh-scope'
 
 import { ContextManagerRequestSeries } from '../src/service/request-series.ts'
 
@@ -13,6 +14,19 @@ function fakeAgent(root, id = 'agent-a') {
       ctx: fiber.ctx,
     },
     fiber,
+  }
+}
+
+function scopedFakeAgent(root, id) {
+  const agent = {
+    id,
+    ctx: undefined,
+  }
+  const scope = createScope(root, agent)
+  agent.ctx = scope.ctx
+  return {
+    agent,
+    fiber: scope,
   }
 }
 
@@ -199,8 +213,8 @@ test('one Agent contribution change fences only that Agent', async () => {
   const root = new Context()
   const fiber = root.plugin(ContextManagerRequestSeries)
   await fiber
-  const first = fakeAgent(root, 'agent-a')
-  const second = fakeAgent(root, 'agent-b')
+  const first = scopedFakeAgent(root, 'agent-a')
+  const second = scopedFakeAgent(root, 'agent-b')
 
   let firstObserved = 'same'
   let firstAdmitted = 'same'
