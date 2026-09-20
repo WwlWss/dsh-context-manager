@@ -20,18 +20,18 @@ const hostPackages = new Set([
 /**
  * Consumer-side build for git installs.
  *
- * Keep this path self-contained and runtime-only: type checking and declaration
- * generation belong to development/CI, while `prepare` only has to make the
- * package loadable from its declared `main` entry.
+ * Keep this path self-contained. M6A's generated Remote declarations import
+ * the public ./types subpath, so git installs must emit matching declarations
+ * as part of prepare instead of relying on a stale build tree.
  */
 export default defineConfig({
-  entry: ['src/index.ts'],
+  entry: ['src/index.ts', 'src/remote/types.ts'],
   outDir: 'lib',
   format: ['esm'],
   platform: 'node',
   target: 'es2024',
   fixedExtension: false,
-  dts: false,
+  dts: true,
   clean: false,
   // The upstream plugin's transform lowers standard decorators. Artifact
   // emission is handled by scripts/generate-typert.mjs because the upstream
