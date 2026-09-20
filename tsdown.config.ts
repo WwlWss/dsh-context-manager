@@ -1,6 +1,12 @@
 import { typertPlugin } from '@deepseek-ai/dsh-typert-generator/tsdown'
 import { defineConfig } from 'tsdown'
 
+const typert = typertPlugin({ mode: 'package', faces: ['host'] })
+const typertDecorators = {
+  name: 'dsh-context-manager-typert-decorators',
+  transform: typert.transform,
+}
+
 const hostPackages = new Set([
   '@deepseek-ai/cordis',
   '@deepseek-ai/dsh-settings',
@@ -20,7 +26,10 @@ export default defineConfig({
   fixedExtension: false,
   dts: true,
   clean: true,
-  plugins: [typertPlugin({ mode: 'workspace', faces: ['host'] })],
+  // The upstream plugin's transform lowers standard decorators. Artifact
+  // emission is handled by scripts/generate-typert.mjs because the upstream
+  // workspace discovery contract intentionally registers only packages/*.
+  plugins: [typertDecorators],
   deps: {
     neverBundle: specifier => hostPackages.has(specifier),
   },
