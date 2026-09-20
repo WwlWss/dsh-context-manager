@@ -327,7 +327,7 @@ M5A adds only the targeted default-profile hot-path read, Context Manager author
 
 M5B uses one Agent-scoped overlay/shadow provider and resolves its underlying native winner through the parent-scope view. Provider `list()` must stay metadata-only; full native definitions are loaded lazily only from proxy `get()`. Proxy candidates must advertise the Context Manager provider name because DSH validates `candidate.provider === provider.name`; keep underlying native identity in locator/inspection state. Do not rewrite the filesystem provider and do not listen to `skills/change` merely to trigger Context Manager invalidation; native SkillRegistry invalidation already refreshes provider discovery. The implemented `Number.MAX_VALUE` rank is the largest finite numeric rank and therefore the lowest-priority finite rank because lower ranks win. Equal-rank same-layer candidates still tie on provider registration order, so only claim the precedence actually proven by tests.
 
-M5B hard `off`, `manual`, and `pinned` semantics are guarded by tests for:
+M5B managed `off`, `manual`, and `pinned` semantics are guarded by tests for:
 
 - global/preset/agent scope precedence, including dynamic preset-parent rebind without a manual registry invalidation;
 - Agent-local same-name duplicates and the equal-`Number.MAX_VALUE` boundary;
