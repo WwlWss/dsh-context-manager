@@ -12,6 +12,12 @@ import { ContextManagerRemoteService } from './service/remote.js'
 import { ContextManagerSessionPresetIdentity } from './service/session-preset.js'
 import { ContextManagerSkillRuntime } from './service/skill-runtime.js'
 
+declare module '@deepseek-ai/cordis' {
+  interface Context {
+    dshContextRemote: ContextManagerRemoteService
+  }
+}
+
 export type {
   BasePresetResolution,
   ContextManagerPresetSnapshot,
