@@ -302,6 +302,7 @@ jobs:
             @deepseek-ai/dsh-session-persistence@${{ matrix.version }} \
             @deepseek-ai/dsh-session-projection@${{ matrix.version }} \
             @deepseek-ai/dsh-settings@${{ matrix.version }} \
+            @deepseek-ai/dsh-skill@${{ matrix.version }} \
             @deepseek-ai/dsh-system-prompt@${{ matrix.version }} \
             @deepseek-ai/dsh-tools@${{ matrix.version }}
       - name: Build and run real AgentLoop M4C2 E2E
