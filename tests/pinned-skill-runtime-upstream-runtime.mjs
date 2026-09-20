@@ -82,6 +82,18 @@ try {
   const placement = observeNativePromptPlacementCompatibility(agent.ctx)
   assert.equal(placement.status, 'available')
 
+  const afterToolOrder = placement.targets['after-tool-guidance'].order
+  const stopLeft = ctx.systemPrompt.section({
+    name: 'm5c:test-left-anchor',
+    order: afterToolOrder,
+    text: 'LEFT_ANCHOR',
+  })
+  const stopRight = ctx.systemPrompt.section({
+    name: 'm5c:test-right-anchor',
+    order: afterToolOrder + 0.5,
+    text: 'RIGHT_ANCHOR',
+  })
+
   const dispose = installAgentPinnedSkillRuntime(
     ctx,
     agent,
@@ -162,12 +174,9 @@ try {
   assert.ok(rendered.includes('M5C literal {{unknown_variable}} and {{not valid}}'))
   assert.ok(rendered.includes('M5C resource {{literal_resource}}'))
 
-  const afterOrder = placement.targets['after-tool-guidance'].order
-  if (generation === 'legacy') {
-    assert.equal(afterOrder, 199.5)
-  } else {
-    assert.equal(afterOrder, ctx.systemPrompt.getSectionOrder('TOOLS_SDK') - 0.5)
-  }
+  const names = assembled.sections.map(section => section.name)
+  assert.ok(names.indexOf('m5c:test-left-anchor') < names.indexOf(PINNED_SKILL_SLOT_NAME))
+  assert.ok(names.indexOf(PINNED_SKILL_SLOT_NAME) < names.indexOf('m5c:test-right-anchor'))
 
   disposeSecond()
   secondBinding.dispose?.()
@@ -187,6 +196,8 @@ try {
     false,
   )
 
+  stopRight()
+  stopLeft()
   agentBinding.dispose?.()
   stopNative()
   await agentScope.dispose()
