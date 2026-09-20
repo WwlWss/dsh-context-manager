@@ -118,6 +118,10 @@ export class ContextManagerRequestSeries extends Service {
       async (_request, next) => {
         const decision = await next()
         if (!isEnterDecision(decision)) return decision
+        // An empty enter does not admit a model request in AgentLoop, so it
+        // must not consume a one-shot reconciliation fence or advance a
+        // contributor's per-request baseline.
+        if (decision.messages.length === 0) return decision
 
         let force = entry.forceNext
         entry.forceNext = false
