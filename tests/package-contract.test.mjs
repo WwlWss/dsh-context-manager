@@ -18,12 +18,24 @@ test('package manifest points at real build, types, and bundle artifacts', async
   assert.equal(packageJson.types, './lib/index.d.ts')
   assert.equal(packageJson.exports['.'].default, './lib/index.js')
   assert.equal(packageJson.exports['.'].types, './lib/index.d.ts')
+  assert.deepEqual(packageJson.exports['./typert'], {
+    types: './lib/typert.host.d.ts',
+    default: './lib/typert.host.js',
+  })
+  assert.deepEqual(packageJson.exports['./remote'], {
+    types: './lib/typert.remote-client.d.ts',
+    default: './lib/typert.remote-client.js',
+  })
   assert.equal(packageJson.dsh?.bundle?.patch, './cordis.patch.yml')
   assert.equal(packageJson.dependencies?.zod, '^4.4.3')
 
   await access(fromRoot(packageJson.main))
   await access(fromRoot(packageJson.types))
   await access(fromRoot(packageJson.dsh.bundle.patch))
+  await access(fromRoot(packageJson.exports['./typert'].types))
+  await access(fromRoot(packageJson.exports['./typert'].default))
+  await access(fromRoot(packageJson.exports['./remote'].types))
+  await access(fromRoot(packageJson.exports['./remote'].default))
 })
 
 test('bundle patch inserts only the namespaced context-manager row', async () => {
@@ -43,6 +55,8 @@ test('built host entry exposes the Context Manager Host service contracts', asyn
   assert.equal(typeof entry.ContextManagerSessionPresetIdentity, 'function')
   assert.equal(typeof entry.ContextManagerPresetAuthoring, 'function')
   assert.equal(typeof entry.ContextManagerPromptLibrary, 'function')
+  assert.equal(typeof entry.ContextManagerRemoteService, 'function')
+  assert.equal(entry.CONTEXT_MANAGER_REMOTE_API_VERSION, 1)
   assert.equal(entry.ContextManagerSessionPreset, undefined)
   assert.equal(entry.CONTEXT_MANAGER_SETTINGS_NAMESPACE, 'dsh-context-manager')
 })
@@ -77,4 +91,24 @@ test('built host entry does not import or bundle optional DSH runtime packages',
   assert.equal(packageJson.devDependencies?.['@deepseek-ai/dsh-session-projection'], undefined)
   assert.equal(packageJson.peerDependencies?.['@deepseek-ai/dsh-storage-domain'], undefined)
   assert.equal(packageJson.devDependencies?.['@deepseek-ai/dsh-storage-domain'], undefined)
+})
+
+
+test('generated M6A Remote contribution is strict and contains only protocol()', async () => {
+  const remote = await import(pathToFileURL(fromRoot(packageJson.exports['./remote'].default)).href)
+  const contribution = remote.TYPERT_REMOTE
+  assert.equal(contribution.package, 'dsh-context-manager')
+  assert.equal(contribution.descriptors.length, 1)
+
+  const [descriptor] = contribution.descriptors
+  assert.equal(descriptor.id, 'dsh-context-manager#contextManager/protocol')
+  assert.equal(descriptor.service, 'dshContextRemote')
+  assert.equal(descriptor.namespace, 'contextManager')
+  assert.equal(descriptor.method, 'protocol')
+  assert.equal(descriptor.implementation, 'protocol')
+  assert.deepEqual(descriptor.invocation, { kind: 'direct' })
+  assert.deepEqual(descriptor.parameters, [])
+  assert.equal(descriptor.result.mode, 'strict')
+  assert.equal(descriptor.result.schema.safeParse({ apiVersion: 1 }).success, true)
+  assert.equal(descriptor.result.schema.safeParse({ apiVersion: '1' }).success, false)
 })
