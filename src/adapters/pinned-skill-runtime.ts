@@ -406,9 +406,6 @@ export function installAgentPinnedSkillRuntime(
           lifecycle.signal,
         )
 
-        const capture = inspectionCapture(context)
-        if (capture !== undefined) capture.resolution = resolution
-
         assembly.variables[PINNED_SKILL_BUNDLE_VARIABLE] = resolution.text
         const slot = assembly.sections.findIndex(section => section.name === PINNED_SKILL_SLOT_NAME)
         if (slot >= 0) {
@@ -423,6 +420,21 @@ export function installAgentPinnedSkillRuntime(
         }
 
         const result = requirePinnedAssembly(await next())
+        let finalResolution = resolution
+        const finalProfile = readProfile()
+        if (!samePinnedPlan(resolution.profile, finalProfile)) {
+          finalResolution = emptyPinnedResolution(finalProfile)
+          result.variables[PINNED_SKILL_BUNDLE_VARIABLE] = ''
+          for (let index = result.sections.length - 1; index >= 0; index -= 1) {
+            if (result.sections[index]?.name === PINNED_SKILL_SLOT_NAME) {
+              result.sections.splice(index, 1)
+            }
+          }
+        }
+
+        const capture = inspectionCapture(context)
+        if (capture !== undefined) capture.resolution = finalResolution
+
         // assembleContextFor(agent, signal) supplies a request signal. Diagnostic
         // assemblies intentionally do not advance request-series state.
         if (requestSignal(context) !== undefined) {
