@@ -1,12 +1,10 @@
 import type { Context } from '@deepseek-ai/cordis'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 
-export const CONTEXT_MANAGER_REMOTE_API_VERSION = 1
-
-/** Stable browser-facing protocol metadata for the Context Manager Remote surface. */
-export interface ContextManagerRemoteProtocol {
-  readonly apiVersion: number
-}
+import {
+  CONTEXT_MANAGER_REMOTE_API_VERSION,
+  type ContextManagerRemoteProtocol,
+} from '../remote/types.js'
 
 /**
  * M6A Host Remote owner.
