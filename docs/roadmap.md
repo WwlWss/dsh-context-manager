@@ -399,9 +399,9 @@ M5A does **not** register a Context Manager SkillProvider, change invocation pol
 
 ### 5B — Agent-scoped Skill policy overlay
 
-**Status:** next.
+**Status:** complete in PR #16; model-effective for native skill invocation policy.
 
-Use one Context Manager provider in each live Agent scope to shadow only managed non-Auto skills. Resolve the underlying native winner through the Agent scope's parent view so the overlay does not recursively select itself and the original filesystem/provider remains authoritative. Catalog construction stays summary-only; full native bodies are loaded lazily only from the proxy provider's `get()`. Proxy candidates must use the Context Manager provider name rather than copying the native candidate's `provider` field.
+M5B uses one Context Manager provider in each live Agent scope to shadow only managed non-Auto skills. Resolve the underlying native winner through the Agent scope's parent view so the overlay does not recursively select itself and the original filesystem/provider remains authoritative. Catalog construction stays summary-only; full native bodies are loaded lazily only from the proxy provider's `get()`. Proxy candidates must use the Context Manager provider name rather than copying the native candidate's `provider` field.
 
 Mode semantics:
 
@@ -411,9 +411,9 @@ Mode semantics:
 - **Pinned** — if the native skill exists, also shadow it as `{ modelInvocable: false, userInvocable: false }`. Pinned instructions are supplied separately by M5C, not by native discovery/invocation.
 - A missing bound skill remains a runtime diagnostic. Context Manager must not fabricate a definition.
 
-The planned shadow rank is `Number.MAX_VALUE`, the largest finite numeric rank accepted by the public contract. Because lower ranks win, this is the lowest-priority finite rank. Ordinary same-layer Agent-local candidates with any lower rank therefore take precedence over Context Manager, but this is not an absolute same-layer guarantee: another `Number.MAX_VALUE` candidate ties and provider registration order decides. M5B must test and describe the exact guarantee it can prove rather than claiming stronger isolation.
+The implemented shadow rank is `Number.MAX_VALUE`, the largest finite numeric rank accepted by the public contract. Because lower ranks win, this is the lowest-priority finite rank. Ordinary same-layer Agent-local candidates with any lower rank therefore take precedence over Context Manager, but this is not an absolute same-layer guarantee: another `Number.MAX_VALUE` candidate ties and provider registration order decides. M5B must test and describe the exact guarantee it can prove rather than claiming stronger isolation.
 
-On `dsh-context-manager/change`, M5B must coalesce the authority change to at most **one** registry invalidation through one currently active CM `SkillProviderControl`. DSH invalidation is registry-wide; invalidating every Agent provider would only create redundant revision bumps and `skills/change` events. Do not create a `skills/change -> Context Manager invalidation -> skills/change` feedback loop; native provider changes already invalidate SkillRegistry's catalog.
+On `dsh-context-manager/change`, M5B coalesces the authority change to at most **one** registry invalidation through one currently active CM `SkillProviderControl`. DSH invalidation is registry-wide; invalidating every Agent provider would only create redundant revision bumps and `skills/change` events. Do not create a `skills/change -> Context Manager invalidation -> skills/change` feedback loop; native provider changes already invalidate SkillRegistry's catalog.
 
 M5B lifecycle tests must cover existing/new Agents, preset standing scopes, same-name precedence, profile/basePreset switches, native provider invalidation, scope disposal, HMR/unload/reload, user/model invocation paths, and leakage from farther scopes.
 
