@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto'
 import type { Context } from '@deepseek-ai/cordis'
 import { renderSkillContent, type SkillSummary } from '@deepseek-ai/dsh-skill'
+import { scopeParentOf } from '@deepseek-ai/dsh-scope'
 
 import type { RuntimeAgent } from './agent-runtime.js'
 import type { HostPromptAssembly, NativePromptPlacementTargets } from './prompt-runtime.js'
@@ -168,6 +169,7 @@ export async function resolvePinnedSkillBundle(
   if (names.length === 0) return emptyPinnedResolution(profile)
 
   const skills = requireSkillRegistry(rootCtx)
+  const parent = scopeParentOf(agent)
   const cwd = agentWorkspaceCwd(agent)
   const baseOptions = {
     ...(cwd === undefined ? {} : { cwd }),
@@ -244,7 +246,10 @@ export async function resolvePinnedSkillBundle(
   }
 
   const currentProfile = readProfile()
-  if (!samePinnedPlan(profile, currentProfile)) {
+  if (
+    !samePinnedPlan(profile, currentProfile)
+    || scopeParentOf(agent) !== parent
+  ) {
     return emptyPinnedResolution(currentProfile)
   }
 
@@ -428,6 +433,7 @@ export function installAgentPinnedSkillRuntime(
       'system-prompt/assemble',
       async (rawAssembly, context, next) => {
         const assembly = requirePinnedAssembly(rawAssembly)
+        const assemblyParent = scopeParentOf(agent)
         const resolution = await resolvePinnedSkillBundle(
           rootCtx,
           agent,
@@ -452,7 +458,10 @@ export function installAgentPinnedSkillRuntime(
         const result = requirePinnedAssembly(await next())
         let finalResolution = resolution
         const finalProfile = readProfile()
-        if (!samePinnedPlan(resolution.profile, finalProfile)) {
+        if (
+          !samePinnedPlan(resolution.profile, finalProfile)
+          || scopeParentOf(agent) !== assemblyParent
+        ) {
           finalResolution = emptyPinnedResolution(finalProfile)
           result.variables[PINNED_SKILL_BUNDLE_VARIABLE] = ''
           for (let index = result.sections.length - 1; index >= 0; index -= 1) {
