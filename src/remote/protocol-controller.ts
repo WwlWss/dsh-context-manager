@@ -37,10 +37,10 @@ function createProtocolRemoteInitializer(): ProtocolInitializer {
       static: false,
       private: false,
       access: {
-        has: object => 'protocol' in object,
-        get: object => object.protocol,
+        has: (object: ContextManagerRemoteController) => 'protocol' in object,
+        get: (object: ContextManagerRemoteController) => object.protocol,
       },
-      addInitializer(value) {
+      addInitializer(value: ProtocolInitializer) {
         if (initializer !== undefined) {
           throw new TypeError('dsh-context-manager: Typert Remote decorator registered duplicate initializers')
         }
