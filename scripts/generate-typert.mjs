@@ -1,5 +1,5 @@
 import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
-import { dirname, join } from 'node:path'
+import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { WorkspaceTypertGenerator } from '@deepseek-ai/dsh-typert-generator'
