@@ -33,13 +33,6 @@ interface SessionEventContext {
   ): () => void
 }
 
-interface RuntimeInvalidationContext {
-  on(
-    event: 'dsh-context-manager/change' | 'skills/change' | 'system-prompt/change',
-    listener: () => void,
-  ): () => void
-}
-
 interface RequestSeriesContributor {
   readonly guard: () => boolean
   readonly commit: () => void
@@ -110,21 +103,12 @@ export class ContextManagerRequestSeries extends Service {
         this.drop(agent)
       })
 
-      // These notifications only request a future native series boundary. They
-      // do not invalidate SkillRegistry or prompt providers, so there is no
-      // skills/change <-> Context Manager invalidation loop.
-      const forceAll = () => {
-        for (const entry of this.entries.values()) forceEntry(entry)
-      }
-      const invalidation = ctx as unknown as RuntimeInvalidationContext
-      const stopContextManager = invalidation.on('dsh-context-manager/change', forceAll)
-      const stopSkills = invalidation.on('skills/change', forceAll)
-      const stopSystemPrompt = invalidation.on('system-prompt/change', forceAll)
-
+      // Host registry/domain change notifications are intentionally not
+      // converted into request-series fences here. They are unfiltered and do
+      // not prove that this Agent's model-visible CM contribution changed.
+      // Contributor fingerprints own steady-state reconciliation; force() is
+      // reserved for attach/resume and retirement cleanup.
       return () => {
-        stopSystemPrompt()
-        stopSkills()
-        stopContextManager()
         stopDisposed()
         for (const agent of [...this.entries.keys()]) this.drop(agent)
       }
