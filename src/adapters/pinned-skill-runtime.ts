@@ -259,17 +259,27 @@ function inspectionCapture(context: unknown): InspectionCapture | undefined {
   return (context as Record<PropertyKey, unknown>)[INSPECTION_CAPTURE] as InspectionCapture | undefined
 }
 
-function finalPinnedSignature(assembly: PinnedPromptAssembly): string {
+interface FinalPinnedContribution {
+  readonly signature: string
+  readonly present: boolean
+}
+
+function finalPinnedContribution(assembly: PinnedPromptAssembly): FinalPinnedContribution {
   const sections = assembly.sections
     .filter(section => section.name === PINNED_SKILL_SLOT_NAME)
     .map(section => section.text)
-  const variable = assembly.variables[PINNED_SKILL_BUNDLE_VARIABLE]
-  return createHash('sha256')
-    .update(JSON.stringify({
-      sections,
-      variable: variable ?? null,
-    }))
-    .digest('hex')
+  // A downstream complete prompt can remove the CM slot while leaving the
+  // private variable in the assembly. That variable is then model-inert and
+  // must not trigger request-series churn when its body changes.
+  const variable = sections.length === 0
+    ? null
+    : (assembly.variables[PINNED_SKILL_BUNDLE_VARIABLE] ?? null)
+  return Object.freeze({
+    signature: createHash('sha256')
+      .update(JSON.stringify({ sections, variable }))
+      .digest('hex'),
+    present: sections.length > 0,
+  })
 }
 
 
@@ -331,12 +341,13 @@ export interface AgentPinnedSkillRuntime {
    */
   admitRequestSeries(): boolean
   /**
-   * Whether this runtime ever admitted a real request signature.
+   * Whether the last admitted real request still contained a CM pinned slot.
    *
-   * Used only during teardown so a longer-lived request-series owner can leave
-   * one reconciliation fence after the prompt contribution disappears.
+   * Used only during teardown so a longer-lived request-series owner leaves a
+   * reconciliation fence exactly when removing this runtime changes the
+   * model-visible system prompt.
    */
-  readonly admittedAnyRequest: boolean
+  readonly admittedContributionPresent: boolean
   dispose(): void
 }
 
@@ -354,8 +365,9 @@ export function installAgentPinnedSkillRuntime(
   const lifecycle = new AbortController()
   const disposers: Array<() => void> = []
   let observedRequestSignature: string | undefined
+  let observedRequestContributionPresent = false
   let admittedRequestSignature: string | undefined
-  let admittedAnyRequest = false
+  let admittedContributionPresent = false
 
   try {
     disposers.push(runtime.variable(PINNED_SKILL_BUNDLE_VARIABLE, () => ''))
@@ -397,7 +409,9 @@ export function installAgentPinnedSkillRuntime(
         // assembleContextFor(agent, signal) supplies a request signal. Diagnostic
         // assemblies intentionally do not advance request-series state.
         if (requestSignal(context) !== undefined) {
-          observedRequestSignature = finalPinnedSignature(result)
+          const contribution = finalPinnedContribution(result)
+          observedRequestSignature = contribution.signature
+          observedRequestContributionPresent = contribution.present
         }
         return result
       },
@@ -418,11 +432,11 @@ export function installAgentPinnedSkillRuntime(
       if (signature === undefined) return false
       const changed = admittedRequestSignature !== signature
       admittedRequestSignature = signature
-      admittedAnyRequest = true
+      admittedContributionPresent = observedRequestContributionPresent
       return changed
     },
-    get admittedAnyRequest(): boolean {
-      return admittedAnyRequest
+    get admittedContributionPresent(): boolean {
+      return admittedContributionPresent
     },
     dispose(): void {
       if (disposed) return
