@@ -12,6 +12,7 @@ import * as ToolSkill from '@deepseek-ai/dsh-tool-skill'
 
 import {
   ContextManagerPinnedSkillRuntime,
+  ContextManagerRequestSeries,
   ContextManagerSkillRuntime,
 } from '../lib/index.js'
 
@@ -208,6 +209,8 @@ try {
 
   await ctx.plugin(FakeManager)
   await ctx.plugin(FakePresetIdentity)
+  const seriesFiber = ctx.plugin(ContextManagerRequestSeries)
+  await seriesFiber
   let policyFiber = ctx.plugin(ContextManagerSkillRuntime)
   await policyFiber
   let pinnedFiber = ctx.plugin(ContextManagerPinnedSkillRuntime)
@@ -350,6 +353,7 @@ try {
   assert.equal(toolResult.isError, false)
   assert.ok(JSON.stringify(toolResult.content).includes(state.body))
 
+  await seriesFiber.dispose()
   stopNative()
 } finally {
   await ctx.fiber.dispose()
