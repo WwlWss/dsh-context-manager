@@ -1,3 +1,4 @@
+import { typertPlugin } from '@deepseek-ai/dsh-typert-generator/tsdown'
 import { defineConfig } from 'tsdown'
 
 const hostPackages = new Set([
@@ -5,6 +6,7 @@ const hostPackages = new Set([
   '@deepseek-ai/dsh-settings',
   '@deepseek-ai/dsh-scope',
   '@deepseek-ai/dsh-skill',
+  '@deepseek-ai/dsh-typert-protocol',
   '@deepseek-ai/schemastery',
   'zod',
 ])
@@ -25,6 +27,7 @@ export default defineConfig({
   fixedExtension: false,
   dts: false,
   clean: false,
+  plugins: [typertPlugin({ mode: 'package', faces: ['host'] })],
   deps: {
     neverBundle: specifier => hostPackages.has(specifier),
   },
