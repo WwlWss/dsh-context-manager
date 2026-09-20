@@ -335,17 +335,17 @@ export interface AgentPinnedSkillRuntime {
   /**
    * Admit the final pinned contribution observed for the current real request.
    *
-   * Returns true exactly when native request-series reconciliation is needed.
-   * The first admitted request returns true so resumed Sessions are reconciled
-   * without relying on process-local history.
+   * Returns true when a previously established final contribution changed.
+   * Initial attach/resume fencing is owned by ContextManagerRequestSeries.force()
+   * so the first observed signature becomes the process-local baseline rather
+   * than causing a redundant second-turn restart.
    */
   admitRequestSeries(): boolean
   /**
-   * Whether the last admitted real request still contained a CM pinned slot.
-   *
-   * Used only during teardown so a longer-lived request-series owner leaves a
-   * reconciliation fence exactly when removing this runtime changes the
-   * model-visible system prompt.
+   * Whether the last completed real request assembly contained a CM pinned
+   * slot. Used during teardown so a longer-lived request-series owner can
+   * reconcile a contribution even when the runtime retires immediately after
+   * its first request.
    */
   readonly admittedContributionPresent: boolean
   dispose(): void
@@ -430,13 +430,20 @@ export function installAgentPinnedSkillRuntime(
       if (disposed) return false
       const signature = observedRequestSignature
       if (signature === undefined) return false
+
+      if (admittedRequestSignature === undefined) {
+        admittedRequestSignature = signature
+        admittedContributionPresent = observedRequestContributionPresent
+        return false
+      }
+
       const changed = admittedRequestSignature !== signature
       admittedRequestSignature = signature
       admittedContributionPresent = observedRequestContributionPresent
       return changed
     },
     get admittedContributionPresent(): boolean {
-      return admittedContributionPresent
+      return observedRequestContributionPresent
     },
     dispose(): void {
       if (disposed) return
