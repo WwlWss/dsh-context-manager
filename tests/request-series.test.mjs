@@ -186,3 +186,46 @@ test('authoritative Context Manager, Skill, and SystemPrompt changes fence the n
   await fiber.dispose()
   await root.fiber.dispose()
 })
+
+
+test('empty enter does not consume a pending request-series fence or guard baseline', async () => {
+  const root = new Context()
+  const fiber = root.plugin(ContextManagerRequestSeries)
+  await fiber
+  const { agent, fiber: agentFiber } = fakeAgent(root)
+
+  let guardCalls = 0
+  const stop = root.dshContextRequestSeries.register(
+    agent,
+    () => {
+      guardCalls += 1
+      return false
+    },
+    () => false,
+  )
+  root.dshContextRequestSeries.force(agent)
+
+  let decision = await preStep(agent, { kind: 'enter', messages: [] })
+  assert.deepEqual(decision, { kind: 'enter', messages: [] })
+  assert.equal(guardCalls, 0)
+
+  decision = await preStep(agent, { kind: 'enter', messages: [{ role: 'user' }] })
+  assert.deepEqual(decision, {
+    kind: 'enter',
+    messages: [{ role: 'user' }],
+    startsRequestSeries: true,
+  })
+  assert.equal(guardCalls, 1)
+
+  decision = await preStep(agent, { kind: 'enter', messages: [{ role: 'user' }] })
+  assert.deepEqual(decision, {
+    kind: 'enter',
+    messages: [{ role: 'user' }],
+  })
+  assert.equal(guardCalls, 2)
+
+  stop()
+  await agentFiber.dispose()
+  await fiber.dispose()
+  await root.fiber.dispose()
+})
