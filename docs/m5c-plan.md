@@ -2,7 +2,7 @@
 
 ## Status
 
-Planned implementation for PR M5C, based on main after merged M5B (PR #16).
+Implemented in PR #17, based on main after merged M5B (PR #16).
 
 M5C is the final M5 runtime slice. M5B already makes `Pinned` non-invocable through native model/user Skill surfaces. M5C adds the separate model-facing full-instruction contribution.
 
@@ -16,7 +16,7 @@ The earlier roadmap intentionally left the exact Session/Surface/`agent/pre-step
 
 Therefore M5C uses one Agent-scoped, Context-Manager-owned **system-prompt replacement slot**. The slot is registered once and starts empty. Every native prompt assembly re-resolves the current effective profile and parent native Skill view, then replaces that slot with the current pinned bundle or removes it from the assembly.
 
-For routes that support DSH's `systemPromptUpdate: 'in-history'`, changing a non-empty assembled prompt can otherwise append a newer complete system message after the cached history while leaving the older one on the Session surface. M5C therefore fingerprints the **final CM-owned pinned contribution** after the prompt waterfall with SHA-256 and wraps `agent/pre-step`. When that fingerprint differs from the last admitted request, the wrapper preserves the downstream decision/messages and adds `startsRequestSeries: true`. Native `SystemPromptProjection` then consolidates the system-prompt surface: old active system nodes are cleared and the head is replaced with the current complete prompt.
+For routes that support DSH's `systemPromptUpdate: 'in-history'`, changing a non-empty assembled prompt can otherwise append a newer complete system message after the cached history while leaving the older one on the Session surface. M5C therefore fingerprints the **final CM-owned pinned contribution** after the prompt waterfall with SHA-256. A separate process-local request-series coordinator owns the Agent-scoped `agent/pre-step` listener. When the active M5C guard reports a changed fingerprint, the coordinator preserves the downstream decision/messages and adds `startsRequestSeries: true`. If an M5C contribution retires after admitting real model-visible state, the coordinator keeps one next-request fence so the stale native system-prompt surface is reconciled even though the pinned slot itself has already disappeared. Native `SystemPromptProjection` then consolidates the system-prompt surface: old active system nodes are cleared and the head is replaced with the current complete prompt.
 
 The first admitted request after attaching/re-attaching M5C also starts a fresh series, so a resumed Session does not depend on process-local knowledge of its prior pinned state. Only the fingerprint is retained between steps; full Skill bodies are never cached. Unchanged pinned state does not restart the request series and therefore preserves the normal KV-cache path.
 
@@ -88,10 +88,11 @@ A missing configured pinned Skill is diagnostic only.
 Per-binding inspection states:
 
 ```text
-present
+loaded
 missing-native-skill
 catalog-incomplete
 definition-unavailable
+policy-not-effective
 ```
 
 Assembly-level visibility additionally distinguishes:
