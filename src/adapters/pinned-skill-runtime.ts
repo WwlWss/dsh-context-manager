@@ -330,6 +330,13 @@ export interface AgentPinnedSkillRuntime {
    * without relying on process-local history.
    */
   admitRequestSeries(): boolean
+  /**
+   * Whether this runtime ever admitted a real request signature.
+   *
+   * Used only during teardown so a longer-lived request-series owner can leave
+   * one reconciliation fence after the prompt contribution disappears.
+   */
+  readonly admittedAnyRequest: boolean
   dispose(): void
 }
 
@@ -348,6 +355,7 @@ export function installAgentPinnedSkillRuntime(
   const disposers: Array<() => void> = []
   let observedRequestSignature: string | undefined
   let admittedRequestSignature: string | undefined
+  let admittedAnyRequest = false
 
   try {
     disposers.push(runtime.variable(PINNED_SKILL_BUNDLE_VARIABLE, () => ''))
@@ -410,7 +418,11 @@ export function installAgentPinnedSkillRuntime(
       if (signature === undefined) return false
       const changed = admittedRequestSignature !== signature
       admittedRequestSignature = signature
+      admittedAnyRequest = true
       return changed
+    },
+    get admittedAnyRequest(): boolean {
+      return admittedAnyRequest
     },
     dispose(): void {
       if (disposed) return
