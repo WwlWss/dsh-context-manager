@@ -99,6 +99,7 @@ jobs:
         run: |
           pnpm add --save-dev --save-exact \
             @deepseek-ai/cordis@${{ matrix.cordis }} \
+            @deepseek-ai/dsh-typert-protocol@${{ matrix.version }} \
             @deepseek-ai/cordis-plugin-loader@1.0.3 \
             @deepseek-ai/dsh-agent-presets@${{ matrix.version }} \
             @deepseek-ai/dsh-session-projection@${{ matrix.version }}
@@ -138,6 +139,7 @@ jobs:
         run: |
           pnpm add --save-dev --save-exact \
             @deepseek-ai/cordis@${{ matrix.cordis }} \
+            @deepseek-ai/dsh-typert-protocol@${{ matrix.version }} \
             @deepseek-ai/dsh-session@${{ matrix.version }} \
             @deepseek-ai/dsh-session-projection@${{ matrix.version }} \
             @deepseek-ai/dsh-agent-presets@${{ matrix.version }}
@@ -177,6 +179,7 @@ jobs:
         run: |
           pnpm add --save-dev --save-exact \
             @deepseek-ai/cordis@${{ matrix.cordis }} \
+            @deepseek-ai/dsh-typert-protocol@${{ matrix.version }} \
             @deepseek-ai/dsh-storage@${{ matrix.version }} \
             @deepseek-ai/dsh-storage-json@${{ matrix.version }} \
             @deepseek-ai/dsh-storage-domain@${{ matrix.version }}
@@ -216,6 +219,7 @@ jobs:
         run: |
           pnpm add --save-dev --save-exact \
             @deepseek-ai/cordis@${{ matrix.cordis }} \
+            @deepseek-ai/dsh-typert-protocol@${{ matrix.version }} \
             @deepseek-ai/dsh-system-prompt@${{ matrix.version }}
       - name: Compile public SystemPrompt contract
         run: |
@@ -255,6 +259,7 @@ jobs:
         run: |
           pnpm add --save-dev --save-exact \
             @deepseek-ai/cordis@${{ matrix.cordis }} \
+            @deepseek-ai/dsh-typert-protocol@${{ matrix.version }} \
             @deepseek-ai/dsh-agent@${{ matrix.version }} \
             @deepseek-ai/dsh-scope@${{ matrix.version }} \
             @deepseek-ai/dsh-system-prompt@${{ matrix.version }}
@@ -292,6 +297,7 @@ jobs:
         run: |
           pnpm add --save-dev --save-exact \
             @deepseek-ai/cordis@${{ matrix.cordis }} \
+            @deepseek-ai/dsh-typert-protocol@${{ matrix.version }} \
             @deepseek-ai/schemastery@${{ matrix.schemastery }} \
             @deepseek-ai/dsh-agent@${{ matrix.version }} \
             @deepseek-ai/dsh-agent-loop@${{ matrix.version }} \
@@ -339,6 +345,7 @@ jobs:
         run: |
           pnpm add --save-dev --save-exact \
             @deepseek-ai/cordis@${{ matrix.cordis }} \
+            @deepseek-ai/dsh-typert-protocol@${{ matrix.version }} \
             @deepseek-ai/schemastery@${{ matrix.schemastery }} \
             @deepseek-ai/dsh-invariants@${{ matrix.version }} \
             @deepseek-ai/dsh-llm@${{ matrix.version }} \
@@ -378,6 +385,7 @@ jobs:
         run: |
           pnpm add --save-dev --save-exact \
             @deepseek-ai/cordis@${{ matrix.cordis }} \
+            @deepseek-ai/dsh-typert-protocol@${{ matrix.version }} \
             @deepseek-ai/schemastery@${{ matrix.schemastery }} \
             @deepseek-ai/dsh-invariants@${{ matrix.version }} \
             @deepseek-ai/dsh-llm@${{ matrix.version }} \
@@ -419,6 +427,7 @@ jobs:
         run: |
           pnpm add --save-dev --save-exact \
             @deepseek-ai/cordis@${{ matrix.cordis }} \
+            @deepseek-ai/dsh-typert-protocol@${{ matrix.version }} \
             @deepseek-ai/schemastery@${{ matrix.schemastery }} \
             @deepseek-ai/dsh-agent@${{ matrix.version }} \
             @deepseek-ai/dsh-invariants@${{ matrix.version }} \
@@ -458,6 +467,7 @@ jobs:
         run: |
           pnpm add --save-dev --save-exact \
             @deepseek-ai/cordis@${{ matrix.cordis }} \
+            @deepseek-ai/dsh-typert-protocol@${{ matrix.version }} \
             @deepseek-ai/schemastery@${{ matrix.schemastery }} \
             @deepseek-ai/dsh-agent@${{ matrix.version }} \
             @deepseek-ai/dsh-agent-loop@${{ matrix.version }} \
@@ -504,6 +514,7 @@ jobs:
         run: |
           pnpm add --save-dev --save-exact \
             @deepseek-ai/cordis@${{ matrix.cordis }} \
+            @deepseek-ai/dsh-typert-protocol@${{ matrix.version }} \
             @deepseek-ai/schemastery@${{ matrix.schemastery }} \
             @deepseek-ai/dsh-agent@${{ matrix.version }} \
             @deepseek-ai/dsh-agent-loop@${{ matrix.version }} \
