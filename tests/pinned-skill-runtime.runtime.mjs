@@ -226,7 +226,7 @@ test('M5C renders parent-native Pinned bodies in code-unit order and preserves l
   const rendered = renderPrompt(assembly)
   assert.ok(rendered.includes('ALPHA {{malformed value}}'))
   assert.ok(rendered.includes('ZETA {{unknown}}'))
-  assert.equal(native.counters.get, 2)
+  assert.equal(native.counters.get, 4, 'two isolated Agents each load both Pinned bodies')
 
   state.skills = {
     zeta: 'off',
@@ -235,7 +235,7 @@ test('M5C renders parent-native Pinned bodies in code-unit order and preserves l
   assembly = await assemble(root, current.agent)
   assert.equal(assembly.sections.some(section => section.name === SLOT), false)
   assert.equal(assembly.variables[VARIABLE], '')
-  assert.equal(native.counters.get, 2, 'non-Pinned assembly must not load bodies')
+  assert.equal(native.counters.get, 4, 'non-Pinned assembly must not load bodies')
 
   const inspected = await runtime.runtime.inspect('agent-a')
   assert.equal(inspected.status, 'resolved')
@@ -398,7 +398,9 @@ test('M5C inspection reports missing/get-race states and native complete suppres
   )
   assert.equal(JSON.stringify(inspected).includes('SECRET_PINNED_BODY'), false)
 
-  const disposeComplete = current.agent.ctx.systemPrompt.section({
+  const scopedPrompt = current.agent.ctx.get('systemPrompt')
+  assert.ok(scopedPrompt)
+  const disposeComplete = scopedPrompt.section({
     name: 'm5c:test-complete',
     order: 0,
     text: 'COMPLETE',
