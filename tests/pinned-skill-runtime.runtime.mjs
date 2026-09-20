@@ -388,6 +388,53 @@ test('M5C fails closed when Pinned changes to Off during async catalog resolutio
   await root.fiber.dispose()
 })
 
+test('M5C fails closed when Pinned changes during downstream prompt assembly', async () => {
+  const root = new Context()
+  await installBase(root)
+
+  const stopNative = scopedSkills(root).registerProvider(() =>
+    provider('native-provider', [
+      candidate('native-provider', 'target', 'DOWNSTREAM_STALE_BODY'),
+    ]),
+  )
+
+  const current = mintAgent(root, 'agent-downstream-race')
+  const state = {
+    presetId: 'preset-a',
+    skills: { target: 'pinned' },
+  }
+  const runtime = await bootRuntime(root, [current.agent], state)
+
+  const started = Promise.withResolvers()
+  const release = Promise.withResolvers()
+  const stopDelay = current.agent.ctx.on(
+    'system-prompt/assemble',
+    async (_assembly, _context, next) => {
+      started.resolve()
+      await release.promise
+      return await next()
+    },
+  )
+
+  const pending = assemble(root, current.agent)
+  await started.promise
+  state.skills = { target: 'off' }
+  root.emit('dsh-context-manager/change')
+  release.resolve()
+
+  const assembly = await pending
+  const text = renderPrompt(assembly)
+  assert.equal(text.includes('DOWNSTREAM_STALE_BODY'), false)
+  assert.equal(assembly.sections.some(section => section.name === SLOT), false)
+  assert.equal(assembly.variables[VARIABLE], '')
+
+  stopDelay()
+  await runtime.dispose()
+  stopNative()
+  await current.scope.dispose()
+  await root.fiber.dispose()
+})
+
 test('M5C incomplete catalog injects no partial body and does no native get()', async () => {
   const root = new Context()
   await installBase(root)
