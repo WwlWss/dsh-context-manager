@@ -302,3 +302,38 @@ test('external force and same-request signature change coalesce into one boundar
   await fiber.dispose()
   await root.fiber.dispose()
 })
+
+
+test('retired contributor is not resurrected by a later prompt teardown event', async () => {
+  const root = new Context()
+  const fiber = root.plugin(ContextManagerRequestSeries)
+  await fiber
+  const { agent, fiber: agentFiber } = fakeAgent(root)
+
+  const stop = root.dshContextRequestSeries.register(
+    agent,
+    () => false,
+    () => false,
+  )
+
+  // Correct M5C teardown order: retire the contributor first. With no admitted
+  // model-visible state, this drops the Agent entry entirely.
+  stop()
+
+  // Native prompt unregister may emit this synchronously afterwards. It must
+  // not recreate a fence for an Agent that no longer has any contributor.
+  root.emit('system-prompt/change')
+
+  const decision = await preStep(agent, {
+    kind: 'enter',
+    messages: [{ role: 'user' }],
+  })
+  assert.deepEqual(decision, {
+    kind: 'enter',
+    messages: [{ role: 'user' }],
+  })
+
+  await agentFiber.dispose()
+  await fiber.dispose()
+  await root.fiber.dispose()
+})
