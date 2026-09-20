@@ -5,10 +5,9 @@ import { Context, Service } from '@deepseek-ai/cordis'
 import SkillRegistry from '@deepseek-ai/dsh-skill'
 import { createScope } from '@deepseek-ai/dsh-scope'
 
-import {
-  CONTEXT_MANAGER_SKILL_PROVIDER,
-} from '../src/adapters/skill-runtime.ts'
-import { ContextManagerSkillRuntime } from '../src/service/skill-runtime.ts'
+import { ContextManagerSkillRuntime } from '../lib/index.js'
+
+const CONTEXT_MANAGER_SKILL_PROVIDER = 'dsh-context-manager-policy'
 
 function scopedSkills(ctx) {
   const skills = ctx.get('skills')
