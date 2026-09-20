@@ -568,6 +568,168 @@ test('M5C fails closed when Pinned changes during downstream prompt assembly', a
   await root.fiber.dispose()
 })
 
+test('M5C does not admit a refreshed profile fingerprint past the real request assembly', async () => {
+  const root = new Context()
+  await installBase(root)
+
+  const stopNative = scopedSkills(root).registerProvider(() =>
+    provider('native-provider', [
+      candidate('native-provider', 'target', 'REAL_REQUEST_PINNED_BODY'),
+    ]),
+  )
+  const current = mintAgent(root, 'agent-post-assembly-profile-race')
+  const state = {
+    presetId: 'preset-a',
+    skills: { target: 'pinned' },
+  }
+  const runtime = await bootRuntime(root, [current.agent], state)
+  const signal = new AbortController().signal
+
+  const assembleRequest = async () => await root.systemPrompt.assemble({
+    scope: current.agent,
+    agent: current.agent,
+    signal,
+  })
+  const propose = async () => await current.agent.ctx.waterfall(
+    current.agent.ctx,
+    'agent/pre-step',
+    {},
+    () => Promise.resolve({
+      kind: 'enter',
+      messages: [{ role: 'user' }],
+    }),
+  )
+
+  await assembleRequest()
+  let decision = await propose()
+  assert.equal(decision.startsRequestSeries, true)
+  current.agent.ctx.emit('session/event', {}, {
+    type: 'request/header',
+    data: {},
+  })
+
+  // The second real request has already assembled the old Pinned body. A
+  // Settings change now dirties the final projection, but a signal-free
+  // diagnostic assembly must not replace the fingerprint of the request DSH
+  // is actually about to send.
+  const staleRequest = await assembleRequest()
+  assert.ok(renderPrompt(staleRequest).includes('REAL_REQUEST_PINNED_BODY'))
+  state.skills = { target: 'off' }
+  root.emit('dsh-context-manager/change')
+
+  decision = await propose()
+  assert.equal(
+    decision.startsRequestSeries,
+    undefined,
+    'post-assembly refresh must not advance past the real request contribution',
+  )
+  current.agent.ctx.emit('session/event', {}, {
+    type: 'request/header',
+    data: {},
+  })
+
+  // The next real assembly sees Off. Its empty fingerprint differs from the
+  // still-admitted Pinned baseline and therefore owns the reconciliation fence.
+  const offRequest = await assembleRequest()
+  assert.equal(renderPrompt(offRequest).includes('REAL_REQUEST_PINNED_BODY'), false)
+  decision = await propose()
+  assert.equal(decision.startsRequestSeries, true)
+  current.agent.ctx.emit('session/event', {}, {
+    type: 'request/header',
+    data: {},
+  })
+
+  await assembleRequest()
+  decision = await propose()
+  assert.equal(decision.startsRequestSeries, undefined)
+
+  await runtime.dispose()
+  stopNative()
+  await current.scope.dispose()
+  await root.fiber.dispose()
+})
+
+test('M5C does not admit a refreshed parent fingerprint past the real request assembly', async () => {
+  const root = new Context()
+  await installBase(root)
+
+  const presetAKey = {}
+  const presetBKey = {}
+  const presetA = createScope(root, presetAKey)
+  const presetB = createScope(root, presetBKey)
+  const stopA = scopedSkills(presetA.ctx).registerProvider(() =>
+    provider('preset-a-provider', [
+      candidate('preset-a-provider', 'target', 'REAL_PARENT_A_BODY'),
+    ]),
+  )
+  const stopB = scopedSkills(presetB.ctx).registerProvider(() =>
+    provider('preset-b-provider', [
+      candidate('preset-b-provider', 'target', 'REAL_PARENT_B_BODY'),
+    ]),
+  )
+
+  const current = mintAgent(root, 'agent-post-assembly-parent-race', presetAKey)
+  const state = {
+    presetId: 'preset-a',
+    skills: { target: 'pinned' },
+  }
+  const runtime = await bootRuntime(root, [current.agent], state)
+  const signal = new AbortController().signal
+
+  const assembleRequest = async () => await root.systemPrompt.assemble({
+    scope: current.agent,
+    agent: current.agent,
+    signal,
+  })
+  const propose = async () => await current.agent.ctx.waterfall(
+    current.agent.ctx,
+    'agent/pre-step',
+    {},
+    () => Promise.resolve({
+      kind: 'enter',
+      messages: [{ role: 'user' }],
+    }),
+  )
+
+  await assembleRequest()
+  let decision = await propose()
+  assert.equal(decision.startsRequestSeries, true)
+  current.agent.ctx.emit('session/event', {}, {
+    type: 'request/header',
+    data: {},
+  })
+
+  const staleRequest = await assembleRequest()
+  assert.ok(renderPrompt(staleRequest).includes('REAL_PARENT_A_BODY'))
+  current.binding.rebind(presetBKey)
+  // Preset recomposition commonly has adjacent authority notifications. Even
+  // if one dirties the projection, it must not make a diagnostic B assembly
+  // stand in for the already-built A request.
+  root.emit('dsh-context-manager/change')
+
+  decision = await propose()
+  assert.equal(decision.startsRequestSeries, undefined)
+  current.agent.ctx.emit('session/event', {}, {
+    type: 'request/header',
+    data: {},
+  })
+
+  const currentRequest = await assembleRequest()
+  const currentText = renderPrompt(currentRequest)
+  assert.equal(currentText.includes('REAL_PARENT_A_BODY'), false)
+  assert.ok(currentText.includes('REAL_PARENT_B_BODY'))
+  decision = await propose()
+  assert.equal(decision.startsRequestSeries, true)
+
+  await runtime.dispose()
+  stopB()
+  stopA()
+  await current.scope.dispose()
+  await presetB.dispose()
+  await presetA.dispose()
+  await root.fiber.dispose()
+})
+
 test('M5C incomplete catalog injects no partial body and does no native get()', async () => {
   const root = new Context()
   await installBase(root)
