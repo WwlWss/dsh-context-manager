@@ -115,6 +115,30 @@ function nativeByName(skills: readonly SkillSummary[]): ReadonlyMap<string, Skil
   return new Map(skills.map(skill => [skill.name, skill]))
 }
 
+function samePinnedPlan(
+  left: EffectiveProfileResolution,
+  right: EffectiveProfileResolution,
+): boolean {
+  if (left.status !== 'active' || right.status !== 'active') return false
+  if (left.profileId !== right.profileId || left.presetId !== right.presetId) return false
+
+  const leftNames = pinnedSkillNames(left)
+  const rightNames = pinnedSkillNames(right)
+  return leftNames.length === rightNames.length
+    && leftNames.every((name, index) => name === rightNames[index])
+}
+
+function emptyPinnedResolution(
+  profile: EffectiveProfileResolution,
+): PinnedSkillBundleResolution {
+  return Object.freeze({
+    profile,
+    catalogComplete: true,
+    bindings: Object.freeze([]),
+    text: '',
+  })
+}
+
 /**
  * Resolve one current pinned bundle from the Agent's dynamic parent Skill view.
  *
@@ -125,28 +149,15 @@ function nativeByName(skills: readonly SkillSummary[]): ReadonlyMap<string, Skil
 export async function resolvePinnedSkillBundle(
   rootCtx: Context,
   agent: RuntimeAgent,
-  profile: EffectiveProfileResolution,
+  readProfile: PinnedEffectiveProfileReader,
   signal?: AbortSignal,
   lifecycle?: AbortSignal,
 ): Promise<PinnedSkillBundleResolution> {
-  if (profile.status !== 'active') {
-    return Object.freeze({
-      profile,
-      catalogComplete: true,
-      bindings: Object.freeze([]),
-      text: '',
-    })
-  }
+  const profile = readProfile()
+  if (profile.status !== 'active') return emptyPinnedResolution(profile)
 
   const names = pinnedSkillNames(profile)
-  if (names.length === 0) {
-    return Object.freeze({
-      profile,
-      catalogComplete: true,
-      bindings: Object.freeze([]),
-      text: '',
-    })
-  }
+  if (names.length === 0) return emptyPinnedResolution(profile)
 
   const skills = requireSkillRegistry(rootCtx)
   const cwd = agentWorkspaceCwd(agent)
@@ -224,8 +235,13 @@ export async function resolvePinnedSkillBundle(
     rendered.push(renderSkillContent(definition))
   }
 
+  const currentProfile = readProfile()
+  if (!samePinnedPlan(profile, currentProfile)) {
+    return emptyPinnedResolution(currentProfile)
+  }
+
   return Object.freeze({
-    profile,
+    profile: currentProfile,
     catalogComplete: true,
     bindings: Object.freeze(bindings),
     text: rendered.join('\n\n'),
@@ -385,7 +401,7 @@ export function installAgentPinnedSkillRuntime(
         const resolution = await resolvePinnedSkillBundle(
           rootCtx,
           agent,
-          readProfile(),
+          readProfile,
           requestSignal(context),
           lifecycle.signal,
         )
