@@ -1,6 +1,7 @@
 # Project build artifacts
 /lib/
 /.artifacts/
+/.typert-build/
 
 # Logs
 logs
