@@ -51,15 +51,33 @@ assert.deepEqual(result, {
 dispose()
 assert.equal(ctx.typert.local.get(endpoint), undefined, 'disposing the contribution must withdraw strict metadata')
 
-const srcFallbackResult = await ctx.typertGateway.invoke({
-  namespace: 'contextManager',
-  method: 'protocol',
-  args: {},
-})
-assert.deepEqual(srcFallbackResult, result, 'runtime decorator remains callable after strict metadata withdrawal')
+await assert.rejects(
+  ctx.typertGateway.invoke({
+    namespace: 'contextManager',
+    method: 'protocol',
+    args: {},
+  }),
+  error => {
+    assert.equal(
+      error?.code === 'definition-unavailable' || error?.code === 'gateway/definition-unavailable',
+      true,
+      'a previously strict endpoint must fail closed instead of downgrading to SRC fallback',
+    )
+    return true
+  },
+)
 
 const disposeReload = ctx.typert.register(TYPERT)
 assert.ok(ctx.typert.local.get(endpoint), 'strict metadata must be re-registerable after disposal')
+assert.deepEqual(
+  await ctx.typertGateway.invoke({
+    namespace: 'contextManager',
+    method: 'protocol',
+    args: {},
+  }),
+  result,
+  're-registering strict metadata must restore the endpoint',
+)
 disposeReload()
 
 await ctx.fiber.dispose()
