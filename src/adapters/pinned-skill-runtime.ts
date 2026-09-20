@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import type { Context } from '@deepseek-ai/cordis'
 import { renderSkillContent, type SkillSummary } from '@deepseek-ai/dsh-skill'
 
@@ -42,6 +43,13 @@ interface PromptAssemblyEventContext {
       context: unknown,
       next: () => Promise<PinnedPromptAssembly>,
     ) => Promise<PinnedPromptAssembly> | PinnedPromptAssembly,
+  ): () => void
+  on(
+    event: 'agent/pre-step',
+    listener: (
+      request: unknown,
+      next: () => Promise<unknown>,
+    ) => Promise<unknown> | unknown,
   ): () => void
 }
 
@@ -232,6 +240,29 @@ function inspectionCapture(context: unknown): InspectionCapture | undefined {
   return (context as Record<PropertyKey, unknown>)[INSPECTION_CAPTURE] as InspectionCapture | undefined
 }
 
+function finalPinnedSignature(assembly: PinnedPromptAssembly): string {
+  const sections = assembly.sections
+    .filter(section => section.name === PINNED_SKILL_SLOT_NAME)
+    .map(section => section.text)
+  const variable = assembly.variables[PINNED_SKILL_BUNDLE_VARIABLE]
+  return createHash('sha256')
+    .update(JSON.stringify({
+      sections,
+      variable: variable ?? null,
+    }))
+    .digest('hex')
+}
+
+function isEnterDecision(value: unknown): value is {
+  readonly kind: 'enter'
+  readonly messages: unknown[]
+  readonly startsRequestSeries?: true
+} {
+  if (typeof value !== 'object' || value === null) return false
+  const candidate = value as Record<string, unknown>
+  return candidate.kind === 'enter' && Array.isArray(candidate.messages)
+}
+
 export interface AgentPinnedSkillRuntimeInspection {
   readonly resolution?: PinnedSkillBundleResolution
   readonly nativeState: 'empty' | 'present' | 'native-suppressed' | 'transformed'
@@ -291,6 +322,8 @@ export function installAgentPinnedSkillRuntime(
   const runtime = requireRuntime(agent.ctx)
   const lifecycle = new AbortController()
   const disposers: Array<() => void> = []
+  let observedRequestSignature: string | undefined
+  let admittedRequestSignature: string | undefined
 
   try {
     disposers.push(runtime.variable(PINNED_SKILL_BUNDLE_VARIABLE, () => ''))
@@ -328,10 +361,40 @@ export function installAgentPinnedSkillRuntime(
           }
         }
 
-        return await next()
+        const result = requirePinnedAssembly(await next())
+        // assembleContextFor(agent, signal) supplies a request signal. Diagnostic
+        // assemblies intentionally do not advance request-series state.
+        if (requestSignal(context) !== undefined) {
+          observedRequestSignature = finalPinnedSignature(result)
+        }
+        return result
       },
     )
     disposers.push(stopAssembly)
+
+    const stopPreStep = (agent.ctx as unknown as PromptAssemblyEventContext).on(
+      'agent/pre-step',
+      async (_request, next) => {
+        const decision = await next()
+        if (!isEnterDecision(decision)) return decision
+
+        const signature = observedRequestSignature
+        if (signature === undefined) return decision
+
+        // Force native system-prompt consolidation only when this CM-owned
+        // contribution changed. The first admitted request also starts a fresh
+        // series, which safely reconciles a resumed Session whose prior pinned
+        // state is not process-local.
+        const changed = admittedRequestSignature !== signature
+        admittedRequestSignature = signature
+        if (!changed || decision.startsRequestSeries === true) return decision
+        return {
+          ...decision,
+          startsRequestSeries: true as const,
+        }
+      },
+    )
+    disposers.push(stopPreStep)
   } catch (error) {
     lifecycle.abort(error)
     for (const dispose of [...disposers].reverse()) dispose()
