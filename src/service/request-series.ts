@@ -36,13 +36,6 @@ interface SeriesEntry {
   readonly guards: Set<() => boolean>
   readonly stop: () => void
   forceNext: boolean
-  /**
-   * A forced request already reconciles every contribution assembled for that
-   * request. On the following accepted pre-step, guards still advance their
-   * baselines but their changed result must not create a redundant second
-   * series boundary.
-   */
-  acknowledgeGuardsNext: boolean
 }
 
 function isEnterDecision(value: unknown): value is {
@@ -117,7 +110,6 @@ export class ContextManagerRequestSeries extends Service {
     const entry = {
       guards: new Set<() => boolean>(),
       forceNext: false,
-      acknowledgeGuardsNext: false,
       stop: () => {},
     } as SeriesEntry
 
@@ -131,26 +123,12 @@ export class ContextManagerRequestSeries extends Service {
         // contributor's per-request baseline.
         if (decision.messages.length === 0) return decision
 
-        const externallyForced = entry.forceNext
+        let force = entry.forceNext
         entry.forceNext = false
-
-        let guardChanged = false
         for (const guard of entry.guards) {
-          if (guard()) guardChanged = true
+          if (guard()) force = true
         }
 
-        const acknowledgeOnly = entry.acknowledgeGuardsNext
-        entry.acknowledgeGuardsNext = false
-
-        // A forced request is itself the reconciliation boundary. Its assembly
-        // happens after this pre-step and becomes the new guard baseline on the
-        // following accepted pre-step; acknowledge that observation without
-        // opening a redundant second series.
-        if (externallyForced && entry.guards.size > 0) {
-          entry.acknowledgeGuardsNext = true
-        }
-
-        const force = externallyForced || (!acknowledgeOnly && guardChanged)
         const result = !force || decision.startsRequestSeries === true
           ? decision
           : {
@@ -169,7 +147,6 @@ export class ContextManagerRequestSeries extends Service {
     const installed: SeriesEntry = {
       guards: entry.guards,
       forceNext: false,
-      acknowledgeGuardsNext: false,
       stop,
     }
     // The listener closes over `entry`, so keep one mutable object rather
