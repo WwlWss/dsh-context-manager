@@ -507,12 +507,13 @@ test('M5B provider disposal aborts an in-flight lazy parent body load', async ()
   assert.equal(catalog.skills.find(skill => skill.name === 'target')?.provider, CM_PROVIDER)
 
   const pending = scopedSkills(root).get('target', { scope: current.agent })
+  const rejected = assert.rejects(pending)
   const signal = await started.promise
   assert.equal(signal.aborted, false)
 
   await runtime.fiber.dispose()
   assert.equal(signal.aborted, true)
-  await assert.rejects(pending)
+  await rejected
 
   stopNative()
   await current.scope.dispose()
