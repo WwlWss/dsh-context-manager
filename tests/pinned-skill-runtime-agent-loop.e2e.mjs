@@ -323,6 +323,25 @@ try {
   text = requestText(adapter.requests.at(-1))
   assert.equal(count(text, state.body), 1)
 
+  // M5C depends on M5B policy runtime. Removing policy alone must deactivate
+  // the Pinned instruction bridge instead of leaving a half-Pinned state.
+  await policyFiber.dispose()
+  await turn(ctx, agent, 'policy runtime unloaded')
+  text = requestText(adapter.requests.at(-1))
+  assert.equal(text.includes(state.body), false)
+  pinnedInspection = await ctx.dshContextPinnedSkillRuntime.inspect(agent.id)
+  assert.equal(pinnedInspection.status, 'runtime-unavailable')
+  toolResult = await executeSkill(ctx, agent, 'stock-without-policy')
+  assert.equal(toolResult.isError, false)
+
+  policyFiber = ctx.plugin(ContextManagerSkillRuntime)
+  await policyFiber
+  await waitForRuntime(ctx.dshContextSkillRuntime, agent.id)
+  await waitForRuntime(ctx.dshContextPinnedSkillRuntime, agent.id)
+  await turn(ctx, agent, 'policy runtime restored')
+  text = requestText(adapter.requests.at(-1))
+  assert.equal(count(text, state.body), 1)
+
   await pinnedFiber.dispose()
   await policyFiber.dispose()
 
