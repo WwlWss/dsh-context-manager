@@ -124,6 +124,12 @@ function nativeByName(skills: readonly SkillSummary[]): ReadonlyMap<string, Skil
   return new Map(skills.map(skill => [skill.name, skill]))
 }
 
+function pinnedPolicyEffective(winner: SkillSummary | undefined): boolean {
+  return winner?.provider === CONTEXT_MANAGER_SKILL_PROVIDER
+    && !winner.invocation.modelInvocable
+    && !winner.invocation.userInvocable
+}
+
 function samePinnedPlan(
   left: EffectiveProfileResolution,
   right: EffectiveProfileResolution,
@@ -212,13 +218,13 @@ export async function resolvePinnedSkillBundle(
 
   const summaries = nativeByName(parentSnapshot.skills)
   const agentWinners = nativeByName(agentSnapshot.skills)
-  const bindings: PinnedSkillBindingInspection[] = []
-  const rendered: string[] = []
+  const bindings = new Map<string, PinnedSkillBindingInspection>()
+  const rendered = new Map<string, string>()
 
   for (const skillName of names) {
     const summary = summaries.get(skillName)
     if (summary === undefined) {
-      bindings.push(Object.freeze({
+      bindings.set(skillName, Object.freeze({
         state: 'missing-native-skill',
         skillName,
       }))
@@ -226,12 +232,8 @@ export async function resolvePinnedSkillBundle(
     }
 
     const winner = agentWinners.get(skillName)
-    if (
-      winner?.provider !== CONTEXT_MANAGER_SKILL_PROVIDER
-      || winner.invocation.modelInvocable
-      || winner.invocation.userInvocable
-    ) {
-      bindings.push(Object.freeze({
+    if (!pinnedPolicyEffective(winner)) {
+      bindings.set(skillName, Object.freeze({
         state: 'policy-not-effective',
         skillName,
         nativeProvider: summary.provider,
@@ -242,7 +244,7 @@ export async function resolvePinnedSkillBundle(
 
     const definition = await skills.get(skillName, lookup)
     if (definition === undefined) {
-      bindings.push(Object.freeze({
+      bindings.set(skillName, Object.freeze({
         state: 'definition-unavailable',
         skillName,
         nativeProvider: summary.provider,
@@ -250,12 +252,37 @@ export async function resolvePinnedSkillBundle(
       continue
     }
 
-    bindings.push(Object.freeze({
+    bindings.set(skillName, Object.freeze({
       state: 'loaded',
       skillName,
       nativeProvider: definition.provider,
     }))
-    rendered.push(renderSkillContent(definition))
+    rendered.set(skillName, renderSkillContent(definition))
+  }
+
+  // Loading native bodies is async, so the Agent-view policy winner proven by
+  // the earlier snapshot can become stale while get() is in flight. Re-observe
+  // the final Agent view and use it as the last async commit point. No await is
+  // allowed after this snapshot: profile/parent checks and bundle construction
+  // below are synchronous, so a competing provider cannot interleave between
+  // final policy validation and return.
+  const finalAgentSnapshot = await skills.snapshot({
+    ...baseOptions,
+    ...(lifecycle === undefined
+      ? {}
+      : { signal: combineSkillSignals(signal, lifecycle) }),
+    scope: agent,
+  })
+  if (!finalAgentSnapshot.complete) {
+    return Object.freeze({
+      profile: readProfile(),
+      catalogComplete: false,
+      bindings: Object.freeze(names.map(skillName => Object.freeze({
+        state: 'catalog-incomplete' as const,
+        skillName,
+      }))),
+      text: '',
+    })
   }
 
   const currentProfile = readProfile()
@@ -266,11 +293,40 @@ export async function resolvePinnedSkillBundle(
     return emptyPinnedResolution(currentProfile)
   }
 
+  const finalAgentWinners = nativeByName(finalAgentSnapshot.skills)
+  const finalBindings: PinnedSkillBindingInspection[] = []
+  const finalRendered: string[] = []
+
+  for (const skillName of names) {
+    const binding = bindings.get(skillName)
+    if (binding === undefined) continue
+
+    if (binding.state !== 'loaded') {
+      finalBindings.push(binding)
+      continue
+    }
+
+    const winner = finalAgentWinners.get(skillName)
+    if (!pinnedPolicyEffective(winner)) {
+      finalBindings.push(Object.freeze({
+        state: 'policy-not-effective',
+        skillName,
+        nativeProvider: binding.nativeProvider,
+        ...(winner === undefined ? {} : { winnerProvider: winner.provider }),
+      }))
+      continue
+    }
+
+    finalBindings.push(binding)
+    const block = rendered.get(skillName)
+    if (block !== undefined) finalRendered.push(block)
+  }
+
   return Object.freeze({
     profile: currentProfile,
     catalogComplete: true,
-    bindings: Object.freeze(bindings),
-    text: rendered.join('\n\n'),
+    bindings: Object.freeze(finalBindings),
+    text: finalRendered.join('\n\n'),
   })
 }
 
