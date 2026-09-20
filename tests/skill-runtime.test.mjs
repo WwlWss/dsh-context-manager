@@ -444,6 +444,55 @@ test('lower-rank Agent-local provider wins and inspection reports policy not eff
 })
 
 
+test('inspection reports policy not effective when only an Agent-local same-name skill exists', async () => {
+  const root = new Context()
+  await root.plugin(SkillRegistry)
+
+  const current = mintAgent(root, 'agent-local-only')
+  const stopLocal = scopedSkills(current.agent.ctx).registerProvider(() =>
+    provider('agent-local-provider', [
+      candidate('agent-local-provider', 'target', {
+        modelInvocable: true,
+        userInvocable: true,
+      }, 'local body'),
+    ]),
+  )
+
+  const state = {
+    presetId: 'standard',
+    skills: { target: 'off' },
+  }
+  const runtime = await bootRuntime(root, [current.agent], state)
+
+  const winner = (await scopedSkills(root).snapshot({ scope: current.agent }))
+    .skills.find(skill => skill.name === 'target')
+  assert.equal(winner?.provider, 'agent-local-provider')
+
+  const inspected = await runtime.runtime.inspect('agent-local-only')
+  assert.equal(inspected.status, 'resolved')
+  assert.deepEqual(inspected.bindings, [{
+    state: 'policy-not-effective',
+    skillName: 'target',
+    mode: 'off',
+    expectedInvocation: {
+      modelInvocable: false,
+      userInvocable: false,
+    },
+    winner: {
+      provider: 'agent-local-provider',
+      invocation: {
+        modelInvocable: true,
+        userInvocable: true,
+      },
+    },
+  }])
+
+  await runtime.fiber.dispose()
+  stopLocal()
+  await current.scope.dispose()
+  await root.fiber.dispose()
+})
+
 test('incomplete parent discovery propagates and inspection refuses to overclaim policy state', async () => {
   const root = new Context()
   await root.plugin(SkillRegistry)
