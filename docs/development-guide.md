@@ -325,16 +325,15 @@ A missing bound skill is diagnostic state, not permission to fabricate a skill d
 
 M5A adds only the targeted default-profile hot-path read, Context Manager authority invalidation event, and five-generation Skill/Scope contract lane. It must remain model-inert for skills.
 
-M5B should use one Agent-scoped overlay/shadow provider and resolve its underlying native winner through the parent-scope view. Provider `list()` must stay metadata-only; full native definitions are loaded lazily only from proxy `get()`. Proxy candidates must advertise the Context Manager provider name because DSH validates `candidate.provider === provider.name`; keep underlying native identity in locator/inspection state. Do not rewrite the filesystem provider and do not listen to `skills/change` merely to trigger Context Manager invalidation; native SkillRegistry invalidation already refreshes provider discovery. The planned `Number.MAX_VALUE` rank is the largest finite numeric rank and therefore the lowest-priority finite rank because lower ranks win. Equal-rank same-layer candidates still tie on provider registration order, so only claim the precedence actually proven by tests.
+M5B uses one Agent-scoped overlay/shadow provider and resolves its underlying native winner through the parent-scope view. Provider `list()` must stay metadata-only; full native definitions are loaded lazily only from proxy `get()`. Proxy candidates must advertise the Context Manager provider name because DSH validates `candidate.provider === provider.name`; keep underlying native identity in locator/inspection state. Do not rewrite the filesystem provider and do not listen to `skills/change` merely to trigger Context Manager invalidation; native SkillRegistry invalidation already refreshes provider discovery. The implemented `Number.MAX_VALUE` rank is the largest finite numeric rank and therefore the lowest-priority finite rank because lower ranks win. Equal-rank same-layer candidates still tie on provider registration order, so only claim the precedence actually proven by tests.
 
-Before claiming hard `off`, `manual`, or `pinned` semantics, test:
+M5B managed `off`, `manual`, and `pinned` semantics are guarded by tests for:
 
 - global/preset/agent scope precedence, including dynamic preset-parent rebind without a manual registry invalidation;
 - Agent-local same-name duplicates and the equal-`Number.MAX_VALUE` boundary;
 - provider-candidate ownership validation;
 - provider invalidation;
-- live Agent adoption/create/dispose and HMR reload;
-- cold/resumed sessions where the current public lifecycle exposes a relevant seam;
+- existing Agent adoption, live Agent creation, provider disposal, and unload/reload;
 - exact `basePreset` switching;
 - model and explicit user invocation leakage.
 
