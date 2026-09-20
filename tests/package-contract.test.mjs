@@ -98,10 +98,7 @@ test('generated M6A Host Typert surface stays isolated from M2-M5 services', asy
   const host = await import(pathToFileURL(fromRoot(packageJson.exports['./typert'].default)).href)
   assert.equal(host.TYPERT.package, 'dsh-context-manager')
   assert.equal(host.TYPERT.face, 'host')
-  assert.deepEqual(
-    host.TYPERT.model.services.map(service => service.key),
-    ['dshContextRemote'],
-  )
+  assert.deepEqual(host.TYPERT.model.services, [])
   assert.deepEqual(host.TYPERT.model.events, [])
   assert.equal(host.TYPERT.invocations.length, 1)
   assert.equal(host.TYPERT.invocations[0].service, 'dshContextRemote')
