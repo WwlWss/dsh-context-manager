@@ -144,10 +144,10 @@ async function installBase(root) {
   await root.plugin(SkillRegistry)
 }
 
-async function bootRuntime(root, agent, state) {
+async function bootRuntime(root, agents, state) {
   await root.plugin(FakeContextManager, state)
   await root.plugin(FakeSessionPresetIdentity, state)
-  await root.plugin(FakeAgents, [agent])
+  await root.plugin(FakeAgents, agents)
   const fiber = root.plugin(ContextManagerPinnedSkillRuntime)
   await fiber
   return {
@@ -177,6 +177,22 @@ test('M5C renders parent-native Pinned bodies in code-unit order and preserves l
   ])
   const stopNative = scopedSkills(preset.ctx).registerProvider(() => native)
   const current = mintAgent(root, 'agent-a', presetKey)
+  const second = mintAgent(root, 'agent-b', presetKey)
+
+  const afterToolOrder = generation === 'legacy'
+    ? 199.5
+    : root.systemPrompt.getSectionOrder('TOOLS_SDK') - 0.5
+  const stopLeft = root.systemPrompt.section({
+    name: 'm5c:test-left-anchor',
+    order: afterToolOrder,
+    text: 'LEFT_ANCHOR',
+  })
+  const stopRight = root.systemPrompt.section({
+    name: 'm5c:test-right-anchor',
+    order: afterToolOrder + 0.5,
+    text: 'RIGHT_ANCHOR',
+  })
+
   const state = {
     presetId: 'preset-a',
     skills: {
@@ -185,9 +201,11 @@ test('M5C renders parent-native Pinned bodies in code-unit order and preserves l
       ignored: 'off',
     },
   }
-  const runtime = await bootRuntime(root, current.agent, state)
+  const runtime = await bootRuntime(root, [current.agent, second.agent], state)
 
   let assembly = await assemble(root, current.agent)
+  const secondAssembly = await assemble(root, second.agent)
+  assert.notEqual(secondAssembly.sections.findIndex(section => section.name === SLOT), -1)
   const slot = assembly.sections.find(section => section.name === SLOT)
   assert.ok(slot)
   assert.equal(slot.text, `{{${VARIABLE}}}`)
@@ -200,6 +218,10 @@ test('M5C renders parent-native Pinned bodies in code-unit order and preserves l
   assert.ok(bundle.includes('ALPHA {{malformed value}}'))
   assert.ok(bundle.includes('ZETA {{unknown}}'))
   assert.ok(bundle.includes('Base directory for this skill: /skills/zeta'))
+
+  const names = assembly.sections.map(section => section.name)
+  assert.ok(names.indexOf('m5c:test-left-anchor') < names.indexOf(SLOT))
+  assert.ok(names.indexOf(SLOT) < names.indexOf('m5c:test-right-anchor'))
 
   const rendered = renderPrompt(assembly)
   assert.ok(rendered.includes('ALPHA {{malformed value}}'))
@@ -221,7 +243,10 @@ test('M5C renders parent-native Pinned bodies in code-unit order and preserves l
   assert.equal(JSON.stringify(inspected).includes('ALPHA'), false)
 
   await runtime.fiber.dispose()
+  stopRight()
+  stopLeft()
   stopNative()
+  await second.scope.dispose()
   await current.scope.dispose()
   await preset.dispose()
   await root.fiber.dispose()
@@ -250,7 +275,7 @@ test('M5C follows dynamic parent rebind and ignores Agent-local same-name Skills
     presetId: 'preset-a',
     skills: { target: 'pinned' },
   }
-  const runtime = await bootRuntime(root, current.agent, state)
+  const runtime = await bootRuntime(root, [current.agent], state)
 
   let text = renderPrompt(await assemble(root, current.agent))
   assert.ok(text.includes('BODY_A'))
@@ -299,7 +324,7 @@ test('M5C incomplete catalog injects no partial body and does no native get()', 
       missing: 'pinned',
     },
   }
-  const runtime = await bootRuntime(root, current.agent, state)
+  const runtime = await bootRuntime(root, [current.agent], state)
 
   const assembly = await assemble(root, current.agent)
   assert.equal(assembly.sections.some(section => section.name === SLOT), false)
@@ -358,7 +383,7 @@ test('M5C inspection reports missing/get-race states and native complete suppres
       vanishes: 'pinned',
     },
   }
-  const runtime = await bootRuntime(root, current.agent, state)
+  const runtime = await bootRuntime(root, [current.agent], state)
 
   let inspected = await runtime.runtime.inspect('agent-inspect')
   assert.equal(inspected.status, 'resolved')
@@ -417,7 +442,7 @@ test('M5C runtime disposal aborts an in-flight native body load', async () => {
     presetId: 'preset-a',
     skills: { target: 'pinned' },
   }
-  const runtime = await bootRuntime(root, current.agent, state)
+  const runtime = await bootRuntime(root, [current.agent], state)
 
   const pending = assemble(root, current.agent)
   const rejected = assert.rejects(pending)
