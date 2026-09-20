@@ -40,7 +40,7 @@ contextManager.protocol()
 
 Typert package-mode generation requires a workspace Host aggregate named `tsconfig.host.json`. The repository therefore gains a Host aggregate while preserving the existing `tsconfig.json` as the normal local typecheck surface.
 
-Both normal build and git-install `prepare` run the Typert tsdown plugin in package/host mode. A successful build must emit:
+Both normal build and git-install `prepare` run the Typert tsdown plugin in workspace/host mode. Context Manager is a standalone single-package repository whose package root is also the Typert workspace root; upstream package mode intentionally searches only below the workspace root, so workspace mode is the correct public generator path here. A successful build must emit:
 
 ```text
 lib/typert.host.js
