@@ -34,7 +34,7 @@ interface SessionEventContext {
 }
 
 interface RequestSeriesContributor {
-  readonly guard: () => boolean
+  readonly guard: () => boolean | Promise<boolean>
   readonly commit: () => void
   readonly retire: () => boolean
 }
@@ -139,7 +139,7 @@ export class ContextManagerRequestSeries extends Service {
         const contributors = [...entry.contributors]
         let force = entry.forceRevision > entry.admittedForceRevision
         for (const contributor of contributors) {
-          if (contributor.guard()) force = true
+          if (await contributor.guard()) force = true
         }
         if (!force) return decision
 
@@ -222,7 +222,7 @@ export class ContextManagerRequestSeries extends Service {
    */
   register(
     agent: RuntimeAgent,
-    guard: () => boolean,
+    guard: () => boolean | Promise<boolean>,
     commit: () => void,
     retire: () => boolean,
   ): () => void {
