@@ -274,7 +274,11 @@ export async function inspectAgentSkillPolicy(
     }
 
     const native = parentByName.get(skillName)
-    if (native === undefined) {
+    const expected = managedSkillInvocationPolicy(mode)
+    if (expected === undefined) continue
+    const winner = agentByName.get(skillName)
+
+    if (native === undefined && winner === undefined) {
       bindings.push(Object.freeze({
         state: 'missing-native-skill',
         skillName,
@@ -283,12 +287,9 @@ export async function inspectAgentSkillPolicy(
       continue
     }
 
-    const expected = managedSkillInvocationPolicy(mode)
-    if (expected === undefined) continue
-    const winner = agentByName.get(skillName)
-
     if (
-      winner?.provider === CONTEXT_MANAGER_SKILL_PROVIDER
+      native !== undefined
+      && winner?.provider === CONTEXT_MANAGER_SKILL_PROVIDER
       && sameInvocation(winner.invocation, expected)
     ) {
       bindings.push(Object.freeze({
@@ -305,7 +306,7 @@ export async function inspectAgentSkillPolicy(
       state: 'policy-not-effective',
       skillName,
       mode,
-      nativeProvider: native.provider,
+      ...(native === undefined ? {} : { nativeProvider: native.provider }),
       expectedInvocation: inspectionInvocation(expected),
       ...(winner === undefined
         ? {}
