@@ -10,10 +10,9 @@ import {
 } from '../lib/index.js'
 
 const ctx = new Context()
-ctx.plugin(TypertRegistry)
-ctx.plugin(ContextManagerRemoteService)
-ctx.plugin(TypertGatewayService)
-await ctx.start()
+await ctx.plugin(TypertRegistry)
+await ctx.plugin(ContextManagerRemoteService)
+await ctx.plugin(TypertGatewayService)
 
 const disposeContribution = ctx.typert.register(TYPERT)
 try {
