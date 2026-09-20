@@ -40,7 +40,7 @@ interface PinnedPromptAssembly extends HostPromptAssembly {
 
 interface ProjectionInvalidationContext {
   on(
-    event: 'dsh-context-manager/change' | 'skills/change' | 'system-prompt/change',
+    event: 'system-prompt/change',
     listener: () => void,
   ): () => void
 }
@@ -519,8 +519,11 @@ export function installAgentPinnedSkillRuntime(
     )
     disposers.push(stopAssembly)
     const invalidation = rootCtx as unknown as ProjectionInvalidationContext
-    disposers.push(invalidation.on('dsh-context-manager/change', markProjectionDirty))
-    disposers.push(invalidation.on('skills/change', markProjectionDirty))
+    // Only native SystemPrompt topology can change the post-waterfall
+    // `complete` suppression that this listener cannot observe directly.
+    // Profile and Skill changes are already reflected by the next real request
+    // assembly and therefore must not make every Agent perform an extra
+    // diagnostic body load.
     disposers.push(invalidation.on('system-prompt/change', markProjectionDirty))
 
   } catch (error) {
