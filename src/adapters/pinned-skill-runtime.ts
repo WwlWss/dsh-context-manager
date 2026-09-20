@@ -37,6 +37,13 @@ interface PinnedPromptAssembly extends HostPromptAssembly {
   variables: Record<string, string | undefined>
 }
 
+interface ProjectionInvalidationContext {
+  on(
+    event: 'dsh-context-manager/change' | 'skills/change' | 'system-prompt/change',
+    listener: () => void,
+  ): () => void
+}
+
 interface PromptAssemblyEventContext {
   on(
     event: 'system-prompt/assemble',
@@ -478,9 +485,10 @@ export function installAgentPinnedSkillRuntime(
       },
     )
     disposers.push(stopAssembly)
-    disposers.push(rootCtx.on('dsh-context-manager/change', markProjectionDirty))
-    disposers.push(rootCtx.on('skills/change', markProjectionDirty))
-    disposers.push(rootCtx.on('system-prompt/change', markProjectionDirty))
+    const invalidation = rootCtx as unknown as ProjectionInvalidationContext
+    disposers.push(invalidation.on('dsh-context-manager/change', markProjectionDirty))
+    disposers.push(invalidation.on('skills/change', markProjectionDirty))
+    disposers.push(invalidation.on('system-prompt/change', markProjectionDirty))
 
   } catch (error) {
     lifecycle.abort(error)
