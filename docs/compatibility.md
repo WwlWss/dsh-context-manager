@@ -379,7 +379,7 @@ The compatibility objective is **one plugin codebase across supported official D
 
 ## M5B Skill policy runtime compatibility
 
-M5B is model-effective for native Skill invocation policy while preserving DSH's source providers and ToolSkill consumers.
+M5B is model-effective for native Skill invocation policy while preserving DSH's source providers, ToolSkill consumers, and native same-layer precedence. Managed policy is effective only when the Context Manager proxy is the actual Agent-view winner; inspection reports a competing same-layer winner as `policy-not-effective`.
 
 The production policy runtime is built and executed against all five retained generations:
 
