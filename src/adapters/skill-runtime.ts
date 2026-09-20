@@ -14,7 +14,6 @@ import { scopeParentOf } from '@deepseek-ai/dsh-scope'
 
 import type { RuntimeAgent } from './agent-runtime.js'
 import {
-  compareSkillNames,
   managedSkillInvocationPolicy,
   profileSkillMode,
   sortedProfileSkillBindings,
@@ -81,13 +80,12 @@ function proxyCandidate(
   })
 
   return Object.freeze({
-    name: native.name,
-    description: native.description,
-    ...(native.whenToUse === undefined ? {} : { whenToUse: native.whenToUse }),
+    // Preserve every summary field exposed by this DSH generation (including
+    // forward-added metadata such as 0.1.6's optional path) and override only
+    // the fields owned by the policy proxy.
+    ...native,
     invocation,
-    source: native.source,
     provider: CONTEXT_MANAGER_SKILL_PROVIDER,
-    ...(native.resourceBase === undefined ? {} : { resourceBase: native.resourceBase }),
     rank: Number.MAX_VALUE,
     locator,
   })
@@ -177,13 +175,6 @@ export function installAgentSkillPolicyProvider(
       stop()
     },
   })
-}
-
-export function compareSkillSummaryNames(
-  left: Pick<SkillSummary, 'name'>,
-  right: Pick<SkillSummary, 'name'>,
-): number {
-  return compareSkillNames(left.name, right.name)
 }
 
 
