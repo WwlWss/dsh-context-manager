@@ -30,7 +30,7 @@ interface HostPromptSectionRegistration {
 interface HostSystemPromptRuntime {
   section(section: HostPromptSectionRegistration): () => void
   variable(name: string, provider: (context: unknown) => string | undefined): () => void
-  assemble?(context?: unknown): Promise<HostPromptAssembly>
+  assemble(context?: unknown): Promise<HostPromptAssembly>
 }
 
 interface PinnedPromptAssembly extends HostPromptAssembly {
@@ -71,8 +71,9 @@ function requireRuntime(ctx: Context): HostSystemPromptRuntime {
   if (
     typeof candidate.section !== 'function'
     || typeof candidate.variable !== 'function'
+    || typeof candidate.assemble !== 'function'
   ) {
-    throw unsupportedRuntimeApi('expected section() and variable()')
+    throw unsupportedRuntimeApi('expected section(), variable(), and assemble()')
   }
   return raw as HostSystemPromptRuntime
 }
@@ -268,6 +269,7 @@ const INSPECTION_CAPTURE = Symbol('dsh-context-manager.pinned-skill-runtime.insp
 
 interface InspectionCapture {
   resolution?: PinnedSkillBundleResolution
+  preFinalContribution?: FinalPinnedContribution
 }
 
 function inspectionCapture(context: unknown): InspectionCapture | undefined {
@@ -309,10 +311,6 @@ export async function inspectAgentPinnedSkillRuntime(
   agent: RuntimeAgent,
 ): Promise<AgentPinnedSkillRuntimeInspection> {
   const runtime = requireRuntime(agent.ctx)
-  if (typeof runtime.assemble !== 'function') {
-    throw unsupportedRuntimeApi('expected assemble() for runtime inspection')
-  }
-
   const capture: InspectionCapture = {}
   const assembly = requirePinnedAssembly(await runtime.assemble({
     scope: agent,
@@ -354,7 +352,7 @@ export interface AgentPinnedSkillRuntime {
    * This is proposal state only. The admitted baseline is not advanced until
    * commitRequestSeries() observes DSH's durable request/header publication.
    */
-  prepareRequestSeries(): boolean
+  prepareRequestSeries(): Promise<boolean>
   /** Promote the prepared contribution after native request admission commits. */
   commitRequestSeries(): void
   /**
@@ -385,6 +383,28 @@ export function installAgentPinnedSkillRuntime(
   let pendingRequestContributionPresent = false
   let admittedRequestSignature: string | undefined
   let admittedContributionPresent = false
+  let projectionDirty = true
+  let completePromptSuppressesPinned = false
+
+  const markProjectionDirty = () => {
+    projectionDirty = true
+  }
+
+  const refreshFinalContribution = async (): Promise<void> => {
+    const capture: InspectionCapture = {}
+    const finalAssembly = requirePinnedAssembly(await runtime.assemble({
+      scope: agent,
+      agent,
+      [INSPECTION_CAPTURE]: capture,
+    }))
+    const finalContribution = finalPinnedContribution(finalAssembly)
+    completePromptSuppressesPinned =
+      capture.preFinalContribution?.present === true
+      && finalContribution.present === false
+    observedRequestSignature = finalContribution.signature
+    observedRequestContributionPresent = finalContribution.present
+    projectionDirty = false
+  }
 
   try {
     disposers.push(runtime.variable(PINNED_SKILL_BUNDLE_VARIABLE, () => ''))
@@ -432,20 +452,35 @@ export function installAgentPinnedSkillRuntime(
           }
         }
 
+        const contribution = finalPinnedContribution(result)
         const capture = inspectionCapture(context)
-        if (capture !== undefined) capture.resolution = finalResolution
+        if (capture !== undefined) {
+          capture.resolution = finalResolution
+          capture.preFinalContribution = contribution
+        }
 
-        // assembleContextFor(agent, signal) supplies a request signal. Diagnostic
-        // assemblies intentionally do not advance request-series state.
+        // A native complete section is restored only after this waterfall
+        // returns. Once one final diagnostic assembly has established that
+        // suppression, unchanged request assemblies remain model-inert even
+        // though this listener still observes the pre-restoration CM slot.
         if (requestSignal(context) !== undefined) {
-          const contribution = finalPinnedContribution(result)
-          observedRequestSignature = contribution.signature
-          observedRequestContributionPresent = contribution.present
+          const effectiveContribution =
+            completePromptSuppressesPinned && !projectionDirty
+              ? finalPinnedContribution({
+                  ...result,
+                  sections: [],
+                })
+              : contribution
+          observedRequestSignature = effectiveContribution.signature
+          observedRequestContributionPresent = effectiveContribution.present
         }
         return result
       },
     )
     disposers.push(stopAssembly)
+    disposers.push(rootCtx.on('dsh-context-manager/change', markProjectionDirty))
+    disposers.push(rootCtx.on('skills/change', markProjectionDirty))
+    disposers.push(rootCtx.on('system-prompt/change', markProjectionDirty))
 
   } catch (error) {
     lifecycle.abort(error)
@@ -455,8 +490,9 @@ export function installAgentPinnedSkillRuntime(
 
   let disposed = false
   return Object.freeze({
-    prepareRequestSeries(): boolean {
+    async prepareRequestSeries(): Promise<boolean> {
       if (disposed) return false
+      if (projectionDirty) await refreshFinalContribution()
       const signature = observedRequestSignature
       if (signature === undefined) {
         pendingRequestSignature = undefined
