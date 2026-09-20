@@ -483,3 +483,72 @@ test('M5C runtime disposal aborts an in-flight native body load', async () => {
   await current.scope.dispose()
   await root.fiber.dispose()
 })
+
+
+test('M5C retirement uses admitted rather than merely observed prompt state', async () => {
+  const root = new Context()
+  await installBase(root)
+
+  const stopNative = scopedSkills(root).registerProvider(() =>
+    provider('native-provider', [
+      candidate('native-provider', 'target', 'OBSERVED_BUT_NOT_ADMITTED'),
+    ]),
+  )
+
+  const current = mintAgent(root, 'agent-retire-observed-only')
+  const state = {
+    presetId: 'preset-a',
+    skills: { target: 'off' },
+  }
+  const runtime = await bootRuntime(root, [current.agent], state)
+
+  const signal = new AbortController().signal
+
+  // First accepted request establishes an admitted empty baseline and consumes
+  // the attach-time request-series fence.
+  await root.systemPrompt.assemble({
+    scope: current.agent,
+    agent: current.agent,
+    signal,
+  })
+  let decision = await current.agent.ctx.waterfall(
+    current.agent.ctx,
+    'agent/pre-step',
+    {},
+    () => Promise.resolve({
+      kind: 'enter',
+      messages: [{ role: 'user' }],
+    }),
+  )
+  assert.equal(decision.startsRequestSeries, true)
+
+  // A later assembly observes Pinned content, but no accepted pre-step follows.
+  // This is not model-visible admitted state and must not create a retire fence.
+  state.skills = { target: 'pinned' }
+  await root.systemPrompt.assemble({
+    scope: current.agent,
+    agent: current.agent,
+    signal,
+  })
+
+  await runtime.dispose()
+
+  decision = await current.agent.ctx.waterfall(
+    current.agent.ctx,
+    'agent/pre-step',
+    {},
+    () => Promise.resolve({
+      kind: 'enter',
+      messages: [{ role: 'user' }],
+    }),
+  )
+  assert.equal(
+    decision.startsRequestSeries,
+    undefined,
+    'observed-only pinned content must not leave a post-unload request-series fence',
+  )
+
+  stopNative()
+  await current.scope.dispose()
+  await root.fiber.dispose()
+})
