@@ -375,3 +375,44 @@ When a PR begins using a new DSH seam:
 10. update this document when the minimum tested DSH contract changes.
 
 The compatibility objective is **one plugin codebase across supported official DSH lines and compatible forks**, not one plugin version per host build.
+
+
+## M5B Skill policy runtime compatibility
+
+M5B is model-effective for native Skill invocation policy while preserving DSH's source providers and ToolSkill consumers.
+
+The production policy runtime is built and executed against all five retained generations:
+
+- `0.1.1-rc.2`;
+- `0.1.2-rc.1`;
+- `0.1.5-rc.1`;
+- `0.1.5-rc.2`;
+- `0.1.6-alpha.2`.
+
+The M5B runtime lane proves:
+
+- Auto contributes no proxy and preserves the native winning invocation policy exactly;
+- Manual resolves to model-disabled / user-enabled;
+- Off and Pinned resolve to model-disabled / user-disabled;
+- missing bindings do not fabricate definitions;
+- provider discovery stays metadata-only and propagates incomplete parent observations;
+- proxy `get()` loads the native body lazily and re-reads current effective mode;
+- dynamic Agent parent rebinds are observed without caching parent identity;
+- native loaded-definition provenance/content is retained while invocation is overlaid;
+- proxy summary metadata is preserved across Host generations while provider ownership is rewritten correctly;
+- runtime/provider disposal aborts in-flight parent loads;
+- one Context Manager authority change creates at most one registry-wide Skill invalidation across multiple live Agents;
+- Auto-to-managed transitions invalidate a previously cached native winner;
+- lower-rank Agent-local candidates can outrank the CM proxy and inspection reports that the policy is not effective rather than overstating isolation;
+- runtime unload restores stock native Skill behavior.
+
+Real ToolSkill + AgentLoop E2E runs on the oldest retained generation and the forward alpha prove the consumer surfaces:
+
+- Auto model discovery/loading preserves native policy;
+- Manual is absent from model discovery/tool loading but remains explicitly user-invocable;
+- Off is absent from both model and user invocation;
+- Pinned has the same native invocation policy as Off in M5B;
+- exact base-preset mismatch bypasses the overlay;
+- unload/reload restores and reapplies policy without duplicate providers.
+
+M5C may build on the same effective-profile and parent-view seams, but Pinned full-instruction durability is not part of M5B.
