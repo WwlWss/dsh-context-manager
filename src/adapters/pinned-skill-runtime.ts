@@ -390,27 +390,30 @@ export function installAgentPinnedSkillRuntime(
   let pendingRequestContributionPresent = false
   let admittedRequestSignature: string | undefined
   let admittedContributionPresent = false
-  let projectionDirty = true
+  let projectionRevision = 1
+  let observedProjectionRevision = 0
   let completePromptSuppressesPinned = false
 
   const markProjectionDirty = () => {
-    projectionDirty = true
+    projectionRevision += 1
   }
 
-  const refreshFinalContribution = async (): Promise<void> => {
+  const refreshFinalContribution = async (revision: number): Promise<void> => {
     const capture: InspectionCapture = {}
     const finalAssembly = requirePinnedAssembly(await runtime.assemble({
       scope: agent,
       agent,
       [INSPECTION_CAPTURE]: capture,
     }))
+    if (revision !== projectionRevision) return
+
     const finalContribution = finalPinnedContribution(finalAssembly)
     completePromptSuppressesPinned =
       capture.preFinalContribution?.present === true
       && finalContribution.present === false
     observedRequestSignature = finalContribution.signature
     observedRequestContributionPresent = finalContribution.present
-    projectionDirty = false
+    observedProjectionRevision = revision
   }
 
   try {
@@ -472,7 +475,8 @@ export function installAgentPinnedSkillRuntime(
         // though this listener still observes the pre-restoration CM slot.
         if (requestSignal(context) !== undefined) {
           const effectiveContribution =
-            completePromptSuppressesPinned && !projectionDirty
+            completePromptSuppressesPinned
+            && observedProjectionRevision === projectionRevision
               ? finalPinnedContribution({
                   ...result,
                   sections: [],
@@ -500,7 +504,11 @@ export function installAgentPinnedSkillRuntime(
   return Object.freeze({
     async prepareRequestSeries(): Promise<boolean> {
       if (disposed) return false
-      if (projectionDirty) await refreshFinalContribution()
+      while (observedProjectionRevision !== projectionRevision) {
+        const revision = projectionRevision
+        await refreshFinalContribution(revision)
+        if (disposed) return false
+      }
       const signature = observedRequestSignature
       if (signature === undefined) {
         pendingRequestSignature = undefined
