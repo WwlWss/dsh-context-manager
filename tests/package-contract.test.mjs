@@ -94,6 +94,19 @@ test('built host entry does not import or bundle optional DSH runtime packages',
 })
 
 
+test('generated M6A Host Typert surface stays isolated from M2-M5 services', async () => {
+  const host = await import(pathToFileURL(fromRoot(packageJson.exports['./typert'].default)).href)
+  assert.equal(host.TYPERT.package, 'dsh-context-manager')
+  assert.equal(host.TYPERT.face, 'host')
+  assert.deepEqual(
+    host.TYPERT.model.services.map(service => service.key),
+    ['dshContextRemote'],
+  )
+  assert.deepEqual(host.TYPERT.model.events, [])
+  assert.equal(host.TYPERT.invocations.length, 1)
+  assert.equal(host.TYPERT.invocations[0].service, 'dshContextRemote')
+})
+
 test('generated M6A Remote contribution is strict and contains only protocol()', async () => {
   const remote = await import(pathToFileURL(fromRoot(packageJson.exports['./remote'].default)).href)
   const contribution = remote.TYPERT_REMOTE
