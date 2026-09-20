@@ -38,9 +38,13 @@ contextManager.protocol()
 
 ## Build topology
 
-Typert package-mode generation requires a workspace Host aggregate named `tsconfig.host.json`. The repository therefore gains a Host aggregate while preserving the existing `tsconfig.json` as the normal local typecheck surface.
+The public Typert analyzer intentionally discovers package registrations only below `<workspace>/packages/*`. Context Manager is a standalone repository whose published package is the repository root, so neither package-mode nor workspace-mode tsdown artifact emission can register the root package directly.
 
-Both normal build and git-install `prepare` run the Typert tsdown plugin in workspace/host mode. Context Manager is a standalone single-package repository whose package root is also the Typert workspace root; upstream package mode intentionally searches only below the workspace root, so workspace mode is the correct public generator path here. A successful build must emit:
+M6A therefore keeps the upstream tsdown transform only for standard-decorator lowering and runs an explicit post-bundle generator script. That script creates a short-lived `.typert-workspace-*/packages/dsh-context-manager` workspace, copies the exact production `src/service/remote.ts` bytes as its only source, invokes the public `WorkspaceTypertGenerator`, copies the generated Host/Remote artifacts into root `lib/`, and deletes the temporary workspace in `finally`.
+
+This is an isolation adapter, not a second Remote contract: there is no separately maintained service/method declaration. It also prevents the first Typert opt-in from accidentally publishing the existing M2-M5 Cordis Services as reflection surface.
+
+Both normal build and git-install `prepare` run the same generator script. A successful build must emit:
 
 ```text
 lib/typert.host.js
@@ -84,6 +88,7 @@ Likewise, M6A adds no Remote event. Retained 0.1.1 has no Gateway Remote-event s
 - the contribution contains exactly the M6A `contextManager/protocol` endpoint;
 - the strict descriptor names service, namespace, method, implementation, direct invocation, zero parameters, and a strict result codec;
 - the Host entry exports the Remote service and protocol DTO type;
+- the generated Host reflection surface contains only `dshContextRemote` and the one M6A invocation, not M2-M5 Host services;
 - git-install `prepare` emits the same runtime + Typert artifacts from a clean `lib/`.
 
 ### Retained DSH runtime matrix
