@@ -117,3 +117,72 @@ test('retire without admitted state removes the guard without leaving a fence', 
   await fiber.dispose()
   await root.fiber.dispose()
 })
+
+
+test('force() fences the next accepted enter and survives a reject', async () => {
+  const root = new Context()
+  const fiber = root.plugin(ContextManagerRequestSeries)
+  await fiber
+  const { agent, fiber: agentFiber } = fakeAgent(root)
+
+  const stop = root.dshContextRequestSeries.register(
+    agent,
+    () => false,
+    () => false,
+  )
+  root.dshContextRequestSeries.force(agent)
+
+  let decision = await preStep(agent, { kind: 'reject' })
+  assert.deepEqual(decision, { kind: 'reject' })
+
+  decision = await preStep(agent, { kind: 'enter', messages: [] })
+  assert.deepEqual(decision, {
+    kind: 'enter',
+    messages: [],
+    startsRequestSeries: true,
+  })
+
+  decision = await preStep(agent, { kind: 'enter', messages: [] })
+  assert.deepEqual(decision, { kind: 'enter', messages: [] })
+
+  stop()
+  await agentFiber.dispose()
+  await fiber.dispose()
+  await root.fiber.dispose()
+})
+
+test('authoritative Context Manager, Skill, and SystemPrompt changes fence the next request once', async () => {
+  const root = new Context()
+  const fiber = root.plugin(ContextManagerRequestSeries)
+  await fiber
+  const { agent, fiber: agentFiber } = fakeAgent(root)
+
+  const stop = root.dshContextRequestSeries.register(
+    agent,
+    () => false,
+    () => false,
+  )
+
+  for (const event of [
+    'dsh-context-manager/change',
+    'skills/change',
+    'system-prompt/change',
+  ]) {
+    root.emit(event)
+
+    let decision = await preStep(agent, { kind: 'enter', messages: [] })
+    assert.deepEqual(decision, {
+      kind: 'enter',
+      messages: [],
+      startsRequestSeries: true,
+    })
+
+    decision = await preStep(agent, { kind: 'enter', messages: [] })
+    assert.deepEqual(decision, { kind: 'enter', messages: [] })
+  }
+
+  stop()
+  await agentFiber.dispose()
+  await fiber.dispose()
+  await root.fiber.dispose()
+})
