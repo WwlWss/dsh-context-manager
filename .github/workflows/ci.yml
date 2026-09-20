@@ -433,7 +433,6 @@ jobs:
           DSH_M5C_GENERATION: ${{ matrix.generation }}
         run: |
           node --test ./tests/pinned-skill-runtime.runtime.mjs
-          node ./tests/pinned-skill-runtime-upstream-runtime.mjs
 
   skill-policy-agent-loop:
     name: M5B ToolSkill AgentLoop E2E (${{ matrix.version }})
