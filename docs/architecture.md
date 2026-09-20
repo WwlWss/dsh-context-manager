@@ -219,6 +219,14 @@ Settings should primarily store small bindings, order, enablement, references, a
 
 DSH Settings' in-process revision queue is not a cross-process transaction protocol. When multiple DSH processes share one provider/document, convergence and same-namespace conflicts remain provider-defined.
 
+## Host Remote boundary
+
+M6 begins by adding a dedicated Host Remote projection layer rather than decorating the existing Domain/runtime services directly. The Remote owner may call those services, but browser transport shape, redaction, revision tokens, and machine-readable failures remain boundary concerns.
+
+M6A publishes only the strict generated Typert contract for `contextManager.protocol()`. The package opts into `./typert` and `./remote`, but still publishes no `./client` face. Generated descriptors are part of the package contract; Gateway SRC fallback is development compatibility only and is not accepted as proof that a shipped endpoint has a stable browser contract.
+
+The authoring baseline is the oldest retained Typert generation. The same generated artifact is runtime-tested against every retained DSH generation so later Hosts cannot silently require a different package artifact.
+
 ## Host and Web client boundary
 
 Follow the DSH data direction:
