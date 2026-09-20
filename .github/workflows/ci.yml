@@ -569,7 +569,7 @@ jobs:
             @deepseek-ai/dsh-typert-registry@${{ matrix.version }} \
             @deepseek-ai/dsh-api-gateway@${{ matrix.version }}
       - name: Compile the generated Client Remote declaration
-        run: pnpm exec tsc --noEmit --strict --skipLibCheck false --target ES2024 --module NodeNext --moduleResolution NodeNext ./tests/remote-foundation-upstream-contract.ts
+        run: pnpm exec tsc --ignoreConfig --noEmit --strict --skipLibCheck false --target ES2024 --module NodeNext --moduleResolution NodeNext ./tests/remote-foundation-upstream-contract.ts
       - name: Run real strict Registry/Gateway M6A behavior
         run: node ./tests/remote-foundation-upstream-runtime.mjs
 
