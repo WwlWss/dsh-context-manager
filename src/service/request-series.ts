@@ -25,6 +25,13 @@ interface PreStepContext {
   ): () => void
 }
 
+interface RuntimeInvalidationContext {
+  on(
+    event: 'dsh-context-manager/change' | 'skills/change' | 'system-prompt/change',
+    listener: () => void,
+  ): () => void
+}
+
 interface SeriesEntry {
   readonly guards: Set<() => boolean>
   readonly stop: () => void
@@ -81,9 +88,10 @@ export class ContextManagerRequestSeries extends Service {
       const forceAll = () => {
         for (const entry of this.entries.values()) entry.forceNext = true
       }
-      const stopContextManager = ctx.on('dsh-context-manager/change', forceAll)
-      const stopSkills = ctx.on('skills/change', forceAll)
-      const stopSystemPrompt = ctx.on('system-prompt/change', forceAll)
+      const invalidation = ctx as unknown as RuntimeInvalidationContext
+      const stopContextManager = invalidation.on('dsh-context-manager/change', forceAll)
+      const stopSkills = invalidation.on('skills/change', forceAll)
+      const stopSystemPrompt = invalidation.on('system-prompt/change', forceAll)
 
       return () => {
         stopSystemPrompt()
