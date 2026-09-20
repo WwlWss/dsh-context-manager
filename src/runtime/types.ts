@@ -132,7 +132,7 @@ export type SkillRuntimeBindingInspection =
       readonly state: 'policy-not-effective'
       readonly skillName: string
       readonly mode: 'manual' | 'off' | 'pinned'
-      readonly nativeProvider: string
+      readonly nativeProvider?: string
       readonly expectedInvocation: SkillRuntimeInvocation
       readonly winner?: SkillRuntimeWinner
     }
