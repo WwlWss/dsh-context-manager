@@ -18,7 +18,7 @@ function scopedSkills(ctx) {
 function candidate(provider, name, invocation, content, rank = 0) {
   return {
     name,
-    description: \`\${name} description\`,
+    description: `${name} description`,
     invocation,
     source: 'custom',
     provider,
@@ -113,7 +113,7 @@ function mintAgent(root, id, parentKey) {
     ctx: undefined,
     session: {
       header: {
-        cwd: \`/workspace/\${id}\`,
+        cwd: `/workspace/${id}`,
       },
     },
   }
