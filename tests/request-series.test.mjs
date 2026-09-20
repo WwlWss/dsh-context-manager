@@ -325,7 +325,7 @@ test('signature baseline advances only after durable request/header admission', 
   await root.fiber.dispose()
 })
 
-test('external force and same-request signature change coalesce into one admitted boundary', async () => {
+test('explicit force and same-request signature change coalesce into one admitted boundary', async () => {
   const root = new Context()
   const fiber = root.plugin(ContextManagerRequestSeries)
   await fiber
@@ -342,7 +342,7 @@ test('external force and same-request signature change coalesce into one admitte
     () => admitted !== 'empty',
   )
 
-  root.emit('skills/change')
+  root.dshContextRequestSeries.force(agent)
   observed = 'new'
 
   let decision = await preStep(agent, { kind: 'enter', messages: [{ role: 'user' }] })
