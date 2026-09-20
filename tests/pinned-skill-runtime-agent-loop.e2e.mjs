@@ -77,6 +77,15 @@ const toolCallId = 'ToolCallId' in Llm ? Llm.ToolCallId : Llm.CallId
 
 class RecordingAdapter extends Llm.LlmAdapter {
   requests = []
+  failNextPrepare = false
+
+  async prepareCall(provider, model, signal) {
+    if (this.failNextPrepare) {
+      this.failNextPrepare = false
+      throw new Error('M5C_E2E_PREPARE_FAILURE')
+    }
+    return await super.prepareCall(provider, model, signal)
+  }
 
   resolveModel(provider, model) {
     return Promise.resolve({
@@ -266,6 +275,16 @@ try {
   assert.equal(count(text, state.body), 1)
 
   state.body = 'M5C_E2E_BODY_V2 {{still_literal}}'
+  if (generation === 'current') {
+    const requestsBeforeFailure = adapter.requests.length
+    adapter.failNextPrepare = true
+    await turn(ctx, agent, 'provider body changed but prepare fails')
+    assert.equal(
+      adapter.requests.length,
+      requestsBeforeFailure,
+      'prepareCall failure must not dispatch or admit the new pinned baseline',
+    )
+  }
   await turn(ctx, agent, 'provider body changed')
   text = requestText(adapter.requests.at(-1))
   assert.equal(text.includes('M5C_E2E_BODY_V1'), false)

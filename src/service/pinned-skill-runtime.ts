@@ -65,8 +65,9 @@ export class ContextManagerPinnedSkillRuntime extends Service {
             try {
               stopSeries = runtimeCtx.dshContextRequestSeries.register(
                 agent,
-                () => installed.admitRequestSeries(),
-                () => installed.admittedContributionPresent,
+                () => installed.prepareRequestSeries(),
+                () => installed.commitRequestSeries(),
+                () => installed.retireRequestSeries(),
               )
               // The first request after attach/resume must reconcile any
               // persisted in-history system-prompt state from an earlier

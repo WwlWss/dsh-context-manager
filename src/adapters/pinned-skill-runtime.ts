@@ -333,21 +333,20 @@ export async function inspectAgentPinnedSkillRuntime(
 
 export interface AgentPinnedSkillRuntime {
   /**
-   * Admit the final pinned contribution observed for the current real request.
+   * Capture the final pinned contribution observed for the current real request.
    *
-   * Returns true when a previously established final contribution changed.
-   * Initial attach/resume fencing is owned by ContextManagerRequestSeries.force()
-   * so the first observed signature becomes the process-local baseline rather
-   * than causing a redundant second-turn restart.
+   * This is proposal state only. The admitted baseline is not advanced until
+   * commitRequestSeries() observes DSH's durable request/header publication.
    */
-  admitRequestSeries(): boolean
+  prepareRequestSeries(): boolean
+  /** Promote the prepared contribution after native request admission commits. */
+  commitRequestSeries(): void
   /**
-   * Whether the last completed real request assembly contained a CM pinned
-   * slot. Used during teardown so a longer-lived request-series owner can
-   * reconcile a contribution even when the runtime retires immediately after
-   * its first request.
+   * Whether teardown must leave a later reconciliation fence. Pending real
+   * request state is included because a contribution may retire after pre-step
+   * but before request/header.
    */
-  readonly admittedContributionPresent: boolean
+  retireRequestSeries(): boolean
   dispose(): void
 }
 
@@ -366,6 +365,8 @@ export function installAgentPinnedSkillRuntime(
   const disposers: Array<() => void> = []
   let observedRequestSignature: string | undefined
   let observedRequestContributionPresent = false
+  let pendingRequestSignature: string | undefined
+  let pendingRequestContributionPresent = false
   let admittedRequestSignature: string | undefined
   let admittedContributionPresent = false
 
@@ -426,24 +427,33 @@ export function installAgentPinnedSkillRuntime(
 
   let disposed = false
   return Object.freeze({
-    admitRequestSeries(): boolean {
+    prepareRequestSeries(): boolean {
       if (disposed) return false
       const signature = observedRequestSignature
-      if (signature === undefined) return false
-
-      if (admittedRequestSignature === undefined) {
-        admittedRequestSignature = signature
-        admittedContributionPresent = observedRequestContributionPresent
+      if (signature === undefined) {
+        pendingRequestSignature = undefined
+        pendingRequestContributionPresent = false
         return false
       }
 
-      const changed = admittedRequestSignature !== signature
-      admittedRequestSignature = signature
-      admittedContributionPresent = observedRequestContributionPresent
-      return changed
+      pendingRequestSignature = signature
+      pendingRequestContributionPresent = observedRequestContributionPresent
+      return admittedRequestSignature !== undefined
+        && admittedRequestSignature !== signature
     },
-    get admittedContributionPresent(): boolean {
+    commitRequestSeries(): void {
+      const signature = pendingRequestSignature
+      if (signature === undefined) return
+
+      admittedRequestSignature = signature
+      admittedContributionPresent = pendingRequestContributionPresent
+      pendingRequestSignature = undefined
+      pendingRequestContributionPresent = false
+    },
+    retireRequestSeries(): boolean {
       return admittedContributionPresent
+        || pendingRequestContributionPresent
+        || observedRequestContributionPresent
     },
     dispose(): void {
       if (disposed) return

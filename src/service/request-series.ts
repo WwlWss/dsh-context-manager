@@ -22,6 +22,14 @@ interface PreStepContext {
       request: unknown,
       next: () => Promise<unknown>,
     ) => Promise<unknown> | unknown,
+    options?: { readonly prepend?: boolean },
+  ): () => void
+}
+
+interface SessionEventContext {
+  on(
+    event: 'session/event',
+    listener: (session: unknown, event: unknown) => void,
   ): () => void
 }
 
@@ -32,10 +40,23 @@ interface RuntimeInvalidationContext {
   ): () => void
 }
 
+interface RequestSeriesContributor {
+  readonly guard: () => boolean
+  readonly commit: () => void
+  readonly retire: () => boolean
+}
+
+interface PendingAdmission {
+  readonly forceRevision: number
+  readonly commits: readonly (() => void)[]
+}
+
 interface SeriesEntry {
-  readonly guards: Set<() => boolean>
+  readonly contributors: Set<RequestSeriesContributor>
   readonly stop: () => void
-  forceNext: boolean
+  forceRevision: number
+  admittedForceRevision: number
+  pendingAdmission?: PendingAdmission
 }
 
 function isEnterDecision(value: unknown): value is {
@@ -48,6 +69,11 @@ function isEnterDecision(value: unknown): value is {
   return candidate.kind === 'enter' && Array.isArray(candidate.messages)
 }
 
+function isRequestHeaderEvent(value: unknown): boolean {
+  if (typeof value !== 'object' || value === null) return false
+  return (value as Record<string, unknown>).type === 'request/header'
+}
+
 function lifecycleAgent(payload: unknown): RuntimeAgent | undefined {
   if (typeof payload !== 'object' || payload === null) return undefined
   const agent = (payload as Record<string, unknown>).agent
@@ -58,15 +84,17 @@ function lifecycleAgent(payload: unknown): RuntimeAgent | undefined {
   return agent as RuntimeAgent
 }
 
+function forceEntry(entry: SeriesEntry): void {
+  entry.forceRevision += 1
+}
+
 /**
  * Process-local owner for one-shot native request-series fences.
  *
- * The service deliberately owns no prompt, Skill, or Session content. A
- * contributor registers a small guard while active. If that contributor
- * disappears after it had admitted model-visible state, one pending fence can
- * outlive the contributor until the Agent's next real pre-step. DSH then
- * reconciles its own in-history system-prompt nodes without Context Manager
- * writing Session surface events directly.
+ * A pre-step enter is only a proposal: DSH still resolves agent/request and
+ * prepareCall before committing model-visible prompt state. The coordinator
+ * therefore records a pending boundary at pre-step and consumes it only after
+ * the same Agent publishes a durable request/header Session event.
  */
 export class ContextManagerRequestSeries extends Service {
   private readonly entries = new Map<RuntimeAgent, SeriesEntry>()
@@ -82,11 +110,11 @@ export class ContextManagerRequestSeries extends Service {
         this.drop(agent)
       })
 
-      // These notifications only fence the next native request series. They do
-      // not invalidate SkillRegistry or prompt providers, so there is no
+      // These notifications only request a future native series boundary. They
+      // do not invalidate SkillRegistry or prompt providers, so there is no
       // skills/change <-> Context Manager invalidation loop.
       const forceAll = () => {
-        for (const entry of this.entries.values()) entry.forceNext = true
+        for (const entry of this.entries.values()) forceEntry(entry)
       }
       const invalidation = ctx as unknown as RuntimeInvalidationContext
       const stopContextManager = invalidation.on('dsh-context-manager/change', forceAll)
@@ -108,49 +136,77 @@ export class ContextManagerRequestSeries extends Service {
     if (existing !== undefined) return existing
 
     const entry = {
-      guards: new Set<() => boolean>(),
-      forceNext: false,
+      contributors: new Set<RequestSeriesContributor>(),
+      forceRevision: 0,
+      admittedForceRevision: 0,
       stop: () => {},
     } as SeriesEntry
 
-    const stop = (agent.ctx as unknown as PreStepContext).on(
+    // Prepend so this wrapper observes the final downstream pre-step decision.
+    // It still does not call a proposal "admitted": only request/header below
+    // advances contributor baselines or consumes a pending force revision.
+    const stopPreStep = (agent.ctx as unknown as PreStepContext).on(
       'agent/pre-step',
       async (_request, next) => {
         const decision = await next()
         if (!isEnterDecision(decision)) return decision
-        // An empty enter does not admit a model request in AgentLoop, so it
-        // must not consume a one-shot reconciliation fence or advance a
-        // contributor's per-request baseline.
         if (decision.messages.length === 0) return decision
 
-        let force = entry.forceNext
-        entry.forceNext = false
-        for (const guard of entry.guards) {
-          if (guard()) force = true
+        const contributors = [...entry.contributors]
+        let force = entry.forceRevision > entry.admittedForceRevision
+        for (const contributor of contributors) {
+          if (contributor.guard()) force = true
         }
+        if (!force) return decision
 
-        const result = !force || decision.startsRequestSeries === true
+        entry.pendingAdmission = Object.freeze({
+          forceRevision: entry.forceRevision,
+          commits: Object.freeze(contributors.map(contributor => contributor.commit)),
+        })
+
+        return decision.startsRequestSeries === true
           ? decision
           : {
               ...decision,
               startsRequestSeries: true as const,
             }
+      },
+      { prepend: true },
+    )
 
-        // A retired contributor may leave one final fence behind. Once that
-        // fence is consumed there is no reason to retain an Agent listener or
-        // let later unrelated invalidations recreate boundaries.
-        if (entry.guards.size === 0 && !entry.forceNext) this.drop(agent)
-        return result
+    const stopSession = (agent.ctx as unknown as SessionEventContext).on(
+      'session/event',
+      (_session, event) => {
+        if (!isRequestHeaderEvent(event)) return
+        const pending = entry.pendingAdmission
+        if (pending === undefined) return
+
+        entry.pendingAdmission = undefined
+        entry.admittedForceRevision = Math.max(
+          entry.admittedForceRevision,
+          pending.forceRevision,
+        )
+        for (const commit of pending.commits) commit()
+
+        if (
+          entry.contributors.size === 0
+          && entry.forceRevision <= entry.admittedForceRevision
+        ) {
+          this.drop(agent)
+        }
       },
     )
 
     const installed: SeriesEntry = {
-      guards: entry.guards,
-      forceNext: false,
-      stop,
+      contributors: entry.contributors,
+      forceRevision: 0,
+      admittedForceRevision: 0,
+      stop: () => {
+        stopSession()
+        stopPreStep()
+      },
     }
-    // The listener closes over `entry`, so keep one mutable object rather
-    // than replacing it after installation.
+    // Both listeners close over entry, so retain one mutable identity.
     Object.assign(entry, installed)
     this.entries.set(agent, entry)
     return entry
@@ -164,37 +220,48 @@ export class ContextManagerRequestSeries extends Service {
   }
 
   /**
-   * Force one live Agent's next accepted pre-step to start a native request
-   * series. The flag survives rejected pre-steps and is consumed only by an
-   * enter decision.
+   * Force one live Agent's next admitted request to start a native request
+   * series. Rejected/empty pre-steps and failures before request/header do not
+   * consume the boundary.
    */
   force(agent: RuntimeAgent): void {
-    this.ensure(agent).forceNext = true
+    forceEntry(this.ensure(agent))
   }
 
   /**
-   * Register one Agent-local request-series guard.
+   * Register one Agent-local request-series contributor.
    *
-   * The retire callback runs exactly once on unregister. Returning true leaves
-   * a one-shot fence behind after the contributor itself has disappeared.
+   * guard() is evaluated after downstream pre-step listeners accept a non-empty
+   * proposal. commit() runs only after DSH durably publishes request/header for
+   * that fenced request. retire() runs exactly once on unregister; returning
+   * true leaves a later one-shot fence after the contributor disappears.
    */
   register(
     agent: RuntimeAgent,
     guard: () => boolean,
+    commit: () => void,
     retire: () => boolean,
   ): () => void {
     const entry = this.ensure(agent)
-    entry.guards.add(guard)
+    const contributor = Object.freeze({ guard, commit, retire })
+    entry.contributors.add(contributor)
 
     let active = true
     return () => {
       if (!active) return
       active = false
-      entry.guards.delete(guard)
-      if (retire()) entry.forceNext = true
-      // Keep an empty entry while a one-shot fence is pending. Otherwise no
-      // contributor needs this Agent listener anymore.
-      if (entry.guards.size === 0 && !entry.forceNext) this.drop(agent)
+      entry.contributors.delete(contributor)
+      if (retire()) forceEntry(entry)
+
+      // A force created after a proposal was prepared must survive that
+      // proposal's later request/header acknowledgement. The revision captured
+      // in PendingAdmission makes this exact instead of clearing a boolean.
+      if (
+        entry.contributors.size === 0
+        && entry.forceRevision <= entry.admittedForceRevision
+      ) {
+        this.drop(agent)
+      }
     }
   }
 }
