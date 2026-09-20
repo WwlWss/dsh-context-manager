@@ -74,7 +74,21 @@ export class ContextManagerRequestSeries extends Service {
         if (agent === undefined) return
         this.drop(agent)
       })
+
+      // These notifications only fence the next native request series. They do
+      // not invalidate SkillRegistry or prompt providers, so there is no
+      // skills/change <-> Context Manager invalidation loop.
+      const forceAll = () => {
+        for (const entry of this.entries.values()) entry.forceNext = true
+      }
+      const stopContextManager = ctx.on('dsh-context-manager/change', forceAll)
+      const stopSkills = ctx.on('skills/change', forceAll)
+      const stopSystemPrompt = ctx.on('system-prompt/change', forceAll)
+
       return () => {
+        stopSystemPrompt()
+        stopSkills()
+        stopContextManager()
         stopDisposed()
         for (const agent of [...this.entries.keys()]) this.drop(agent)
       }
@@ -128,6 +142,15 @@ export class ContextManagerRequestSeries extends Service {
     if (entry === undefined) return
     this.entries.delete(agent)
     entry.stop()
+  }
+
+  /**
+   * Force one live Agent's next accepted pre-step to start a native request
+   * series. The flag survives rejected pre-steps and is consumed only by an
+   * enter decision.
+   */
+  force(agent: RuntimeAgent): void {
+    this.ensure(agent).forceNext = true
   }
 
   /**
