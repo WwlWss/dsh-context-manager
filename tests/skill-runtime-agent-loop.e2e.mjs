@@ -1,11 +1,7 @@
 import assert from 'node:assert/strict'
 
 import { Context, Service } from '@deepseek-ai/cordis'
-import LlmRuntime, {
-  LlmAdapter,
-  ToolCallId,
-  createUserMessage,
-} from '@deepseek-ai/dsh-llm'
+import LlmRuntime, * as Llm from '@deepseek-ai/dsh-llm'
 import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
@@ -73,7 +69,10 @@ function response(text = 'ok') {
   ]
 }
 
-class RecordingAdapter extends LlmAdapter {
+const createUserMessage = Llm.createUserMessage
+const toolCallId = 'ToolCallId' in Llm ? Llm.ToolCallId : Llm.CallId
+
+class RecordingAdapter extends Llm.LlmAdapter {
   requests = []
 
   resolveModel(provider, model) {
@@ -129,7 +128,7 @@ function setMode(ctx, mode) {
 async function executeSkill(ctx, agent, suffix) {
   return await ctx.tools.execute({
     signal: new AbortController().signal,
-    callId: ToolCallId(`m5b-${suffix}`),
+    callId: toolCallId(`m5b-${suffix}`),
     name: 'skill',
     arguments: { name: 'target' },
     agent,
