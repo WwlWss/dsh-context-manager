@@ -93,5 +93,5 @@ M6A is complete only when:
 3. the generated endpoint is strict, not SRC fallback;
 4. one packed M6A artifact is registered and invoked through the real published Typert Registry/Gateway on all five retained DSH generations;
 5. the strict result codec rejects an invalid result in the compatibility fixture;
-6. disposal withdraws the strict descriptor and reload restores it;
+6. disposal withdraws the strict descriptor, the Gateway fails the previously strict endpoint closed instead of downgrading to SRC, and reload restores it;
 7. no Client bundle, browser-side source of truth, arbitrary Host path, profile mutation, or M8 effective-context preview is introduced.
