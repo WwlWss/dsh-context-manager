@@ -7,6 +7,7 @@ import { ContextManagerPinnedSkillRuntime } from './service/pinned-skill-runtime
 import { ContextManagerPromptLibrary } from './service/prompt-library.js'
 import { ContextManagerPromptPlacementCapability } from './service/prompt-placement.js'
 import { ContextManagerPromptRuntime } from './service/prompt-runtime.js'
+import { ContextManagerRequestSeries } from './service/request-series.js'
 import { ContextManagerSessionPresetIdentity } from './service/session-preset.js'
 import { ContextManagerSkillRuntime } from './service/skill-runtime.js'
 
@@ -56,6 +57,7 @@ export { ContextManagerPinnedSkillRuntime } from './service/pinned-skill-runtime
 export { ContextManagerPromptLibrary } from './service/prompt-library.js'
 export { ContextManagerPromptPlacementCapability } from './service/prompt-placement.js'
 export { ContextManagerPromptRuntime } from './service/prompt-runtime.js'
+export { ContextManagerRequestSeries } from './service/request-series.js'
 export { ContextManagerSessionPresetIdentity } from './service/session-preset.js'
 export { ContextManagerSkillRuntime } from './service/skill-runtime.js'
 
@@ -69,6 +71,7 @@ export function apply(ctx: Context): void {
   ctx.plugin(ContextManagerPromptLibrary)
   ctx.plugin(ContextManagerPromptPlacementCapability)
   ctx.plugin(ContextManagerPromptRuntime)
+  ctx.plugin(ContextManagerRequestSeries)
   ctx.plugin(ContextManagerSkillRuntime)
   ctx.plugin(ContextManagerPinnedSkillRuntime)
   ctx.logger('dsh-context-manager').info('Context Manager Host services loaded')
