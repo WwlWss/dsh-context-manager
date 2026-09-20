@@ -15,8 +15,9 @@ function scopedSkills(ctx) {
   return skills
 }
 
-function candidate(provider, name, invocation, content, rank = 0) {
+function candidate(provider, name, invocation, content, rank = 0, extra = {}) {
   return {
+    ...extra,
     name,
     description: `${name} description`,
     invocation,
@@ -237,6 +238,41 @@ test('M5B runtime preserves Auto, shadows managed modes, and keeps discovery bod
   stopNative()
   await current.scope.dispose()
   await preset.dispose()
+  await root.fiber.dispose()
+})
+
+test('M5B proxy preserves native summary metadata exposed by the Host generation', async () => {
+  const root = new Context()
+  await root.plugin(SkillRegistry)
+
+  const stopNative = scopedSkills(root).registerProvider(() =>
+    provider('native-provider', [
+      candidate('native-provider', 'target', {
+        modelInvocable: true,
+        userInvocable: true,
+      }, 'body', 0, {
+        path: '/skills/target/SKILL.md',
+        resourceBase: { kind: 'file', path: '/skills/target' },
+      }),
+    ]),
+  )
+
+  const current = mintAgent(root, 'agent-summary')
+  const state = {
+    presetId: 'standard',
+    skills: { target: 'manual' },
+  }
+  const runtime = await bootRuntime(root, [current.agent], state)
+
+  const winner = (await scopedSkills(root).snapshot({ scope: current.agent }))
+    .skills.find(skill => skill.name === 'target')
+  assert.equal(winner?.provider, CM_PROVIDER)
+  assert.equal(winner?.path, '/skills/target/SKILL.md')
+  assert.deepEqual(winner?.resourceBase, { kind: 'file', path: '/skills/target' })
+
+  await runtime.fiber.dispose()
+  stopNative()
+  await current.scope.dispose()
   await root.fiber.dispose()
 })
 
