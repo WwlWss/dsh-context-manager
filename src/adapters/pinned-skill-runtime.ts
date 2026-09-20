@@ -443,7 +443,7 @@ export function installAgentPinnedSkillRuntime(
       return changed
     },
     get admittedContributionPresent(): boolean {
-      return observedRequestContributionPresent
+      return admittedContributionPresent
     },
     dispose(): void {
       if (disposed) return
