@@ -183,6 +183,12 @@ export type PinnedSkillBindingInspection =
       readonly skillName: string
       readonly nativeProvider: string
     }
+  | {
+      readonly state: 'policy-not-effective'
+      readonly skillName: string
+      readonly nativeProvider: string
+      readonly winnerProvider?: string
+    }
 
 export type PinnedSkillRuntimeNativeState =
   | 'empty'
