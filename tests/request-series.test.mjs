@@ -231,7 +231,7 @@ test('empty enter does not consume a pending request-series fence or guard basel
 })
 
 
-test('external authority fence acknowledges the request contribution without a redundant second boundary', async () => {
+test('current assembly signature change fences the same accepted request', async () => {
   const root = new Context()
   const fiber = root.plugin(ContextManagerRequestSeries)
   await fiber
@@ -249,18 +249,13 @@ test('external authority fence acknowledges the request contribution without a r
     () => admitted !== 'empty',
   )
 
-  root.emit('dsh-context-manager/change')
-
+  // AgentLoop assembles before dispatching agent/pre-step. Simulate that exact
+  // ordering: the current request's new contribution is already observable
+  // when the guard runs.
+  observed = 'new'
   let decision = await preStep(agent, { kind: 'enter', messages: [{ role: 'user' }] })
   assert.equal(decision.startsRequestSeries, true)
-
-  // Simulate the request assembly that follows this pre-step observing the
-  // authoritative new pinned contribution.
-  observed = 'new'
-
-  decision = await preStep(agent, { kind: 'enter', messages: [{ role: 'user' }] })
-  assert.equal(decision.startsRequestSeries, undefined)
-  assert.equal(admitted, 'new', 'the guard baseline still advances while acknowledged')
+  assert.equal(admitted, 'new')
 
   decision = await preStep(agent, { kind: 'enter', messages: [{ role: 'user' }] })
   assert.equal(decision.startsRequestSeries, undefined)
@@ -271,7 +266,7 @@ test('external authority fence acknowledges the request contribution without a r
   await root.fiber.dispose()
 })
 
-test('a newer external authority event during acknowledgement still creates its own boundary', async () => {
+test('external force and same-request signature change coalesce into one boundary', async () => {
   const root = new Context()
   const fiber = root.plugin(ContextManagerRequestSeries)
   await fiber
@@ -290,21 +285,17 @@ test('a newer external authority event during acknowledgement still creates its 
   )
 
   root.emit('skills/change')
+  // The authoritative event caused the force flag, and the assembly that
+  // follows observes the same change before pre-step.
+  observed = 'new'
+
   let decision = await preStep(agent, { kind: 'enter', messages: [{ role: 'user' }] })
   assert.equal(decision.startsRequestSeries, true)
+  assert.equal(admitted, 'new')
 
-  observed = 'first-new'
-  // A second authority change happens before the acknowledgement pre-step.
-  root.emit('system-prompt/change')
-
-  decision = await preStep(agent, { kind: 'enter', messages: [{ role: 'user' }] })
-  assert.equal(decision.startsRequestSeries, true)
-  assert.equal(admitted, 'first-new')
-
-  observed = 'second-new'
+  // No duplicate boundary remains on the following request.
   decision = await preStep(agent, { kind: 'enter', messages: [{ role: 'user' }] })
   assert.equal(decision.startsRequestSeries, undefined)
-  assert.equal(admitted, 'second-new')
 
   stop()
   await agentFiber.dispose()
