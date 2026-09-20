@@ -328,6 +328,66 @@ test('M5C follows dynamic parent rebind and ignores Agent-local same-name Skills
   await root.fiber.dispose()
 })
 
+test('M5C fails closed when Pinned changes to Off during async catalog resolution', async () => {
+  const root = new Context()
+  await installBase(root)
+
+  const started = Promise.withResolvers()
+  const release = Promise.withResolvers()
+  let blockFirstList = true
+  const stopNative = scopedSkills(root).registerProvider(() => ({
+    name: 'race-provider',
+    async list() {
+      if (blockFirstList) {
+        blockFirstList = false
+        started.resolve()
+        await release.promise
+      }
+      return [candidate('race-provider', 'target', 'STALE_PINNED_BODY')]
+    },
+    async get(selected) {
+      return {
+        name: selected.name,
+        description: selected.description,
+        invocation: selected.invocation,
+        source: selected.source,
+        provider: selected.provider,
+        content: selected.locator.content,
+      }
+    },
+  }))
+
+  const current = mintAgent(root, 'agent-profile-race')
+  const state = {
+    presetId: 'preset-a',
+    skills: { target: 'pinned' },
+  }
+  const runtime = await bootRuntime(root, [current.agent], state)
+
+  const pending = assemble(root, current.agent)
+  await started.promise
+  state.skills = { target: 'off' }
+  root.emit('dsh-context-manager/change')
+  release.resolve()
+
+  const assembly = await pending
+  const text = renderPrompt(assembly)
+  assert.equal(text.includes('STALE_PINNED_BODY'), false)
+  assert.equal(assembly.sections.some(section => section.name === SLOT), false)
+  assert.equal(assembly.variables[VARIABLE], '')
+
+  const inspected = await runtime.runtime.inspect('agent-profile-race')
+  assert.equal(inspected.status, 'resolved')
+  assert.equal(inspected.profile.status, 'active')
+  assert.deepEqual(inspected.bindings, [])
+  assert.equal(inspected.nativeState, 'empty')
+
+  await runtime.dispose()
+  stopNative()
+  await current.scope.dispose()
+  await root.fiber.dispose()
+})
+
 test('M5C incomplete catalog injects no partial body and does no native get()', async () => {
   const root = new Context()
   await installBase(root)
