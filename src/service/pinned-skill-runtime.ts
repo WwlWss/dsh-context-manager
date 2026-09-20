@@ -66,7 +66,7 @@ export class ContextManagerPinnedSkillRuntime extends Service {
               stopSeries = runtimeCtx.dshContextRequestSeries.register(
                 agent,
                 () => installed.admitRequestSeries(),
-                () => installed.admittedAnyRequest,
+                () => installed.admittedContributionPresent,
               )
             } catch (error) {
               installed.dispose()
