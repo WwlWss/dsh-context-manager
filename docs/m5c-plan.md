@@ -16,7 +16,11 @@ The earlier roadmap intentionally left the exact Session/Surface/`agent/pre-step
 
 Therefore M5C uses one Agent-scoped, Context-Manager-owned **system-prompt replacement slot**. The slot is registered once and starts empty. Every native prompt assembly re-resolves the current effective profile and parent native Skill view, then replaces that slot with the current pinned bundle or removes it from the assembly.
 
-This gives the required replacement/clear semantics without writing repeated pinned bodies into durable Session history.
+For routes that support DSH's `systemPromptUpdate: 'in-history'`, changing a non-empty assembled prompt can otherwise append a newer complete system message after the cached history while leaving the older one on the Session surface. M5C therefore fingerprints the **final CM-owned pinned contribution** after the prompt waterfall with SHA-256 and wraps `agent/pre-step`. When that fingerprint differs from the last admitted request, the wrapper preserves the downstream decision/messages and adds `startsRequestSeries: true`. Native `SystemPromptProjection` then consolidates the system-prompt surface: old active system nodes are cleared and the head is replaced with the current complete prompt.
+
+The first admitted request after attaching/re-attaching M5C also starts a fresh series, so a resumed Session does not depend on process-local knowledge of its prior pinned state. Only the fingerprint is retained between steps; full Skill bodies are never cached. Unchanged pinned state does not restart the request series and therefore preserves the normal KV-cache path.
+
+This gives replacement/clear semantics without writing repeated pinned bodies into durable user-message history and without accumulating stale pinned system nodes on in-history routes.
 
 ## Semantics
 
@@ -68,7 +72,7 @@ A native `complete: true` system-prompt section suppresses this slot after the c
 
 The AgentLoop passes the turn AbortSignal through `assembleContextFor(agent, signal)` on every retained generation. M5C forwards that signal to parent Skill discovery/body loading.
 
-There is no M5C cross-step cache.
+There is no M5C cross-step Skill/body cache. The only cross-step state is the SHA-256 fingerprint of the final CM-owned pinned prompt contribution used to decide whether the next accepted step must start a new request series.
 
 Caching/invalidating remains native-owned:
 - Context Manager profile state is re-read each assembly;
@@ -113,12 +117,14 @@ M5C reuses `attachAgentRuntimeBridge()`:
 Repeated steps and changes therefore behave as follows:
 
 ```text
-Pinned -> Pinned edit/provider change : next assembly replaces bundle
-Pinned -> Off/Manual/Auto             : next assembly clears bundle
-basePreset A -> B mismatch            : next assembly clears bundle
-basePreset A -> B -> A                : bundle disappears then returns
-runtime unload                        : CM slot/listener disappears
-runtime reload                        : exactly one slot/listener returns
+unchanged Pinned                       : same signature; no forced series restart
+Pinned -> Pinned edit/provider change : next assembly replaces bundle + one native consolidation
+Pinned -> Off/Manual/Auto             : next assembly clears bundle + one native consolidation
+basePreset A -> B mismatch            : next assembly clears bundle + one native consolidation
+basePreset A -> B -> A                : bundle disappears then returns, each transition consolidated
+complete prompt suppress/restore      : final slot signature changes and is consolidated
+runtime unload                        : CM slot/listeners disappear
+runtime reload/resume                 : first admitted request consolidates once, then steady state
 ```
 
 ## Planned code
@@ -132,7 +138,7 @@ src/runtime/types.ts
 src/service/pinned-skill-runtime.ts
 src/index.ts
 
-tests/pinned-skill-runtime.test.mjs
+tests/pinned-skill-runtime.runtime.mjs
 tests/pinned-skill-runtime-agent-loop.e2e.mjs
 .github/workflows/ci.yml
 
@@ -158,19 +164,20 @@ Unit/runtime:
 - definition disappearing between snapshot/get => diagnostic without stale content;
 - current assembly signal aborts in-flight body load;
 - native complete section suppresses the final slot and inspection reports that suppression;
-- repeated assemblies produce one current bundle, not accumulated messages;
+- repeated unchanged assemblies produce one current bundle without forced series restarts;
+- in-history routes consolidate old system nodes on Pinned/body/suppression changes;
 - Pinned -> Off/Manual/Auto clears on the next assembly;
 - base-preset A -> B -> A clears/restores;
 - dynamic parent rebind changes the underlying native winner;
 - provider invalidation/body change appears on next assembly;
 - unload/reload leaves no duplicate registration.
 
-Real AgentLoop E2E on oldest and newest retained lines:
+Real AgentLoop E2E on the oldest retained line, the first retained in-history line, and the newest retained line:
 - Pinned body appears in the actual model request;
 - Pinned description/native Skill catalog remains hidden by M5B;
 - `skill` tool and explicit `/skill` invocation remain disabled;
 - resource hint text comes from native `renderSkillContent()`;
-- mode changes clear/restore the body without historical duplicate accumulation in subsequent requests;
+- mode/body/suppression changes clear or replace stale pinned system nodes even with `systemPromptUpdate: 'in-history'`;
 - preset mismatch bypasses both M5B policy and M5C body injection;
 - unload restores stock behavior; reload restores one pinned bundle.
 
