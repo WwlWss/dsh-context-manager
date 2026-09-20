@@ -282,12 +282,12 @@ tsdown.config.ts
 tsdown.prepare.config.ts
 ```
 
-Expected tests/CI:
+Implemented tests/CI:
 
 ```text
 tests/skill-policy.test.mjs
 tests/skill-runtime.test.mjs
-tests/skill-policy-runtime-upstream.mjs
+tests/skill-runtime-service.test.mjs
 tests/skill-runtime-agent-loop.e2e.mjs
 .github/workflows/ci.yml
 ```
@@ -370,7 +370,7 @@ Pinned in M5B:
 
 ## 16. Exit criteria
 
-M5B is complete only when:
+M5B exit criteria (satisfied by PR #16):
 
 - Auto preserves the actual native winning policy;
 - Manual/Off/Pinned alter native model/user invocation exactly as specified;
