@@ -551,6 +551,6 @@ pnpm run check
 
 `pnpm run check` performs type checking, a clean production build, and the package/domain/runtime test suite on the committed legacy dependency set. CI adds five-generation Settings/AgentPreset/Session/Prompt/Skill-focused compatibility lanes where applicable, endpoint AgentLoop regressions, packed-bundle verification, and published DSH bundle smoke described above.
 
-The git-install `prepare` path intentionally emits only the runtime JavaScript needed for installation. Declaration generation and full type checking remain development/CI responsibilities.
+The git-install `prepare` path emits the runtime JavaScript plus the generated M6A `./typert` and `./remote` artifacts required by the declared package surface. It still skips the main-package declaration build and full type checking; those remain development/CI responsibilities. The disposable `.typert-build/` workspace is build-only and must be removed even when generation fails.
 
 For a real DSH smoke test, use the exact tested DSH version documented in [compatibility.md](compatibility.md). Do not silently substitute an unreleased source checkout and call that published compatibility.
