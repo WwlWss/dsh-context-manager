@@ -8,6 +8,13 @@ declare module '@deepseek-ai/cordis' {
   }
 }
 
+interface AgentLifecycleContext {
+  on(
+    event: 'agent/disposed',
+    listener: (payload: unknown) => void,
+  ): () => void
+}
+
 interface PreStepContext {
   on(
     event: 'agent/pre-step',
@@ -61,7 +68,8 @@ export class ContextManagerRequestSeries extends Service {
     super(ctx, 'dshContextRequestSeries')
 
     ctx.effect(() => {
-      const stopDisposed = ctx.on('agent/disposed', payload => {
+      const lifecycle = ctx as unknown as AgentLifecycleContext
+      const stopDisposed = lifecycle.on('agent/disposed', (payload: unknown) => {
         const agent = lifecycleAgent(payload)
         if (agent === undefined) return
         this.drop(agent)
