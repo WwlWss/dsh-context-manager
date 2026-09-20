@@ -2,8 +2,7 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
 import { Context } from '@deepseek-ai/cordis'
-import { agentEvents } from '@deepseek-ai/dsh-agent'
-import { createScope } from '@deepseek-ai/dsh-scope'
+import { createScope, scopeTarget } from '@deepseek-ai/dsh-scope'
 
 import { ContextManagerRequestSeries } from '../src/service/request-series.ts'
 
@@ -32,7 +31,8 @@ function scopedFakeAgent(root, id) {
 }
 
 async function preStep(agent, decision) {
-  return await agentEvents(agent.ctx, agent).waterfall(
+  return await agent.ctx.waterfall(
+    scopeTarget(agent, agent),
     'agent/pre-step',
     {},
     () => Promise.resolve(decision),
