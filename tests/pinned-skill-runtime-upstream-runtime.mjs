@@ -101,10 +101,51 @@ try {
     }),
   )
 
+  const secondAgent = {
+    id: 'm5c-five-gen-second',
+    ctx: undefined,
+    session: {
+      header: {
+        cwd: '/workspace/m5c-second',
+      },
+    },
+  }
+  const secondBinding = bindScopeParent(secondAgent, presetKey)
+  const secondScope = createScope(ctx, secondAgent)
+  secondAgent.ctx = secondScope.ctx
+  const secondPlacement = observeNativePromptPlacementCompatibility(secondAgent.ctx)
+  assert.equal(secondPlacement.status, 'available')
+  const disposeSecond = installAgentPinnedSkillRuntime(
+    ctx,
+    secondAgent,
+    secondPlacement.targets,
+    () => ({
+      status: 'active',
+      profileId: 'profile',
+      presetId: 'preset-a',
+      profile: {
+        name: 'Profile',
+        basePreset: 'preset-a',
+        prompts: {},
+        skills: {
+          target: { mode: 'pinned' },
+        },
+      },
+    }),
+  )
+
   const assembled = await ctx.systemPrompt.assemble({
     scope: agent,
     agent,
   })
+  const secondAssembled = await ctx.systemPrompt.assemble({
+    scope: secondAgent,
+    agent: secondAgent,
+  })
+  assert.notEqual(
+    secondAssembled.sections.findIndex(section => section.name === PINNED_SKILL_SLOT_NAME),
+    -1,
+  )
 
   const pinnedIndex = assembled.sections.findIndex(section => section.name === PINNED_SKILL_SLOT_NAME)
   assert.notEqual(pinnedIndex, -1)
@@ -127,6 +168,10 @@ try {
   } else {
     assert.equal(afterOrder, ctx.systemPrompt.getSectionOrder('TOOLS_SDK') - 0.5)
   }
+
+  disposeSecond()
+  secondBinding.dispose?.()
+  await secondScope.dispose()
 
   dispose()
   const cleaned = await ctx.systemPrompt.assemble({
