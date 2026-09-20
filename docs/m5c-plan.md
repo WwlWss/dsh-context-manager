@@ -79,7 +79,7 @@ A native `complete: true` system-prompt section suppresses this slot after the c
 
 The AgentLoop passes the turn AbortSignal through `assembleContextFor(agent, signal)` on every retained generation. M5C forwards that signal to parent Skill discovery/body loading.
 
-There is no M5C cross-step Skill/body cache. The only cross-step prompt state is the observed/pending/admitted SHA-256 fingerprint of the final CM-owned pinned contribution, one projection-dirty/suppression bit, and request-series force revisions. Normal request assembly records the contributor-visible result; after a Host invalidation, the next pre-step performs one signal-free native assembly so post-waterfall `complete` restoration is included before deciding whether the current proposal needs a new series. The admitted baseline is updated only after the corresponding durable `request/header` event.
+There is no M5C cross-step Skill/body cache. The only cross-step prompt state is the observed/pending/admitted SHA-256 fingerprint of the final CM-owned pinned contribution, one SystemPrompt projection-dirty/suppression bit, and request-series force revisions. Normal request assembly records the contributor-visible result; after `system-prompt/change`, the next pre-step may perform one signal-free native assembly so post-waterfall `complete` restoration is included before deciding whether the current proposal needs a new series, but only while the already-built real request still belongs to that same projection source. The admitted baseline is updated only after the corresponding durable `request/header` event.
 
 Caching/invalidating remains native-owned:
 - Context Manager profile state is re-read each assembly;
