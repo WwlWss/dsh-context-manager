@@ -528,6 +528,10 @@ test('M5C retirement uses admitted rather than merely observed prompt state', as
     }),
   )
   assert.equal(decision.startsRequestSeries, true)
+  current.agent.ctx.emit('session/event', {}, {
+    type: 'request/header',
+    data: {},
+  })
 
   // A later assembly observes Pinned content, but no accepted pre-step follows.
   // This is not model-visible admitted state and must not create a retire fence.
