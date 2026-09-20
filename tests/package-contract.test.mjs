@@ -26,6 +26,10 @@ test('package manifest points at real build, types, and bundle artifacts', async
     types: './lib/typert.remote-client.d.ts',
     default: './lib/typert.remote-client.js',
   })
+  assert.deepEqual(packageJson.exports['./types'], {
+    types: './lib/remote/types.d.ts',
+    default: './lib/remote/types.js',
+  })
   assert.equal(packageJson.dsh?.bundle?.patch, './cordis.patch.yml')
   assert.equal(packageJson.dependencies?.zod, '^4.4.3')
 
@@ -36,6 +40,8 @@ test('package manifest points at real build, types, and bundle artifacts', async
   await access(fromRoot(packageJson.exports['./typert'].default))
   await access(fromRoot(packageJson.exports['./remote'].types))
   await access(fromRoot(packageJson.exports['./remote'].default))
+  await access(fromRoot(packageJson.exports['./types'].types))
+  await access(fromRoot(packageJson.exports['./types'].default))
 })
 
 test('bundle patch inserts only the namespaced context-manager row', async () => {
