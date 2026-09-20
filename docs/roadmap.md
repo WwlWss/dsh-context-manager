@@ -411,7 +411,7 @@ Mode semantics:
 - **Pinned** — if the native skill exists, also shadow it as `{ modelInvocable: false, userInvocable: false }`. Pinned instructions are supplied separately by M5C, not by native discovery/invocation.
 - A missing bound skill remains a runtime diagnostic. Context Manager must not fabricate a definition.
 
-The implemented shadow rank is `Number.MAX_VALUE`, the largest finite numeric rank accepted by the public contract. Because lower ranks win, this is the lowest-priority finite rank. Ordinary same-layer Agent-local candidates with any lower rank therefore take precedence over Context Manager, but this is not an absolute same-layer guarantee: another `Number.MAX_VALUE` candidate ties and provider registration order decides. M5B must test and describe the exact guarantee it can prove rather than claiming stronger isolation.
+The implemented shadow rank is `Number.MAX_VALUE`, the largest finite numeric rank accepted by the public contract. Because lower ranks win, this is the lowest-priority finite rank. Ordinary same-layer Agent-local candidates with any lower rank therefore take precedence over Context Manager, but this is not an absolute same-layer guarantee: another `Number.MAX_VALUE` candidate ties and provider registration order decides. M5B tests and documents only the precedence guarantee actually proven by the native registry.
 
 On `dsh-context-manager/change`, M5B coalesces the authority change to at most **one** registry invalidation through one currently active CM `SkillProviderControl`. DSH invalidation is registry-wide; invalidating every Agent provider would only create redundant revision bumps and `skills/change` events. Do not create a `skills/change -> Context Manager invalidation -> skills/change` feedback loop; native provider changes already invalidate SkillRegistry's catalog.
 
@@ -419,7 +419,7 @@ M5B lifecycle tests must cover existing/new Agents, preset standing scopes, same
 
 ### 5C — Pinned durable full-instruction bundle
 
-**Status:** planned after M5B.
+**Status:** next.
 
 Pinned means full instructions are deliberately included by Context Manager even though the native skill is hidden from both model discovery and native user invocation.
 
