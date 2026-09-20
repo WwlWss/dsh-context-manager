@@ -239,6 +239,17 @@ try {
   assert.equal(pinnedInspection.bindings[0]?.state, 'loaded')
   assert.equal(JSON.stringify(pinnedInspection).includes(state.body), false)
 
+  if (generation === 'current') {
+    const requestsBeforeFailure = adapter.requests.length
+    adapter.failNextPrepare = true
+    await turn(ctx, agent, 'initial pinned prepare fails')
+    assert.equal(
+      adapter.requests.length,
+      requestsBeforeFailure,
+      'failed first prepareCall must not consume the attach-time request-series fence',
+    )
+  }
+
   await turn(ctx, agent, 'pinned turn 1')
   let text = requestText(adapter.requests.at(-1))
   assert.equal(count(text, state.body), 1)
