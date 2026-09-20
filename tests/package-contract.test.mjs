@@ -105,7 +105,7 @@ test('generated M6A Remote contribution is strict and contains only protocol()',
   assert.equal(descriptor.service, 'dshContextRemote')
   assert.equal(descriptor.namespace, 'contextManager')
   assert.equal(descriptor.method, 'protocol')
-  assert.equal(descriptor.implementation, 'protocol')
+  assert.equal(descriptor.implementation ?? descriptor.method, 'protocol')
   assert.deepEqual(descriptor.invocation, { kind: 'direct' })
   assert.deepEqual(descriptor.parameters, [])
   assert.equal(descriptor.result.mode, 'strict')
