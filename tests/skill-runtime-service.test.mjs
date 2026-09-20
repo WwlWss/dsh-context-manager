@@ -177,3 +177,58 @@ test('Skill runtime coalesces one CM authority change to one registry invalidati
   await first.scope.dispose()
   await root.fiber.dispose()
 })
+
+
+test('CM authority invalidation switches a cached Auto native winner to managed Off', async () => {
+  const root = new Context()
+  await root.plugin(SkillRegistry)
+
+  const stopNative = scopedSkills(root).registerProvider(() => ({
+    name: 'native-provider',
+    async list() {
+      return [nativeCandidate()]
+    },
+    async get(candidate) {
+      return {
+        name: candidate.name,
+        description: candidate.description,
+        invocation: candidate.invocation,
+        source: candidate.source,
+        provider: candidate.provider,
+        content: 'native body',
+      }
+    },
+  }))
+
+  const current = mintAgent(root, 'agent-auto-off')
+  const managerFiber = root.plugin(FakeContextManager)
+  await managerFiber
+  const manager = root.get('dshContextManager')
+  manager.mode = 'auto'
+
+  await root.plugin(FakeSessionPresetIdentity)
+  await root.plugin(FakeAgents, [current.agent])
+
+  const runtimeFiber = root.plugin(ContextManagerSkillRuntime)
+  await runtimeFiber
+
+  let winner = (await scopedSkills(root).snapshot({ scope: current.agent }))
+    .skills.find(skill => skill.name === 'target')
+  assert.equal(winner?.provider, 'native-provider')
+
+  manager.mode = 'off'
+  root.emit('dsh-context-manager/change')
+
+  winner = (await scopedSkills(root).snapshot({ scope: current.agent }))
+    .skills.find(skill => skill.name === 'target')
+  assert.equal(winner?.provider, CONTEXT_MANAGER_SKILL_PROVIDER)
+  assert.deepEqual(winner?.invocation, {
+    modelInvocable: false,
+    userInvocable: false,
+  })
+
+  await runtimeFiber.dispose()
+  stopNative()
+  await current.scope.dispose()
+  await root.fiber.dispose()
+})
