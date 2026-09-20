@@ -9,8 +9,7 @@ import {
 
 test('M6A protocol service exposes only stable wire metadata', async () => {
   const ctx = new Context()
-  ctx.plugin(ContextManagerRemoteService)
-  await ctx.start()
+  await ctx.plugin(ContextManagerRemoteService)
 
   assert.deepEqual(ctx.dshContextRemote.protocol(), {
     apiVersion: CONTEXT_MANAGER_REMOTE_API_VERSION,
