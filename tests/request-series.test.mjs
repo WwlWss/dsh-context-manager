@@ -38,25 +38,25 @@ test('request-series guard starts a series only when it asks and preserves downs
     () => false,
   )
 
-  let decision = await preStep(agent, { kind: 'enter', messages: [] })
-  assert.deepEqual(decision, { kind: 'enter', messages: [] })
+  let decision = await preStep(agent, { kind: 'enter', messages: [{ role: 'user' }] })
+  assert.deepEqual(decision, { kind: 'enter', messages: [{ role: 'user' }] })
 
   force = true
-  decision = await preStep(agent, { kind: 'enter', messages: [] })
+  decision = await preStep(agent, { kind: 'enter', messages: [{ role: 'user' }] })
   assert.deepEqual(decision, {
     kind: 'enter',
-    messages: [],
+    messages: [{ role: 'user' }],
     startsRequestSeries: true,
   })
 
   decision = await preStep(agent, {
     kind: 'enter',
-    messages: [],
+    messages: [{ role: 'user' }],
     startsRequestSeries: true,
   })
   assert.deepEqual(decision, {
     kind: 'enter',
-    messages: [],
+    messages: [{ role: 'user' }],
     startsRequestSeries: true,
   })
 
@@ -82,15 +82,15 @@ test('retired contributor leaves one fence and reject does not consume it', asyn
   let decision = await preStep(agent, { kind: 'reject' })
   assert.deepEqual(decision, { kind: 'reject' })
 
-  decision = await preStep(agent, { kind: 'enter', messages: [] })
+  decision = await preStep(agent, { kind: 'enter', messages: [{ role: 'user' }] })
   assert.deepEqual(decision, {
     kind: 'enter',
-    messages: [],
+    messages: [{ role: 'user' }],
     startsRequestSeries: true,
   })
 
-  decision = await preStep(agent, { kind: 'enter', messages: [] })
-  assert.deepEqual(decision, { kind: 'enter', messages: [] })
+  decision = await preStep(agent, { kind: 'enter', messages: [{ role: 'user' }] })
+  assert.deepEqual(decision, { kind: 'enter', messages: [{ role: 'user' }] })
 
   await agentFiber.dispose()
   await fiber.dispose()
@@ -110,8 +110,8 @@ test('retire without admitted state removes the guard without leaving a fence', 
   )
   stop()
 
-  const decision = await preStep(agent, { kind: 'enter', messages: [] })
-  assert.deepEqual(decision, { kind: 'enter', messages: [] })
+  const decision = await preStep(agent, { kind: 'enter', messages: [{ role: 'user' }] })
+  assert.deepEqual(decision, { kind: 'enter', messages: [{ role: 'user' }] })
 
   await agentFiber.dispose()
   await fiber.dispose()
@@ -135,15 +135,15 @@ test('force() fences the next accepted enter and survives a reject', async () =>
   let decision = await preStep(agent, { kind: 'reject' })
   assert.deepEqual(decision, { kind: 'reject' })
 
-  decision = await preStep(agent, { kind: 'enter', messages: [] })
+  decision = await preStep(agent, { kind: 'enter', messages: [{ role: 'user' }] })
   assert.deepEqual(decision, {
     kind: 'enter',
-    messages: [],
+    messages: [{ role: 'user' }],
     startsRequestSeries: true,
   })
 
-  decision = await preStep(agent, { kind: 'enter', messages: [] })
-  assert.deepEqual(decision, { kind: 'enter', messages: [] })
+  decision = await preStep(agent, { kind: 'enter', messages: [{ role: 'user' }] })
+  assert.deepEqual(decision, { kind: 'enter', messages: [{ role: 'user' }] })
 
   stop()
   await agentFiber.dispose()
@@ -170,15 +170,15 @@ test('authoritative Context Manager, Skill, and SystemPrompt changes fence the n
   ]) {
     root.emit(event)
 
-    let decision = await preStep(agent, { kind: 'enter', messages: [] })
+    let decision = await preStep(agent, { kind: 'enter', messages: [{ role: 'user' }] })
     assert.deepEqual(decision, {
       kind: 'enter',
-      messages: [],
+      messages: [{ role: 'user' }],
       startsRequestSeries: true,
     })
 
-    decision = await preStep(agent, { kind: 'enter', messages: [] })
-    assert.deepEqual(decision, { kind: 'enter', messages: [] })
+    decision = await preStep(agent, { kind: 'enter', messages: [{ role: 'user' }] })
+    assert.deepEqual(decision, { kind: 'enter', messages: [{ role: 'user' }] })
   }
 
   stop()
