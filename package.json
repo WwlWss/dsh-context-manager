@@ -18,10 +18,16 @@
     "./remote": {
       "types": "./lib/typert.remote-client.d.ts",
       "default": "./lib/typert.remote-client.js"
+    },
+    "./types": {
+      "types": "./lib/remote/types.d.ts",
+      "default": "./lib/remote/types.js"
     }
   },
   "files": [
     "lib/**",
+    "lib/remote/types.js",
+    "lib/remote/types.d.ts",
     "lib/typert.remote-client.d.ts",
     "lib/typert.remote-client.js",
     "lib/typert.host.d.ts",
