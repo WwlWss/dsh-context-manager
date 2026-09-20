@@ -445,6 +445,6 @@ The five-generation M6A lane uses one generated baseline artifact and then switc
 - `0.1.5-rc.2`;
 - `0.1.6-alpha.2`.
 
-The fixture requires the strict `contextManager/protocol` descriptor to be present, verifies invalid result rejection through both codec shapes, invokes the live Service through `typertGateway.invoke()`, withdraws the strict contribution, and proves it can be registered again. Gateway SRC reflection may remain available after withdrawal because the live Service still owns its public runtime marker; that fallback is not the package's formal Client contract.
+The fixture requires the strict `contextManager/protocol` descriptor to be present, verifies invalid result rejection through both codec shapes, invokes the live Service through `typertGateway.invoke()`, withdraws the strict contribution, and proves it can be registered again. Retained Gateways remember that a strict endpoint has been observed: after withdrawal they fail that endpoint as `definition-unavailable` (namespaced as `gateway/definition-unavailable` on newer lines) instead of silently downgrading to SRC reflection. Re-registration restores the endpoint.
 
 The unified `RemoteError` business-failure vocabulary and forwarded Remote-event transport are later than the oldest retained line. M6B/M6C therefore must not make either capability a correctness prerequisite: Context Manager business failures need a cross-generation JSON result vocabulary, and notifications may only tell a Client to pull a fresh authoritative snapshot.
