@@ -437,17 +437,24 @@ M5 is complete after model discovery, user invocation, Pinned instruction visibi
 
 Goal: create a stable browser boundary before writing substantial UI.
 
-Remote surface should expose JSON-compatible Domain/runtime views and explicit mutations, not Host service objects.
+Status:
 
-Likely groups:
+- **M6A — in progress in PR #18:** strict generated Typert foundation, package `./typert` / `./remote` faces, and one side-effect-free `contextManager.protocol()` handshake.
+- **M6B — next:** browser-safe Profile + PromptResource reads/writes with explicit revision fencing and stable business-result codes.
+- **M6C — later:** path-free preset projection, runtime diagnostics, and pull-on-change notification where the retained Host generation exposes that public carrier.
+
+Remote surface should expose JSON-compatible Domain/runtime views and explicit mutations, not Host service objects. M6A deliberately does not ship a Client bundle and does not treat Gateway SRC fallback as the formal contract; the generated strict descriptor is the compatibility boundary.
+
+Planned groups after M6A:
 
 ```text
 profiles
 resources
 runtime diagnostics
 preset directory
-effective preview
 ```
+
+Rendered/effective-context preview remains M8 rather than being duplicated in the Remote foundation.
 
 Requirements:
 
