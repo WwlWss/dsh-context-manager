@@ -187,13 +187,13 @@ The persisted unit is a **skill binding object**, currently `{ mode }`, not a sc
 
 Native DSH invocation policy already separates model and user visibility. M5B uses one scoped overlay/shadow provider per live Agent for managed non-Auto skills, preserving original providers and stock behavior outside the managed scope. The overlay resolves the underlying winner through the parent-scope view so it cannot recursively rediscover itself.
 
-M5A remains the model-inert compatibility/runtime foundation. M5B now owns native invocation policy through the Agent-scoped overlay, while M5C remains responsible for the durable Pinned instruction bundle.
+M5A is the model-inert compatibility/runtime foundation. M5B owns native invocation policy through the Agent-scoped overlay. M5C owns the separate Pinned full-instruction path: it resolves the underlying native parent-scope winner, requires the M5B Pinned policy proxy to be the effective Agent-view winner, renders with native `renderSkillContent()`, and contributes one Agent-scoped system-prompt slot.
 
 `Number.MAX_VALUE` is the largest finite numeric rank accepted by the public contract and therefore the lowest-priority finite rank because lower ranks win. An equal-rank same-layer candidate still ties on provider registration order. Do not describe Agent-local precedence more strongly than the actual M5B lifecycle tests prove.
 
 M5B's shipped policy behavior is verified across existing-Agent adoption, live Agent creation, dynamic preset-scope reparenting, provider invalidation, exact base-preset switching, duplicate-name precedence, unload/reload restoration, and real model/user ToolSkill invocation on the oldest and newest retained generations. A dedicated persisted-session resume fixture is not claimed by M5B and should be added later if M5C or another milestone depends on a new resume-specific seam. Catalog/list paths must remain metadata-only; load full bodies lazily through provider `get()`. Coalesce one Context Manager authority change to at most one registry-wide Skill invalidation rather than invalidating once per Agent. Do not create a `skills/change` feedback loop: Context Manager Settings changes are its authority invalidation source, while native SkillRegistry invalidation already owns catalog refresh.
 
-Pinned full instructions must use native `renderSkillContent()` and one owned replacement/clearable bundle. Do not append a fresh durable copy on every pre-step.
+Pinned full instructions use native `renderSkillContent()` and one owned replacement/clearable system-prompt bundle; they are never appended as per-step user messages. Legacy prompt interpolation is bypassed safely by substituting the already-rendered bundle through one scoped prompt variable, whose value is not rescanned. On in-history system-prompt routes, Context Manager owns only a request-series fence: changes in the final pinned contribution request a new native series so DSH's own SystemPromptProjection consolidates stale system nodes. Context Manager does not write Session Surface replacements for M5C.
 
 ## Settings and persistence
 
