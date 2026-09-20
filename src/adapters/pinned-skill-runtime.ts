@@ -291,8 +291,8 @@ export async function inspectAgentPinnedSkillRuntime(
     })
   }
 
-  const section = assembly.sections.find(item => item.name === PINNED_SKILL_SLOT_NAME)
-  if (section === undefined) {
+  const sections = assembly.sections.filter(item => item.name === PINNED_SKILL_SLOT_NAME)
+  if (sections.length === 0) {
     return Object.freeze({
       resolution,
       nativeState: 'native-suppressed',
@@ -303,7 +303,9 @@ export async function inspectAgentPinnedSkillRuntime(
   return Object.freeze({
     resolution,
     nativeState:
-      section.text === PINNED_SKILL_SLOT_TEXT && currentVariable === resolution.text
+      sections.length === 1
+      && sections[0]?.text === PINNED_SKILL_SLOT_TEXT
+      && currentVariable === resolution.text
         ? 'present'
         : 'transformed',
   })
