@@ -18,7 +18,7 @@ Therefore M5C uses one Agent-scoped, Context-Manager-owned **system-prompt repla
 
 On retained DSH 0.1.2+ lines, `startsRequestSeries?: true` is a public `PreStepDecision` field and the AgentLoop consumes it when building the next request. This matters for routes that can keep system-prompt updates in history: without a series boundary, a newer prompt can coexist with an older active system node.
 
-M5C therefore owns a separate process-local request-series coordinator. It fences the next accepted request when `dsh-context-manager/change`, `skills/change`, or `system-prompt/change` announces an authoritative input change; these notifications do **not** cause SkillRegistry invalidation and therefore do not form an invalidation loop. M5C also fingerprints its final CM-owned contribution after the prompt waterfall with SHA-256 as a fallback for changes visible only during assembly. The coordinator preserves downstream pre-step messages/decisions and adds `startsRequestSeries: true` only when a fence is pending. If an M5C contribution retires after model-visible state was observed, the coordinator keeps one next-request fence so stale native system-prompt state is reconciled after the slot itself disappears.
+M5C therefore owns a separate process-local request-series coordinator. It fences the next accepted request when `dsh-context-manager/change`, `skills/change`, or `system-prompt/change` announces an authoritative input change; these notifications do **not** cause SkillRegistry invalidation and therefore do not form an invalidation loop. M5C also fingerprints its final CM-owned contribution after the prompt waterfall with SHA-256 as a fallback for changes visible only during assembly. DSH assembles the prompt before dispatching `agent/pre-step`, so the current request's final fingerprint is already available when the coordinator decides whether that same request must set `startsRequestSeries: true`. External force flags and fingerprint changes coalesce into one boundary. If an M5C contribution retires after model-visible state was observed, the coordinator keeps one next-request fence so stale native system-prompt state is reconciled after the slot itself disappears.
 
 The first request after attaching/re-attaching M5C is explicitly fenced, so a resumed 0.1.2+ Session does not depend on process-local knowledge of its prior pinned state. Only signatures/booleans are retained between steps; full Skill bodies are never cached. Unchanged pinned state with no authoritative change does not force a new request series.
 
@@ -76,7 +76,7 @@ A native `complete: true` system-prompt section suppresses this slot after the c
 
 The AgentLoop passes the turn AbortSignal through `assembleContextFor(agent, signal)` on every retained generation. M5C forwards that signal to parent Skill discovery/body loading.
 
-There is no M5C cross-step Skill/body cache. The only cross-step state is the SHA-256 fingerprint of the final CM-owned pinned prompt contribution used to decide whether the next accepted step must start a new request series.
+There is no M5C cross-step Skill/body cache. The only cross-step state is the previously admitted SHA-256 fingerprint of the final CM-owned pinned prompt contribution. The current assembly is fingerprinted before `agent/pre-step`, allowing the current accepted request to start a new series when that fingerprint changed.
 
 Caching/invalidating remains native-owned:
 - Context Manager profile state is re-read each assembly;
@@ -195,4 +195,4 @@ M5 is complete when:
 - Pinned is absent from native discovery/invocation but its full underlying native instructions are visible through exactly one CM-owned replacement bundle;
 - provider/profile/preset changes take effect without stale cross-step state;
 - inspection states what is actually visible and does not expose bodies;
-- oldest/current real AgentLoop E2E and the retained-generation contract/runtime matrix pass.
+- oldest/first-in-history/current real AgentLoop E2E and the retained-generation contract/runtime matrix pass.
