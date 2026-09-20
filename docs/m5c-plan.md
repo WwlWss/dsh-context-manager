@@ -48,13 +48,21 @@ The section sits in the already-proven semantic tool-guidance extension region:
 
 M4C1 resolves the native anchor. M5C derives a distinct finite order inside the same integer gap, rather than hard-coding a new Host generation table.
 
-The fixed name is:
+The fixed section name is:
 
 ```text
 dsh-context-manager:slot:pinned-skills
 ```
 
-A native `complete: true` system-prompt section may suppress this slot. Inspection must report that suppression instead of claiming the pinned bundle is model-visible.
+Pinned bodies must remain literal native Skill content. Retained DSH generations before 0.1.6 interpolate every assembled section and do not expose `interpolate: false`. M5C therefore uses one reserved Agent-scoped prompt variable:
+
+```text
+dsh_context_manager_pinned_skill_bundle
+```
+
+The section text is only `{{dsh_context_manager_pinned_skill_bundle}}`. The async assembly waterfall writes the already-rendered bundle into `assembly.variables`. DSH interpolation substitutes a variable value without rescanning that value, so arbitrary `{{...}}` text inside native Skill instructions remains literal on every retained generation.
+
+A native `complete: true` system-prompt section suppresses this slot after the cooperative waterfall. Because DSH restores the complete section only after listeners return, M5C cannot know that suppression before loading the bundle. Inspection must report the final suppression instead of claiming visibility; M5C does not claim that complete-prompt assemblies avoid body loads.
 
 ## Cancellation and hot-path behavior
 
@@ -143,12 +151,13 @@ Unit/runtime:
 - no pinned bindings => no body loads and no final slot;
 - deterministic code-unit ordering;
 - canonical `renderSkillContent()` including directory/url/opaque resource hints;
+- literal preservation of Skill bodies containing valid, unknown, malformed, and nested-looking `{{...}}` text on legacy prompt interpolation;
 - parent native definition is loaded, never the CM proxy;
 - incomplete catalog => no body loads and no overclaim;
 - missing native Skill => no fabricated content;
 - definition disappearing between snapshot/get => diagnostic without stale content;
 - current assembly signal aborts in-flight body load;
-- native complete section suppresses slot and avoids unnecessary body loads where observable;
+- native complete section suppresses the final slot and inspection reports that suppression;
 - repeated assemblies produce one current bundle, not accumulated messages;
 - Pinned -> Off/Manual/Auto clears on the next assembly;
 - base-preset A -> B -> A clears/restores;
