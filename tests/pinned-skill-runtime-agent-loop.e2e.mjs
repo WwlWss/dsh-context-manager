@@ -78,7 +78,12 @@ class RecordingAdapter extends Llm.LlmAdapter {
   requests = []
 
   resolveModel(provider, model) {
-    return Promise.resolve({ provider, id: model, name: model })
+    return Promise.resolve({
+      provider,
+      id: model,
+      name: model,
+      ...(generation === 'legacy' ? {} : { systemPromptUpdate: 'in-history' }),
+    })
   }
 
   async * stream(options) {
@@ -239,7 +244,9 @@ try {
   assert.equal(count(text, state.body), 1, 'explicit user invocation must not add a second Skill body')
 
   // Repeated steps must reconcile one current system-prompt bundle rather than
-  // accumulate historical pinned messages.
+  // accumulate historical pinned messages. The current-generation lane runs
+  // with systemPromptUpdate=in-history, so these whole-request counts also
+  // prove the M5C request-series restart clears stale system nodes.
   await turn(ctx, agent, 'pinned turn 2')
   text = requestText(adapter.requests.at(-1))
   assert.equal(count(text, state.body), 1)
