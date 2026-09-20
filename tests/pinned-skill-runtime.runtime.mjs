@@ -161,6 +161,9 @@ async function bootRuntime(root, agents, state) {
   return {
     runtime: root.get('dshContextPinnedSkillRuntime'),
     policyRuntime: root.get('dshContextSkillRuntime'),
+    async disposePinned() {
+      await pinnedFiber.dispose()
+    },
     async dispose() {
       await pinnedFiber.dispose()
       await policyFiber.dispose()
@@ -368,6 +371,7 @@ test('M5C incomplete catalog injects no partial body and does no native get()', 
   assert.equal(gets, 0)
 
   await runtime.dispose()
+  await runtime.dispose()
   stopNative()
   await current.scope.dispose()
   await root.fiber.dispose()
@@ -531,7 +535,7 @@ test('M5C retirement uses admitted rather than merely observed prompt state', as
     signal,
   })
 
-  await runtime.dispose()
+  await runtime.disposePinned()
 
   decision = await current.agent.ctx.waterfall(
     current.agent.ctx,
@@ -548,6 +552,7 @@ test('M5C retirement uses admitted rather than merely observed prompt state', as
     'observed-only pinned content must not leave a post-unload request-series fence',
   )
 
+  await runtime.dispose()
   stopNative()
   await current.scope.dispose()
   await root.fiber.dispose()
