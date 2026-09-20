@@ -252,7 +252,7 @@ test('M5B proxy preserves native summary metadata exposed by the Host generation
         userInvocable: true,
       }, 'body', 0, {
         path: '/skills/target/SKILL.md',
-        resourceBase: { kind: 'file', path: '/skills/target' },
+        resourceBase: { kind: 'directory', path: '/skills/target' },
       }),
     ]),
   )
@@ -268,7 +268,7 @@ test('M5B proxy preserves native summary metadata exposed by the Host generation
     .skills.find(skill => skill.name === 'target')
   assert.equal(winner?.provider, CM_PROVIDER)
   assert.equal(winner?.path, '/skills/target/SKILL.md')
-  assert.deepEqual(winner?.resourceBase, { kind: 'file', path: '/skills/target' })
+  assert.deepEqual(winner?.resourceBase, { kind: 'directory', path: '/skills/target' })
 
   await runtime.fiber.dispose()
   stopNative()
