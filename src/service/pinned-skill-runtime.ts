@@ -68,6 +68,10 @@ export class ContextManagerPinnedSkillRuntime extends Service {
                 () => installed.admitRequestSeries(),
                 () => installed.admittedContributionPresent,
               )
+              // The first request after attach/resume must reconcile any
+              // persisted in-history system-prompt state from an earlier
+              // process/runtime instance.
+              runtimeCtx.dshContextRequestSeries.force(agent)
             } catch (error) {
               installed.dispose()
               throw error
