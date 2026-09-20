@@ -38,6 +38,7 @@ export class ContextManagerPinnedSkillRuntime extends Service {
     ctx.inject([
       'dshContextManager',
       'dshContextSessionPresetIdentity',
+      'dshContextSkillRuntime',
       'agents',
       'skills',
       'systemPrompt',
