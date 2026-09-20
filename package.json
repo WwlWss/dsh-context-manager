@@ -32,8 +32,8 @@
   ],
   "scripts": {
     "clean": "node ./scripts/clean.mjs",
-    "build": "tsdown --config tsdown.config.ts",
-    "prepare": "tsdown --config tsdown.prepare.config.ts",
+    "build": "tsdown --config tsdown.config.ts && node ./scripts/generate-typert.mjs",
+    "prepare": "tsdown --config tsdown.prepare.config.ts && node ./scripts/generate-typert.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "node --test ./tests/*.test.mjs",
     "check": "pnpm run typecheck && pnpm run clean && pnpm run build && pnpm run test"
