@@ -158,14 +158,18 @@ async function bootRuntime(root, agents, state) {
   await policyFiber
   const pinnedFiber = root.plugin(ContextManagerPinnedSkillRuntime)
   await pinnedFiber
+  let pinnedDisposed = false
+  const disposePinned = async () => {
+    if (pinnedDisposed) return
+    pinnedDisposed = true
+    await pinnedFiber.dispose()
+  }
   return {
     runtime: root.get('dshContextPinnedSkillRuntime'),
     policyRuntime: root.get('dshContextSkillRuntime'),
-    async disposePinned() {
-      await pinnedFiber.dispose()
-    },
+    disposePinned,
     async dispose() {
-      await pinnedFiber.dispose()
+      await disposePinned()
       await policyFiber.dispose()
       await seriesFiber.dispose()
     },
@@ -370,7 +374,6 @@ test('M5C incomplete catalog injects no partial body and does no native get()', 
   )
   assert.equal(gets, 0)
 
-  await runtime.dispose()
   await runtime.dispose()
   stopNative()
   await current.scope.dispose()
