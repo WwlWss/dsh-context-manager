@@ -328,6 +328,139 @@ test('M5C follows dynamic parent rebind and ignores Agent-local same-name Skills
   await root.fiber.dispose()
 })
 
+test('M5C fails closed when Agent parent rebinds during async catalog resolution', async () => {
+  const root = new Context()
+  await installBase(root)
+
+  const presetAKey = {}
+  const presetBKey = {}
+  const presetA = createScope(root, presetAKey)
+  const presetB = createScope(root, presetBKey)
+
+  const started = Promise.withResolvers()
+  const release = Promise.withResolvers()
+  let blockFirstList = true
+
+  const stopA = scopedSkills(presetA.ctx).registerProvider(() => ({
+    name: 'preset-a-provider',
+    async list() {
+      if (blockFirstList) {
+        blockFirstList = false
+        started.resolve()
+        await release.promise
+      }
+      return [candidate('preset-a-provider', 'target', 'STALE_PARENT_A_BODY')]
+    },
+    async get(selected) {
+      return {
+        name: selected.name,
+        description: selected.description,
+        invocation: selected.invocation,
+        source: selected.source,
+        provider: selected.provider,
+        content: selected.locator.content,
+      }
+    },
+  }))
+  const stopB = scopedSkills(presetB.ctx).registerProvider(() =>
+    provider('preset-b-provider', [
+      candidate('preset-b-provider', 'target', 'CURRENT_PARENT_B_BODY'),
+    ]),
+  )
+
+  const current = mintAgent(root, 'agent-parent-race', presetAKey)
+  const state = {
+    presetId: 'preset-a',
+    skills: { target: 'pinned' },
+  }
+  const runtime = await bootRuntime(root, [current.agent], state)
+
+  const pending = assemble(root, current.agent)
+  await started.promise
+  current.binding.rebind(presetBKey)
+  release.resolve()
+
+  const assembly = await pending
+  const text = renderPrompt(assembly)
+  assert.equal(text.includes('STALE_PARENT_A_BODY'), false)
+  assert.equal(assembly.sections.some(section => section.name === SLOT), false)
+  assert.equal(assembly.variables[VARIABLE], '')
+
+  const refreshed = renderPrompt(await assemble(root, current.agent))
+  assert.equal(refreshed.includes('STALE_PARENT_A_BODY'), false)
+  assert.ok(refreshed.includes('CURRENT_PARENT_B_BODY'))
+
+  await runtime.dispose()
+  stopB()
+  stopA()
+  await current.scope.dispose()
+  await presetB.dispose()
+  await presetA.dispose()
+  await root.fiber.dispose()
+})
+
+test('M5C fails closed when Agent parent rebinds during downstream prompt assembly', async () => {
+  const root = new Context()
+  await installBase(root)
+
+  const presetAKey = {}
+  const presetBKey = {}
+  const presetA = createScope(root, presetAKey)
+  const presetB = createScope(root, presetBKey)
+  const stopA = scopedSkills(presetA.ctx).registerProvider(() =>
+    provider('preset-a-provider', [
+      candidate('preset-a-provider', 'target', 'DOWNSTREAM_PARENT_A_BODY'),
+    ]),
+  )
+  const stopB = scopedSkills(presetB.ctx).registerProvider(() =>
+    provider('preset-b-provider', [
+      candidate('preset-b-provider', 'target', 'DOWNSTREAM_PARENT_B_BODY'),
+    ]),
+  )
+
+  const current = mintAgent(root, 'agent-parent-downstream-race', presetAKey)
+  const state = {
+    presetId: 'preset-a',
+    skills: { target: 'pinned' },
+  }
+  const runtime = await bootRuntime(root, [current.agent], state)
+
+  const started = Promise.withResolvers()
+  const release = Promise.withResolvers()
+  const stopDelay = current.agent.ctx.on(
+    'system-prompt/assemble',
+    async (_assembly, _context, next) => {
+      started.resolve()
+      await release.promise
+      return await next()
+    },
+  )
+
+  const pending = assemble(root, current.agent)
+  await started.promise
+  current.binding.rebind(presetBKey)
+  release.resolve()
+
+  const assembly = await pending
+  const text = renderPrompt(assembly)
+  assert.equal(text.includes('DOWNSTREAM_PARENT_A_BODY'), false)
+  assert.equal(assembly.sections.some(section => section.name === SLOT), false)
+  assert.equal(assembly.variables[VARIABLE], '')
+
+  stopDelay()
+  const refreshed = renderPrompt(await assemble(root, current.agent))
+  assert.equal(refreshed.includes('DOWNSTREAM_PARENT_A_BODY'), false)
+  assert.ok(refreshed.includes('DOWNSTREAM_PARENT_B_BODY'))
+
+  await runtime.dispose()
+  stopB()
+  stopA()
+  await current.scope.dispose()
+  await presetB.dispose()
+  await presetA.dispose()
+  await root.fiber.dispose()
+})
+
 test('M5C fails closed when Pinned changes to Off during async catalog resolution', async () => {
   const root = new Context()
   await installBase(root)
