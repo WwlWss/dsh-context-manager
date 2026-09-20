@@ -162,3 +162,51 @@ export type SkillRuntimeInspection =
       readonly catalogComplete: boolean
       readonly bindings: readonly SkillRuntimeBindingInspection[]
     }
+
+
+export type PinnedSkillBindingInspection =
+  | {
+      readonly state: 'loaded'
+      readonly skillName: string
+      readonly nativeProvider: string
+    }
+  | {
+      readonly state: 'missing-native-skill'
+      readonly skillName: string
+    }
+  | {
+      readonly state: 'catalog-incomplete'
+      readonly skillName: string
+    }
+  | {
+      readonly state: 'definition-unavailable'
+      readonly skillName: string
+      readonly nativeProvider: string
+    }
+
+export type PinnedSkillRuntimeNativeState =
+  | 'empty'
+  | 'present'
+  | 'native-suppressed'
+  | 'transformed'
+
+export type PinnedSkillRuntimeInspection =
+  | {
+      readonly status: 'runtime-unavailable'
+    }
+  | {
+      readonly status: 'agent-not-live'
+      readonly agentId: string
+    }
+  | {
+      readonly status: 'assembly-bypassed'
+      readonly agentId: string
+    }
+  | {
+      readonly status: 'resolved'
+      readonly agentId: string
+      readonly profile: EffectiveProfileResolution
+      readonly catalogComplete: boolean
+      readonly nativeState: PinnedSkillRuntimeNativeState
+      readonly bindings: readonly PinnedSkillBindingInspection[]
+    }
