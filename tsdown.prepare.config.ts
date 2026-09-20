@@ -27,7 +27,7 @@ export default defineConfig({
   fixedExtension: false,
   dts: false,
   clean: false,
-  plugins: [typertPlugin({ mode: 'package', faces: ['host'] })],
+  plugins: [typertPlugin({ mode: 'workspace', faces: ['host'] })],
   deps: {
     neverBundle: specifier => hostPackages.has(specifier),
   },
