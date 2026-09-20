@@ -423,7 +423,7 @@ M5B lifecycle tests must cover existing/new Agents, preset standing scopes, same
 
 Pinned means full instructions are deliberately included by Context Manager even though the native skill is hidden from both model discovery and native user invocation.
 
-M5C loads the underlying native definition through the dynamic parent-scope view and renders it with native `renderSkillContent()`. Injection is allowed only when M5B's Agent-view policy proxy is actually effective for that Pinned skill; conflicts remain diagnostic and do not create a half-effective Pinned state. The bundle is deterministic in code-unit skill-name order.
+M5C loads the underlying native definition through the dynamic parent-scope view and renders it with native `renderSkillContent()`. Injection is allowed only when M5B's Agent-view policy proxy is actually effective for that Pinned skill both before and after asynchronous body loading. A final complete Agent-view snapshot is the last async commit point; winner changes during `get()` discard the loaded body as `policy-not-effective`, so conflicts never create a half-effective Pinned state. The bundle is deterministic in code-unit skill-name order.
 
 The retained-version re-audit rejected durable `agent/pre-step` message injection because accepted messages enter Session history, and rejected a new direct Session Surface adapter because the replacement contract changed across retained generations. M5C instead owns one Agent-scoped system-prompt slot. A literal-safe prompt-variable indirection preserves arbitrary `{{...}}` Skill text on legacy SystemPrompt generations.
 
