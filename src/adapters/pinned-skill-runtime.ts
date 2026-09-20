@@ -4,8 +4,10 @@ import { renderSkillContent, type SkillSummary } from '@deepseek-ai/dsh-skill'
 
 import type { RuntimeAgent } from './agent-runtime.js'
 import type { HostPromptAssembly, NativePromptPlacementTargets } from './prompt-runtime.js'
+import { CONTEXT_MANAGER_SKILL_PROVIDER } from './skill-runtime.js'
 import {
   agentWorkspaceCwd,
+  combineSkillSignals,
   parentSkillViewOptions,
   requireSkillRegistry,
 } from './skill-view.js'
@@ -154,14 +156,22 @@ export async function resolvePinnedSkillBundle(
   }
 
   const skills = requireSkillRegistry(rootCtx)
+  const cwd = agentWorkspaceCwd(agent)
   const baseOptions = {
-    ...(agentWorkspaceCwd(agent) === undefined ? {} : { cwd: agentWorkspaceCwd(agent) }),
+    ...(cwd === undefined ? {} : { cwd }),
     ...(signal === undefined ? {} : { signal }),
   }
   const lookup = parentSkillViewOptions(agent, baseOptions, lifecycle)
-  const snapshot = await skills.snapshot(lookup)
+  const parentSnapshot = await skills.snapshot(lookup)
+  const agentSnapshot = await skills.snapshot({
+    ...baseOptions,
+    ...(lifecycle === undefined
+      ? {}
+      : { signal: combineSkillSignals(signal, lifecycle) }),
+    scope: agent,
+  })
 
-  if (!snapshot.complete) {
+  if (!parentSnapshot.complete || !agentSnapshot.complete) {
     return Object.freeze({
       profile,
       catalogComplete: false,
@@ -173,7 +183,8 @@ export async function resolvePinnedSkillBundle(
     })
   }
 
-  const summaries = nativeByName(snapshot.skills)
+  const summaries = nativeByName(parentSnapshot.skills)
+  const agentWinners = nativeByName(agentSnapshot.skills)
   const bindings: PinnedSkillBindingInspection[] = []
   const rendered: string[] = []
 
@@ -183,6 +194,21 @@ export async function resolvePinnedSkillBundle(
       bindings.push(Object.freeze({
         state: 'missing-native-skill',
         skillName,
+      }))
+      continue
+    }
+
+    const winner = agentWinners.get(skillName)
+    if (
+      winner?.provider !== CONTEXT_MANAGER_SKILL_PROVIDER
+      || winner.invocation.modelInvocable
+      || winner.invocation.userInvocable
+    ) {
+      bindings.push(Object.freeze({
+        state: 'policy-not-effective',
+        skillName,
+        nativeProvider: summary.provider,
+        ...(winner === undefined ? {} : { winnerProvider: winner.provider }),
       }))
       continue
     }
