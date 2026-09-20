@@ -8,6 +8,7 @@ import { bindScopeParent, createScope } from '@deepseek-ai/dsh-scope'
 
 import {
   ContextManagerPinnedSkillRuntime,
+  ContextManagerRequestSeries,
   ContextManagerSkillRuntime,
 } from '../lib/index.js'
 
@@ -151,6 +152,8 @@ async function bootRuntime(root, agents, state) {
   await root.plugin(FakeContextManager, state)
   await root.plugin(FakeSessionPresetIdentity, state)
   await root.plugin(FakeAgents, agents)
+  const seriesFiber = root.plugin(ContextManagerRequestSeries)
+  await seriesFiber
   const policyFiber = root.plugin(ContextManagerSkillRuntime)
   await policyFiber
   const pinnedFiber = root.plugin(ContextManagerPinnedSkillRuntime)
@@ -161,6 +164,7 @@ async function bootRuntime(root, agents, state) {
     async dispose() {
       await pinnedFiber.dispose()
       await policyFiber.dispose()
+      await seriesFiber.dispose()
     },
   }
 }
