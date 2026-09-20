@@ -10,6 +10,7 @@ import { ContextManagerPromptRuntime } from './service/prompt-runtime.js'
 import { ContextManagerRequestSeries } from './service/request-series.js'
 import { ContextManagerSessionPresetIdentity } from './service/session-preset.js'
 import { ContextManagerSkillRuntime } from './service/skill-runtime.js'
+import { ContextManagerRemoteController } from './remote/protocol-controller.js'
 
 export type {
   BasePresetResolution,
@@ -60,6 +61,7 @@ export { ContextManagerPromptRuntime } from './service/prompt-runtime.js'
 export { ContextManagerRequestSeries } from './service/request-series.js'
 export { ContextManagerSessionPresetIdentity } from './service/session-preset.js'
 export { ContextManagerSkillRuntime } from './service/skill-runtime.js'
+export { CONTEXT_MANAGER_REMOTE_API_VERSION, ContextManagerRemoteController } from './remote/protocol-controller.js'
 
 export const name = 'dsh-context-manager'
 
@@ -74,5 +76,6 @@ export function apply(ctx: Context): void {
   ctx.plugin(ContextManagerRequestSeries)
   ctx.plugin(ContextManagerSkillRuntime)
   ctx.plugin(ContextManagerPinnedSkillRuntime)
+  ctx.plugin(ContextManagerRemoteController)
   ctx.logger('dsh-context-manager').info('Context Manager Host services loaded')
 }
