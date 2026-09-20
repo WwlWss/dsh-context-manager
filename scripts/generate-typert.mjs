@@ -11,7 +11,8 @@ const temporary = await mkdtemp(join(root, '.typert-workspace-'))
 try {
   const packageRoot = join(temporary, 'packages', 'dsh-context-manager')
   const protocolRoot = join(temporary, 'packages', 'dsh-typert-protocol')
-  await mkdir(join(packageRoot, 'src'), { recursive: true })
+  await mkdir(join(packageRoot, 'src', 'service'), { recursive: true })
+  await mkdir(join(packageRoot, 'src', 'remote'), { recursive: true })
   await mkdir(protocolRoot, { recursive: true })
 
   // The oldest Typert analyzer verifies Remote/RemoteService identity against a
@@ -33,7 +34,11 @@ try {
   // M2-M5 Host APIs into reflection surface.
   await cp(
     join(root, 'src', 'service', 'remote.ts'),
-    join(packageRoot, 'src', 'index.ts'),
+    join(packageRoot, 'src', 'service', 'remote.ts'),
+  )
+  await cp(
+    join(root, 'src', 'remote', 'types.ts'),
+    join(packageRoot, 'src', 'remote', 'types.ts'),
   )
 
   await writeFile(join(temporary, 'tsconfig.host.json'), JSON.stringify({
@@ -103,12 +108,16 @@ try {
   await writeFile(join(packageRoot, 'package.json'), JSON.stringify({
     name: 'dsh-context-manager',
     type: 'module',
-    main: './lib/index.js',
-    types: './lib/index.d.ts',
+    main: './lib/service/remote.js',
+    types: './lib/service/remote.d.ts',
     exports: {
       '.': {
-        types: './lib/index.d.ts',
-        default: './lib/index.js',
+        types: './lib/service/remote.d.ts',
+        default: './lib/service/remote.js',
+      },
+      './types': {
+        types: './lib/remote/types.d.ts',
+        default: './lib/remote/types.js',
       },
       './typert': {
         types: './lib/typert.host.d.ts',
@@ -154,10 +163,15 @@ try {
 
   // Make drift between the temporary package contract and the production source
   // loud during generation rather than relying only on later package tests.
-  const production = await readFile(join(root, 'src', 'service', 'remote.ts'), 'utf8')
-  const copied = await readFile(join(packageRoot, 'src', 'index.ts'), 'utf8')
-  if (production !== copied) {
-    throw new Error('M6A Typert source copy drifted during generation')
+  for (const relative of [
+    ['service', 'remote.ts'],
+    ['remote', 'types.ts'],
+  ]) {
+    const production = await readFile(join(root, 'src', ...relative), 'utf8')
+    const copied = await readFile(join(packageRoot, 'src', ...relative), 'utf8')
+    if (production !== copied) {
+      throw new Error(`M6A Typert source copy drifted during generation: ${relative.join('/')}`)
+    }
   }
 } finally {
   await rm(temporary, { recursive: true, force: true })
