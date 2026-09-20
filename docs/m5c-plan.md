@@ -119,6 +119,8 @@ M5C reuses `attachAgentRuntimeBridge()`:
 - roll back partial attachment failures;
 - unload/reload without duplicate slots/listeners.
 
+The request-series coordinator is a separate bundle-level service so it can outlive one M5C Agent contribution during hot detach/recompose. That is what makes M5C runtime unload/reload and HMR safe on in-history routes. A **permanent unload of the entire Context Manager bundle** necessarily tears down that coordinator as well; an unloaded plugin cannot intercept a later `agent/pre-step`. M5C therefore does not claim a post-unload cleanup action after total bundle removal and deliberately does not compensate by writing Session Surface replacements. Re-loading the bundle is safe because the first admitted request is fenced and consolidates the native system-prompt state.
+
 Repeated steps and changes therefore behave as follows:
 
 ```text
@@ -128,8 +130,9 @@ Pinned -> Off/Manual/Auto             : next assembly clears bundle + one native
 basePreset A -> B mismatch            : next assembly clears bundle + one native consolidation
 basePreset A -> B -> A                : bundle disappears then returns, each transition consolidated
 complete prompt suppress/restore      : final slot signature changes and is consolidated
-runtime unload                        : CM slot/listeners disappear
-runtime reload/resume                 : first admitted request consolidates once, then steady state
+M5C runtime hot-detach                : CM slot/listeners disappear; the longer-lived request-series owner may retain one admitted-state fence
+M5C runtime reload/resume             : first admitted request consolidates once, then steady state
+whole bundle permanent unload         : no post-unload listener is claimed; Context Manager does not write Session Surface cleanup events after it no longer owns the runtime
 ```
 
 ## Planned code
@@ -184,7 +187,8 @@ Real AgentLoop E2E on the oldest retained line, the first retained in-history li
 - resource hint text comes from native `renderSkillContent()`;
 - mode/body/suppression changes clear or replace stale pinned system nodes even with `systemPromptUpdate: 'in-history'`;
 - preset mismatch bypasses both M5B policy and M5C body injection;
-- unload restores stock behavior; reload restores one pinned bundle.
+- M5C runtime hot-unload restores stock prompt behavior while the bundle-level request-series owner remains active; reload restores one pinned bundle;
+- full bundle reload fences its first admitted request; permanent total removal makes no claim that the already-unloaded plugin can intercept a later request.
 
 ## Exit criteria
 
