@@ -264,11 +264,13 @@ test('M5B proxy preserves native summary metadata exposed by the Host generation
   }
   const runtime = await bootRuntime(root, [current.agent], state)
 
+  const nativeSummary = (await scopedSkills(root).snapshot())
+    .skills.find(skill => skill.name === 'target')
   const winner = (await scopedSkills(root).snapshot({ scope: current.agent }))
     .skills.find(skill => skill.name === 'target')
   assert.equal(winner?.provider, CM_PROVIDER)
-  assert.equal(winner?.path, '/skills/target/SKILL.md')
-  assert.deepEqual(winner?.resourceBase, { kind: 'directory', path: '/skills/target' })
+  assert.equal(winner?.path, nativeSummary?.path)
+  assert.deepEqual(winner?.resourceBase, nativeSummary?.resourceBase)
 
   await runtime.fiber.dispose()
   stopNative()
