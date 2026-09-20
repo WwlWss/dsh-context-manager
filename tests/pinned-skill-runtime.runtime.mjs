@@ -6,7 +6,10 @@ import SystemPrompt, { renderPrompt } from '@deepseek-ai/dsh-system-prompt'
 import SkillRegistry from '@deepseek-ai/dsh-skill'
 import { bindScopeParent, createScope } from '@deepseek-ai/dsh-scope'
 
-import { ContextManagerPinnedSkillRuntime } from '../lib/index.js'
+import {
+  ContextManagerPinnedSkillRuntime,
+  ContextManagerSkillRuntime,
+} from '../lib/index.js'
 
 const generation = process.env.DSH_M5C_GENERATION
 if (generation !== 'legacy' && generation !== 'named') {
@@ -148,11 +151,17 @@ async function bootRuntime(root, agents, state) {
   await root.plugin(FakeContextManager, state)
   await root.plugin(FakeSessionPresetIdentity, state)
   await root.plugin(FakeAgents, agents)
-  const fiber = root.plugin(ContextManagerPinnedSkillRuntime)
-  await fiber
+  const policyFiber = root.plugin(ContextManagerSkillRuntime)
+  await policyFiber
+  const pinnedFiber = root.plugin(ContextManagerPinnedSkillRuntime)
+  await pinnedFiber
   return {
-    fiber,
     runtime: root.get('dshContextPinnedSkillRuntime'),
+    policyRuntime: root.get('dshContextSkillRuntime'),
+    async dispose() {
+      await pinnedFiber.dispose()
+      await policyFiber.dispose()
+    },
   }
 }
 
@@ -242,7 +251,7 @@ test('M5C renders parent-native Pinned bodies in code-unit order and preserves l
   assert.equal(inspected.nativeState, 'empty')
   assert.equal(JSON.stringify(inspected).includes('ALPHA'), false)
 
-  await runtime.fiber.dispose()
+  await runtime.dispose()
   stopRight()
   stopLeft()
   stopNative()
@@ -268,9 +277,6 @@ test('M5C follows dynamic parent rebind and ignores Agent-local same-name Skills
   )
 
   const current = mintAgent(root, 'agent-reparent', presetAKey)
-  const stopLocal = scopedSkills(current.agent.ctx).registerProvider(() =>
-    provider('agent-local-provider', [candidate('agent-local-provider', 'target', 'LOCAL_BODY')]),
-  )
   const state = {
     presetId: 'preset-a',
     skills: { target: 'pinned' },
@@ -279,15 +285,29 @@ test('M5C follows dynamic parent rebind and ignores Agent-local same-name Skills
 
   let text = renderPrompt(await assemble(root, current.agent))
   assert.ok(text.includes('BODY_A'))
-  assert.equal(text.includes('LOCAL_BODY'), false)
 
   current.binding.rebind(presetBKey)
   text = renderPrompt(await assemble(root, current.agent))
   assert.ok(text.includes('BODY_B'))
   assert.equal(text.includes('BODY_A'), false)
+
+  const stopLocal = scopedSkills(current.agent.ctx).registerProvider(() =>
+    provider('agent-local-provider', [candidate('agent-local-provider', 'target', 'LOCAL_BODY')]),
+  )
+  text = renderPrompt(await assemble(root, current.agent))
+  assert.equal(text.includes('BODY_B'), false)
   assert.equal(text.includes('LOCAL_BODY'), false)
 
-  await runtime.fiber.dispose()
+  const inspected = await runtime.runtime.inspect('agent-reparent')
+  assert.equal(inspected.status, 'resolved')
+  assert.deepEqual(inspected.bindings, [{
+    state: 'policy-not-effective',
+    skillName: 'target',
+    nativeProvider: 'preset-b-provider',
+    winnerProvider: 'agent-local-provider',
+  }])
+
+  await runtime.dispose()
   stopLocal()
   stopB()
   stopA()
@@ -343,7 +363,7 @@ test('M5C incomplete catalog injects no partial body and does no native get()', 
   )
   assert.equal(gets, 0)
 
-  await runtime.fiber.dispose()
+  await runtime.dispose()
   stopNative()
   await current.scope.dispose()
   await root.fiber.dispose()
@@ -411,7 +431,7 @@ test('M5C inspection reports missing/get-race states and native complete suppres
   assert.equal(inspected.nativeState, 'native-suppressed')
   disposeComplete()
 
-  await runtime.fiber.dispose()
+  await runtime.dispose()
   stopNative()
   await current.scope.dispose()
   await root.fiber.dispose()
@@ -451,7 +471,7 @@ test('M5C runtime disposal aborts an in-flight native body load', async () => {
   const signal = await started.promise
   assert.equal(signal.aborted, false)
 
-  await runtime.fiber.dispose()
+  await runtime.dispose()
   assert.equal(signal.aborted, true)
   await rejected
 
