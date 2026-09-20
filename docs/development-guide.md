@@ -339,7 +339,7 @@ M5B managed `off`, `manual`, and `pinned` semantics are guarded by tests for:
 
 A single `dsh-context-manager/change` must cause at most one registry-wide Skill invalidation, not one `control.invalidate()` call per live Agent. Any per-Agent derived state should be pull-based or cleared without producing N redundant `skills/change` events.
 
-M5C must use native `renderSkillContent()` for pinned full instructions and replace/clear one owned durable bundle rather than appending a new copy every model step.
+M5C uses native `renderSkillContent()` for pinned full instructions and replaces/clears one Agent-scoped system-prompt bundle rather than appending a new user message every model step. Resolve bodies only from the dynamic parent Skill view, and inject only when the M5B Pinned proxy is the actual Agent-view winner. Use the scoped prompt-variable indirection for literal body preservation on pre-0.1.6 SystemPrompt generations. For `systemPromptUpdate: 'in-history'`, compare only the final CM-owned pinned contribution and request a new native request series when it changes; do not implement M5C by writing Session Surface replacements. The request-series fence owner outlives one retiring pinned contribution so hot-unload can reconcile stale native system nodes on the next real request.
 
 If DSH cannot prove a requested policy in a supported version, surface a runtime capability diagnostic instead of simulating it.
 
