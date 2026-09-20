@@ -431,7 +431,7 @@ jobs:
         env:
           DSH_M5C_GENERATION: ${{ matrix.generation }}
         run: |
-          node --test ./tests/pinned-skill-runtime.test.mjs
+          node --test ./tests/pinned-skill-runtime.runtime.mjs
           node ./tests/pinned-skill-runtime-upstream-runtime.mjs
 
   skill-policy-agent-loop:
