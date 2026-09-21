@@ -95,8 +95,7 @@ export interface ContextManagerPromptRemotePort {
 }
 
 
-export interface ContextManagerPresetDirectoryRemotePort {
-  snapshot(): Promise<{
+export interface ContextManagerPresetSnapshotPort {
     readonly directory:
       | { readonly status: 'unavailable' }
       | {
@@ -125,7 +124,10 @@ export interface ContextManagerPresetDirectoryRemotePort {
           | { readonly status: 'resolved'; readonly configuredId: string }
       }
     }
-  }>
+}
+
+export interface ContextManagerPresetDirectoryRemotePort {
+  snapshot(): Promise<ContextManagerPresetSnapshotPort>
 }
 
 export interface ContextManagerPresetAuthoringRemotePort {
@@ -138,16 +140,21 @@ export interface ContextManagerSessionPresetRemotePort {
   snapshot(sessionId: string): ContextManagerRemoteSessionPresetIdentity
 }
 
-export interface ContextManagerPromptPlacementRemotePort {
-  snapshot():
-    | { readonly status: 'unavailable' }
-    | {
-        readonly status: 'available'
-        readonly placements: {
-          readonly [placement in ContextManagerRemotePromptPlacement]:
-            'system-prompt' | 'runtime-context'
-        }
+export type ContextManagerPromptPlacementSnapshotPort =
+  | { readonly status: 'unavailable' }
+  | {
+      readonly status: 'available'
+      readonly placements: {
+        readonly 'before-persona': 'system-prompt' | 'runtime-context'
+        readonly 'after-persona': 'system-prompt' | 'runtime-context'
+        readonly 'before-tool-guidance': 'system-prompt' | 'runtime-context'
+        readonly 'after-tool-guidance': 'system-prompt' | 'runtime-context'
+        readonly 'runtime-context': 'system-prompt' | 'runtime-context'
       }
+    }
+
+export interface ContextManagerPromptPlacementRemotePort {
+  snapshot(): ContextManagerPromptPlacementSnapshotPort
 }
 
 export interface ContextManagerPromptRuntimeRemotePort {
