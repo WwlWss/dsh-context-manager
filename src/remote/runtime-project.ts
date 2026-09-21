@@ -1,6 +1,7 @@
 import type {
   ContextManagerPinnedSkillRuntimeRemotePort,
   ContextManagerPromptPlacementRemotePort,
+  ContextManagerPromptPlacementSnapshotPort,
   ContextManagerPromptRuntimeRemotePort,
   ContextManagerSessionPresetRemotePort,
   ContextManagerSkillRuntimeRemotePort,
@@ -194,7 +195,7 @@ export function projectSessionPreset(
 }
 
 export function projectPromptPlacement(
-  snapshot: ReturnType<ContextManagerPromptPlacementRemotePort['snapshot']>,
+  snapshot: ContextManagerPromptPlacementSnapshotPort,
 ): ContextManagerRemotePromptPlacementCapability {
   if (snapshot.status === 'unavailable') {
     return Object.freeze({ status: 'unavailable' })
