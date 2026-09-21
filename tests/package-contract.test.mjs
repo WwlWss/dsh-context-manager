@@ -40,6 +40,7 @@ test('package manifest points at real build, types, and bundle artifacts', async
   await access(fromRoot(packageJson.exports['./typert'].default))
   await access(fromRoot(packageJson.exports['./remote'].types))
   await access(fromRoot(packageJson.exports['./remote'].default))
+  await access(fromRoot('./lib/typert.remote-client.d.ts.map'))
   await access(fromRoot(packageJson.exports['./types'].types))
   await access(fromRoot(packageJson.exports['./types'].default))
 })
@@ -108,6 +109,11 @@ test('generated M6A Host Typert surface stays isolated from M2-M5 services', asy
   assert.deepEqual(host.TYPERT.model.events, [])
   assert.equal(host.TYPERT.invocations.length, 1)
   assert.equal(host.TYPERT.invocations[0].service, 'dshContextRemote')
+  const codec = host.TYPERT.invocations[0].result
+  assert.equal(codec.mode, 'strict')
+  assert.equal(typeof codec.schema?.parse, 'function')
+  assert.equal(typeof codec.create, 'function')
+  assert.equal(codec.create(), codec.schema)
 })
 
 test('generated M6A Remote contribution is strict and contains only protocol()', async () => {
@@ -125,6 +131,9 @@ test('generated M6A Remote contribution is strict and contains only protocol()',
   assert.deepEqual(descriptor.invocation, { kind: 'direct' })
   assert.deepEqual(descriptor.parameters, [])
   assert.equal(descriptor.result.mode, 'strict')
+  assert.equal(typeof descriptor.result.schema?.parse, 'function')
+  assert.equal(typeof descriptor.result.create, 'function')
+  assert.equal(descriptor.result.create(), descriptor.result.schema)
   assert.equal(descriptor.result.schema.safeParse({ apiVersion: 1 }).success, true)
   assert.equal(descriptor.result.schema.safeParse({ apiVersion: '1' }).success, false)
 })
