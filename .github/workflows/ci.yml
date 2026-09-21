@@ -563,7 +563,12 @@ jobs:
         run: pnpm run build
       - name: Switch only the runtime Typert/Gateway generation
         run: |
-          pnpm add --save-dev --save-exact             @deepseek-ai/cordis@${{ matrix.cordis }}             @deepseek-ai/schemastery@${{ matrix.schemastery }}             @deepseek-ai/dsh-api-gateway@${{ matrix.version }}             @deepseek-ai/dsh-typert-protocol@${{ matrix.version }}             @deepseek-ai/dsh-typert-registry@${{ matrix.version }}
+          pnpm add --ignore-scripts --save-dev --save-exact \
+            @deepseek-ai/cordis@${{ matrix.cordis }} \
+            @deepseek-ai/schemastery@${{ matrix.schemastery }} \
+            @deepseek-ai/dsh-api-gateway@${{ matrix.version }} \
+            @deepseek-ai/dsh-typert-protocol@${{ matrix.version }} \
+            @deepseek-ai/dsh-typert-registry@${{ matrix.version }}
       - name: Invoke generated descriptor through the real Gateway
         run: node ./tests/remote-upstream-runtime.mjs
 
