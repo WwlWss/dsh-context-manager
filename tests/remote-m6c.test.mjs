@@ -13,7 +13,7 @@ class FakePresetDirectory extends Service {
     super(ctx, 'dshContextPresetDirectory')
   }
 
-  async snapshot() {
+  async snapshotForWire() {
     return {
       directory: {
         status: 'available',
@@ -293,7 +293,12 @@ test('M6C maps stable preset-authoring absence but leaves unknown native failure
 
   await assert.rejects(
     ctx.dshContextRemote.removePreset('x'),
-    /native refusal/,
+    error => {
+      assert.equal(error.message, 'Context Manager Remote operation failed')
+      assert.equal(error.cause?.message, 'native refusal')
+      assert.equal(error.message.includes('native refusal'), false)
+      return true
+    },
   )
 })
 
@@ -353,4 +358,42 @@ test('M6C changes endpoint exposes only invalidation cursors', async (t) => {
     presets: 4,
     runtime: 5,
   })
+})
+
+
+test('M6C sanitizes unexpected preset filesystem failures before Gateway can expose their messages', async (t) => {
+  class PathLeakingAuthoring extends Service {
+    constructor(ctx) { super(ctx, 'dshContextPresetAuthoring') }
+    async read() {
+      throw new Error("EACCES: permission denied, open '/home/private/.dsh/.agent-presets/secret/agent.cordis.yml'")
+    }
+    async copy() {
+      throw new Error("EACCES: permission denied, cp '/home/private/source' -> '/home/private/target'")
+    }
+    async remove() {
+      throw new Error("EACCES: permission denied, rm '/home/private/.dsh/.agent-presets/secret'")
+    }
+  }
+
+  const ctx = new Context()
+  t.after(() => ctx.fiber.dispose())
+  const directoryFiber = ctx.plugin(FakePresetDirectory)
+  await directoryFiber
+  const authoringFiber = ctx.plugin(PathLeakingAuthoring)
+  await authoringFiber
+  const remoteFiber = ctx.plugin(ContextManagerRemoteService)
+  await remoteFiber
+
+  for (const operation of [
+    () => ctx.dshContextRemote.readPreset('secret'),
+    () => ctx.dshContextRemote.copyPreset('standard', 'secret', null),
+    () => ctx.dshContextRemote.removePreset('secret'),
+  ]) {
+    await assert.rejects(operation, error => {
+      assert.equal(error.message, 'Context Manager Remote operation failed')
+      assert.equal(error.message.includes('/home/private'), false)
+      assert.match(error.cause?.message ?? '', /\/home\/private/)
+      return true
+    })
+  }
 })
