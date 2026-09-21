@@ -142,7 +142,7 @@ class FakePrompts extends Service {
 
 class FakePresetDirectory extends Service {
   constructor(ctx) { super(ctx, 'dshContextPresetDirectory') }
-  async snapshot() {
+  async snapshotForWire() {
     return {
       directory: {
         status: 'available',
