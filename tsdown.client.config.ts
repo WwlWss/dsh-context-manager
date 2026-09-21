@@ -3,6 +3,7 @@ import { defineConfig } from 'tsdown'
 const CLIENT_ID = 'dsh-context-manager'
 
 export default defineConfig({
+  tsconfig: 'tsconfig.client.json',
   entry: { client: 'scripts/client-entry.ts' },
   outDir: 'lib',
   format: 'cjs',
