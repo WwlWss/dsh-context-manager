@@ -1,5 +1,6 @@
 import type {
   ContextManagerRemoteDiagnosticCode,
+  ContextManagerRemotePromptBinding,
   ContextManagerRemotePromptPlacement,
   ContextManagerRemoteSkillMode,
 } from './types.js'
@@ -9,18 +10,24 @@ export interface ContextManagerProfileSnapshotPort {
   readonly schemaCompatible: boolean
   readonly configuredDefaultProfileId?: string
   readonly usableDefaultProfileId?: string
-  readonly profiles: Record<string, {
-    readonly name: string
-    readonly description?: string
-    readonly basePreset: string
-    readonly skills: Record<string, { readonly mode: ContextManagerRemoteSkillMode }>
-    readonly prompts: Record<string, {
-      readonly resourceId: string
-      readonly enabled: boolean
-      readonly placement: ContextManagerRemotePromptPlacement
-      readonly order: number
-    }>
-  }>
+  readonly profiles: {
+    readonly [profileId: string]: {
+      readonly name: string
+      readonly description?: string
+      readonly basePreset: string
+      readonly skills: {
+        readonly [skillName: string]: { readonly mode: ContextManagerRemoteSkillMode }
+      }
+      readonly prompts: {
+        readonly [bindingId: string]: {
+          readonly resourceId: string
+          readonly enabled: boolean
+          readonly placement: ContextManagerRemotePromptPlacement
+          readonly order: number
+        }
+      }
+    }
+  }
   readonly diagnostics: readonly {
     readonly code: ContextManagerRemoteDiagnosticCode
     readonly profileId?: string
@@ -44,7 +51,7 @@ export interface ContextManagerProfileRemotePort {
   setProfileBasePreset(profileId: string, basePreset: string, expectedRevision?: number): Promise<void>
   setSkillMode(profileId: string, skillName: string, mode: ContextManagerRemoteSkillMode, expectedRevision?: number): Promise<void>
   removeSkillBinding(profileId: string, skillName: string, expectedRevision?: number): Promise<void>
-  addPromptBinding(profileId: string, bindingId: string, input: unknown, expectedRevision?: number): Promise<void>
+  addPromptBinding(profileId: string, bindingId: string, input: ContextManagerRemotePromptBinding, expectedRevision?: number): Promise<void>
   setPromptBindingResourceId(profileId: string, bindingId: string, resourceId: string, expectedRevision?: number): Promise<void>
   setPromptBindingEnabled(profileId: string, bindingId: string, enabled: boolean, expectedRevision?: number): Promise<void>
   setPromptBindingPlacement(profileId: string, bindingId: string, placement: ContextManagerRemotePromptPlacement, expectedRevision?: number): Promise<void>
