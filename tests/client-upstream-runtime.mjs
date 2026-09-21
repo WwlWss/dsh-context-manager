@@ -115,8 +115,8 @@ assert.equal(overlay.length, 1)
 assert.equal(footer[0].options.id, 'context-manager')
 assert.equal(overlay[0].options.id, 'context-manager-drawer')
 
-const triggerFace = footer[0].options.inject()
-const drawerFace = overlay[0].options.inject()
+const triggerFace = footer[0].inject()
+const drawerFace = overlay[0].inject()
 assert.equal(triggerFace.controller, drawerFace.controller)
 
 const trigger = footer[0].component({ ...triggerFace, wide: true })
