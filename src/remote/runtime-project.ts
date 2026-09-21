@@ -18,10 +18,7 @@ import type {
 } from './types.js'
 
 function projectEffectiveProfile(
-  value:
-    | Extract<ContextManagerRemotePromptRuntimeInspection, { readonly status: 'resolved' }>['profile']
-    | Extract<ContextManagerRemoteSkillRuntimeInspection, { readonly status: 'resolved' }>['profile']
-    | Extract<ContextManagerRemotePinnedSkillInspection, { readonly status: 'resolved' }>['profile'],
+  value: ContextManagerRemoteEffectiveProfileResolution,
 ): ContextManagerRemoteEffectiveProfileResolution {
   switch (value.status) {
     case 'no-default-profile':
