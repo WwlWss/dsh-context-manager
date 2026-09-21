@@ -282,3 +282,10 @@ test('generated M6C Remote contribution exposes exactly the strict business surf
   }).success, true)
 })
 
+
+
+test('M7A client build is pinned to the browser tsconfig', async () => {
+  const config = await readFile(fromRoot('./tsdown.client.config.ts'), 'utf8')
+  assert.match(config, /tsconfig:\s*['"]tsconfig\.client\.json['"]/)
+  assert.doesNotMatch(config, /tsconfig:\s*['"]tsconfig\.json['"]/)
+})
