@@ -632,17 +632,14 @@ jobs:
         with:
           name: m6c-oldest-generated-lib
           path: lib
-      - name: Install selected retained Client test runtime
+      - name: Install selected retained production SlotCore
         run: |
           pnpm add --ignore-scripts --save-dev --save-exact \
             @deepseek-ai/cordis@${{ matrix.cordis }} \
-            @deepseek-ai/dsh-client-test-runtime@${{ matrix.version }} \
-            react@18.2.0 \
-            react-dom@18.2.0 \
-            jsdom@29.1.1 \
-            vitest@4.1.8
-      - name: Load the exact Client artifact through the retained production SlotRegistry
-        run: pnpm exec vitest run ./tests/client-upstream-runtime.test.tsx --environment jsdom
+            @deepseek-ai/dsh-invariants@${{ matrix.version }} \
+            @deepseek-ai/dsh-client-ui-slots@${{ matrix.version }}
+      - name: Load the exact Client artifact through the retained production SlotCore
+        run: node ./tests/client-upstream-runtime.mjs
 
   package:
     name: verify packed bundle
