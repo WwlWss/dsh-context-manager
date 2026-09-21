@@ -441,15 +441,17 @@ The authoring generator/protocol is pinned to the oldest retained `0.1.1-rc.2` c
 
 See [m6a-plan.md](m6a-plan.md).
 
-### M6B — Profiles and Prompt Resources Remote — in progress
+### M6B — Profiles and Prompt Resources Remote — complete in merged PR #20
 
 M6B exposes redacted browser profile snapshots, revision-fenced explicit profile mutations, PromptResource CRUD, and package-owned business-result errors that work across the retained Typert generations without depending on the newer RemoteError vocabulary. It deliberately excludes native preset/runtime diagnostics, Remote events, Client packaging, raw-profile editing, and rendered effective-context preview.
 
 See [m6b-plan.md](m6b-plan.md).
 
-### M6C — Preset/runtime diagnostics and change hints — planned
+### M6C — Preset/runtime diagnostics and change hints — in progress
 
-M6C will project native preset state/authoring and existing runtime inspections through browser-safe DTOs. Any supported Remote event carrier is only a pull-on-change hint; retained 0.1.1 correctness must continue to work without event delivery. M6C does not render the final effective-context preview; that remains M8.
+M6C projects native preset state/authoring and existing runtime inspections through browser-safe DTOs and adds unary invalidation cursors. Context Manager does not declare a custom forwarded Remote event because the retained Host event allowlist is owned centrally by DSH and is not third-party extensible. The cursor is only a pull hint, never a revision or replicated source of truth. M6C does not render the final effective-context preview; that remains M8.
+
+See [m6c-plan.md](m6c-plan.md).
 
 ## Milestone 6 — Host Remote API
 
