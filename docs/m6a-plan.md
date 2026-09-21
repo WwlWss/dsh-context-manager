@@ -40,7 +40,7 @@ contextManager.protocol()
 
 The public Typert analyzer intentionally discovers package registrations only below `<workspace>/packages/*`. Context Manager is a standalone repository whose published package is the repository root, so neither package-mode nor workspace-mode tsdown artifact emission can register the root package directly.
 
-M6A therefore keeps the upstream tsdown transform only for standard-decorator lowering and runs an explicit post-bundle generator script. That script creates a short-lived `.typert-workspace-*/packages/dsh-context-manager` workspace, copies the exact production `src/service/remote.ts` bytes as its only source, invokes the public `WorkspaceTypertGenerator`, copies the generated Host/Remote artifacts into root `lib/`, and deletes the temporary workspace in `finally`.
+M6A therefore keeps the upstream tsdown transform only for standard-decorator lowering and runs an explicit post-bundle generator script. That script creates a short-lived `.typert-workspace-*/packages/dsh-context-manager` workspace, copies the exact production `src/service/remote.ts` and `src/remote/types.ts` bytes as its only business sources, invokes the public `WorkspaceTypertGenerator`, applies one narrow generated-artifact compatibility projection, copies the generated Host/Remote artifacts into root `lib/`, and deletes the temporary workspace in `finally`. The projection bridges the retained strict-codec ABI change by preserving the oldest eager `schema` field and adding `create: () => schema`, which both pre-0.1.6 and `0.1.6-alpha.2` runtimes accept.
 
 This is an isolation adapter, not a second Remote contract: there is no separately maintained service/method declaration. It also prevents the first Typert opt-in from accidentally publishing the existing M2-M5 Cordis Services as reflection surface.
 
@@ -60,7 +60,7 @@ The package exports only `./typert` and `./remote` in M6A. It does **not** add `
 
 The development generator is pinned to the oldest retained public Typert generation, `0.1.1-rc.2`, so the authored decorator/base-class contract cannot accidentally depend on newer protocol APIs.
 
-Runtime CI then installs each retained DSH line and proves the same published artifacts remain accepted:
+Runtime CI builds and uploads the package `lib/` exactly once with the oldest toolchain. Each retained DSH lane downloads that identical artifact, switches only the runtime Cordis/Typert/Gateway packages with lifecycle scripts disabled, and proves the same published artifacts remain accepted:
 
 - 0.1.1-rc.2;
 - 0.1.2-rc.1;
@@ -93,14 +93,16 @@ Likewise, M6A adds no Remote event. Retained 0.1.1 has no Gateway Remote-event s
 
 ### Retained DSH runtime matrix
 
-For every retained DSH generation:
+The producer job builds Context Manager once with the pinned oldest generator and uploads the resulting `lib/`. For every retained DSH generation, the runtime job then:
 
-1. install that generation's Cordis, Typert protocol/registry/loader, API Gateway, and required peers;
-2. build Context Manager;
-3. import/register the generated Host Typert contribution;
-4. invoke `contextManager/protocol` through the real Gateway strict descriptor;
-5. assert `{ apiVersion: 1 }`;
-6. assert the strict descriptor is resolved from the registry and not reconstructed through SRC fallback.
+1. installs the baseline workspace dependencies and discards install-time prepare output;
+2. downloads the producer's exact `lib/` artifact;
+3. switches only Cordis, Typert protocol/registry, API Gateway, and required peers with lifecycle scripts disabled;
+4. imports/registers the generated Host contribution and imports the generated Remote contribution;
+5. asserts both strict result codecs carry the legacy `schema` ABI and current `create()` ABI;
+6. invokes `contextManager/protocol` through the real Gateway strict descriptor;
+7. asserts `{ apiVersion: 1 }` and registry-backed strict resolution rather than SRC fallback;
+8. disposes the contribution and Cordis plugin fibers through their public lifecycle handles.
 
 ## Exit criteria
 
