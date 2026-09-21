@@ -447,3 +447,6 @@ Preset/runtime Remote DTOs are package-owned, JSON-safe projections. They do not
 Context Manager does not augment the Typert forwarded-event selection for its own change event. Retained `0.1.1-rc.2` has no usable Gateway event stream, while later retained DSH lines route Host events through the application-owned static `API_REMOTE_FORWARDED_EVENTS` list in `@deepseek-ai/dsh-api-remotes`. A third-party type augmentation would not add a runtime forwarding source and would create a false compile-time contract.
 
 M6C therefore exposes unary `changes()` invalidation cursors. They are best-effort equality hints only, reset with a new Host-lifetime `instanceId`, and must never be used as mutation revision fences. Browser correctness remains based on authoritative unary reads plus the existing DSH Settings/PromptResource revisions.
+
+
+Unexpected Host/native failures at the Context Manager browser boundary are deliberately sanitized before they reach Typert Gateway. Retained Gateway generations preserve the thrown `Error.message` in their internal-failure wire payload, so Context Manager Remote methods must throw a fixed package-owned message and retain the original exception only as the Host-side `cause`. Stable package-owned business errors continue to use the typed result envelope.
