@@ -9,18 +9,18 @@ export interface ContextManagerProfileSnapshotPort {
   readonly schemaCompatible: boolean
   readonly configuredDefaultProfileId?: string
   readonly usableDefaultProfileId?: string
-  readonly profiles: Readonly<Record<string, {
+  readonly profiles: Record<string, {
     readonly name: string
     readonly description?: string
     readonly basePreset: string
-    readonly skills: Readonly<Record<string, { readonly mode: ContextManagerRemoteSkillMode }>>
-    readonly prompts: Readonly<Record<string, {
+    readonly skills: Record<string, { readonly mode: ContextManagerRemoteSkillMode }>
+    readonly prompts: Record<string, {
       readonly resourceId: string
       readonly enabled: boolean
       readonly placement: ContextManagerRemotePromptPlacement
       readonly order: number
-    }>>
-  }>>
+    }>
+  }>
   readonly diagnostics: readonly {
     readonly code: ContextManagerRemoteDiagnosticCode
     readonly profileId?: string
