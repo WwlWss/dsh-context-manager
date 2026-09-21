@@ -21,6 +21,7 @@ const BUSINESS_CODES = new Set<ContextManagerRemoteErrorCode>([
   'persistence-not-ready',
   'persistence-read-only',
   'persistence-document-invalid',
+  'preset-authoring-unavailable',
   'prompt-library-not-ready',
   'prompt-resource-exists',
   'prompt-resource-not-found',
