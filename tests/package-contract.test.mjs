@@ -111,17 +111,27 @@ test('generated M6B Host Typert surface stays isolated from M2-M5 services', asy
   const methods = host.TYPERT.invocations.map(item => item.method).sort()
   assert.deepEqual(methods, [
     'addPromptBinding',
+    'changes',
+    'copyPreset',
     'createProfile',
     'createPromptResource',
     'deleteProfile',
     'deletePromptResource',
     'getPromptResource',
+    'inspectPinnedSkillRuntime',
+    'inspectPromptRuntime',
+    'inspectSkillRuntime',
     'listPromptResources',
+    'presets',
     'profiles',
+    'promptPlacement',
     'protocol',
+    'readPreset',
+    'removePreset',
     'removePromptBinding',
     'removeSkillBinding',
     'replacePromptResource',
+    'sessionPreset',
     'setDefaultProfile',
     'setProfileBasePreset',
     'setProfileDescription',
@@ -153,22 +163,32 @@ test('generated M6B Remote contribution exposes exactly the strict business surf
   const remote = await import(pathToFileURL(fromRoot(packageJson.exports['./remote'].default)).href)
   const contribution = remote.TYPERT_REMOTE
   assert.equal(contribution.package, 'dsh-context-manager')
-  assert.equal(contribution.descriptors.length, 21)
+  assert.equal(contribution.descriptors.length, 31)
 
   const methods = contribution.descriptors.map(item => item.method).sort()
   assert.deepEqual(methods, [
     'addPromptBinding',
+    'changes',
+    'copyPreset',
     'createProfile',
     'createPromptResource',
     'deleteProfile',
     'deletePromptResource',
     'getPromptResource',
+    'inspectPinnedSkillRuntime',
+    'inspectPromptRuntime',
+    'inspectSkillRuntime',
     'listPromptResources',
+    'presets',
     'profiles',
+    'promptPlacement',
     'protocol',
+    'readPreset',
+    'removePreset',
     'removePromptBinding',
     'removeSkillBinding',
     'replacePromptResource',
+    'sessionPreset',
     'setDefaultProfile',
     'setProfileBasePreset',
     'setProfileDescription',
@@ -201,6 +221,35 @@ test('generated M6B Remote contribution exposes exactly the strict business surf
   assert.deepEqual(protocol.parameters, [])
   assert.equal(protocol.result.schema.safeParse({ apiVersion: 1 }).success, true)
   assert.equal(protocol.result.schema.safeParse({ apiVersion: '1' }).success, false)
+
+  const presets = contribution.descriptors.find(item => item.method === 'presets')
+  assert.ok(presets)
+  assert.equal(presets.result.schema.safeParse({
+    directory: {
+      status: 'available',
+      defaultId: 'standard',
+      authorable: true,
+      presets: [{
+        id: 'standard',
+        trust: 'system',
+        isDefault: true,
+      }],
+    },
+    profiles: {},
+  }).success, true)
+
+  const promptRuntime = contribution.descriptors.find(item => item.method === 'inspectPromptRuntime')
+  assert.ok(promptRuntime)
+  assert.equal(promptRuntime.result.schema.safeParse({
+    status: 'resolved',
+    agentId: 'agent-1',
+    profile: {
+      status: 'active',
+      profileId: 'main',
+      presetId: 'standard',
+    },
+    bindings: [],
+  }).success, true)
 
   const createProfile = contribution.descriptors.find(item => item.method === 'createProfile')
   assert.ok(createProfile)
