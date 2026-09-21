@@ -53,7 +53,7 @@ The interaction controller owns only `open/closed` presentation state. It is not
 
 ## Build boundary
 
-Host and Client typechecking are separate. The normal Host build emits the public `client-contract.d.ts` and generates the strict Remote contribution. Only after that contribution exists does the browser build bundle `scripts/client-entry.ts`.
+Host and Client typechecking and bundling use separate TypeScript programs. Host work uses `tsconfig.json`; Client typecheck and `tsdown.client.config.ts` both use `tsconfig.client.json`. The normal Host build emits the public `client-contract.d.ts` and generates the strict Remote contribution. Only after that contribution exists does the browser build bundle `scripts/client-entry.ts`.
 
 The browser bundle keeps only `react` external. Generated Remote codecs and package-local code are bundled into the one Client artifact. Package tests scan the emitted artifact and fail if extra synchronous module-table requests or asynchronous chunks appear.
 
@@ -67,4 +67,4 @@ The browser bundle keeps only `react` external. Generated Remote codecs and pack
 - preset/profile diagnostics;
 - production Drawer styling.
 
-M7A is complete when the same published Client artifact is proven to load, mount the generated Remote contribution, register both additive slots, and unload cleanly across every retained DSH generation.
+M7A is complete when the same published Client artifact is proven to use the retained loader ABI, mount the generated Remote contribution, and register/unregister both additive entries against each retained generation's production `SlotCore`. The retained matrix deliberately does not claim a full browser `SlotRegistry` end-to-end: published upstream Client test helpers are not usable as a cross-generation runtime seam, while the production `SlotRegistry` contract and its `ctx.effect` ownership are source-audited separately. A full assembled browser smoke remains a later closeout concern.
