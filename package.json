@@ -22,6 +22,10 @@
     "./types": {
       "types": "./lib/remote/types.d.ts",
       "default": "./lib/remote/types.js"
+    },
+    "./client": {
+      "types": "./lib/client-contract.d.ts",
+      "default": "./lib/client.js"
     }
   },
   "files": [
@@ -38,11 +42,15 @@
   ],
   "scripts": {
     "clean": "node ./scripts/clean.mjs",
-    "build": "tsdown --config tsdown.config.ts && node ./scripts/generate-typert.mjs",
-    "prepare": "tsdown --config tsdown.prepare.config.ts && node ./scripts/generate-typert.mjs",
-    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "build": "pnpm run build:host && pnpm run build:client",
+    "prepare": "tsdown --config tsdown.prepare.config.ts && node ./scripts/generate-typert.mjs && tsdown --config tsdown.client.config.ts",
+    "typecheck": "pnpm run typecheck:host && pnpm run typecheck:client",
     "test": "node --test ./tests/*.test.mjs",
-    "check": "pnpm run typecheck && pnpm run clean && pnpm run build && pnpm run test"
+    "check": "pnpm run typecheck && pnpm run clean && pnpm run build && pnpm run test",
+    "build:host": "tsdown --config tsdown.config.ts && node ./scripts/generate-typert.mjs",
+    "build:client": "tsdown --config tsdown.client.config.ts",
+    "typecheck:host": "tsc -p tsconfig.json --noEmit",
+    "typecheck:client": "tsc -p tsconfig.client.json --noEmit"
   },
   "engines": {
     "node": "^22.19.0 || >=24.0.0"
@@ -85,6 +93,15 @@
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-api-remotes",
+        "@deepseek-ai/dsh-client-ui-renderer",
+        "@deepseek-ai/dsh-client-ui-layout",
+        "@deepseek-ai/dsh-client-ui-sidebar"
+      ]
     }
   }
 }
