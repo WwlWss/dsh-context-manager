@@ -101,6 +101,81 @@ test('profile CRUD persists through DSH Settings without resolving references', 
   assert.equal(descriptor.user.profiles.anima.skills['future-skill'].mode, 'pinned')
 })
 
+
+test('wire snapshot uses DSH secret redaction while Host snapshot remains authoritative', async () => {
+  const { manager, settings } = await boot()
+  await manager.createProfile('anima', anima)
+
+  const originalDescribe = settings.describe.bind(settings)
+  settings.describe = (options) => {
+    const rows = originalDescribe(options)
+    if (options?.redactSecrets !== true) return rows
+    return rows.map(row => row.ns === CONTEXT_MANAGER_SETTINGS_NAMESPACE
+      ? {
+          ...row,
+          value: {
+            ...row.value,
+            profiles: {
+              ...row.value.profiles,
+              anima: {
+                ...row.value.profiles.anima,
+                name: 'REDACTED NAME',
+              },
+            },
+          },
+        }
+      : row)
+  }
+
+  assert.equal(manager.snapshot().profiles.anima.name, 'Anima Development')
+  assert.equal(manager.snapshotForWire().profiles.anima.name, 'REDACTED NAME')
+})
+
+test('profile leaf mutations preserve unknown siblings and remain revision-fenced', async () => {
+  const { manager } = await boot()
+  await manager.createProfile('extended', {
+    ...anima,
+    description: 'old',
+    futureField: { keep: true },
+  })
+
+  await manager.setProfileName('extended', 'Renamed', manager.snapshot().persistence.revision)
+  await manager.setProfileDescription('extended', undefined, manager.snapshot().persistence.revision)
+  await manager.setProfileBasePreset('extended', 'future-native-preset', manager.snapshot().persistence.revision)
+
+  const stored = manager.getStoredProfile('extended')
+  assert.equal(stored.name, 'Renamed')
+  assert.equal(Object.hasOwn(stored, 'description'), false)
+  assert.equal(stored.basePreset, 'future-native-preset')
+  assert.deepEqual(stored.futureField, { keep: true })
+
+  const stale = manager.snapshot().persistence.revision
+  await manager.setProfileName('extended', 'Fresh', stale)
+  await assert.rejects(
+    manager.setProfileBasePreset('extended', 'stale-write', stale),
+    error => error instanceof SettingsConflictError,
+  )
+})
+
+test('profile leaf mutations reject non-object profiles without replacing them', async () => {
+  const { manager } = await boot()
+  await manager.setRawProfile('primitive', 'DO NOT REPLACE')
+
+  for (const mutate of [
+    revision => manager.setProfileName('primitive', 'x', revision),
+    revision => manager.setProfileDescription('primitive', 'x', revision),
+    revision => manager.setProfileBasePreset('primitive', 'x', revision),
+  ]) {
+    const revision = manager.snapshot().persistence.revision
+    await assert.rejects(
+      mutate(revision),
+      error => error instanceof ContextManagerError && error.code === 'profile-path-not-editable',
+    )
+    assert.equal(manager.getStoredProfile('primitive'), 'DO NOT REPLACE')
+    assert.equal(manager.snapshot().persistence.revision, revision)
+  }
+})
+
 test('structured writes preserve caller-supplied extension fields, including skill binding metadata', async () => {
   const { manager } = await boot()
   await manager.createProfile('extended', {

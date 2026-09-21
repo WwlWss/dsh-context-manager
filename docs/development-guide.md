@@ -402,7 +402,7 @@ Use a dedicated Remote projection/controller layer. Do not make browser protocol
 
 Every shipped endpoint must have a generated strict Typert descriptor exposed through package `./typert` and `./remote` artifacts. Do not treat Gateway SRC fallback as a release contract.
 
-Keep Remote DTOs JSON-safe and deliberately narrower than Host objects. Browser reads that can include Settings-backed data must use the DSH redaction contract at the wire boundary; Host-authoritative internal reads remain unredacted.
+Keep Remote DTOs JSON-safe and deliberately narrower than Host objects. Browser reads that can include Settings-backed data must use the DSH redaction contract at the wire boundary; Host-authoritative internal reads remain unredacted. Never rebuild or whole-replace a Stored profile from a redacted/narrow browser DTO; ordinary browser editing must use explicit path-local mutations so omitted secrets and forward-compatible siblings survive by construction.
 
 Retained `0.1.1-rc.2` has Typert unary Remote but predates the later typed `RemoteError` vocabulary and forwarded Remote-event stream. Do not build cross-generation Context Manager correctness on those newer facilities unless a compatibility adapter explicitly proves the behavior.
 

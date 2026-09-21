@@ -96,6 +96,16 @@ export class ContextManagerService extends Service {
   }
 
   /**
+   * Browser-bound Domain view. The Host stays authoritative through snapshot(),
+   * while every wire-facing read asks DSH Settings to redact schema-declared
+   * secrets before Context Manager normalizes the result.
+   */
+  snapshotForWire(): ContextManagerSnapshot {
+    const { stored, persistence } = this.readState(true)
+    return normalizeSettings(stored, persistence)
+  }
+
+  /**
    * Targeted immutable Domain read for runtime consumers that only need the
    * configured default profile. Unlike snapshot(), this does not normalize or
    * enumerate unrelated profiles.
@@ -182,6 +192,66 @@ export class ContextManagerService extends Service {
         ? { op: 'unset', path: ['defaultProfileId'] }
         : { op: 'set', path: ['defaultProfileId'], value: id },
     ])
+  }
+
+  /** Edit exactly one profile display-name leaf without rebuilding the profile. */
+  async setProfileName(
+    profileId: string,
+    name: string,
+    expectedRevision?: number,
+  ): Promise<void> {
+    assertSafePathKey(profileId, 'profile id')
+    if (typeof name !== 'string') {
+      throw new ContextManagerError('invalid-profile', 'profile.name must be a string')
+    }
+    const state = this.captureWritableState(expectedRevision)
+    this.requireProfileObject(state.stored, profileId)
+    await this.mutate(state, [{
+      op: 'set',
+      path: ['profiles', profileId, 'name'],
+      value: name,
+    }])
+  }
+
+  /** Edit or remove exactly one optional profile description leaf. */
+  async setProfileDescription(
+    profileId: string,
+    description: string | undefined,
+    expectedRevision?: number,
+  ): Promise<void> {
+    assertSafePathKey(profileId, 'profile id')
+    if (description !== undefined && typeof description !== 'string') {
+      throw new ContextManagerError(
+        'invalid-profile',
+        'profile.description must be a string when present',
+      )
+    }
+    const state = this.captureWritableState(expectedRevision)
+    this.requireProfileObject(state.stored, profileId)
+    await this.mutate(state, [
+      description === undefined
+        ? { op: 'unset', path: ['profiles', profileId, 'description'] }
+        : { op: 'set', path: ['profiles', profileId, 'description'], value: description },
+    ])
+  }
+
+  /** Edit exactly one native base-preset reference without resolving it. */
+  async setProfileBasePreset(
+    profileId: string,
+    basePreset: string,
+    expectedRevision?: number,
+  ): Promise<void> {
+    assertSafePathKey(profileId, 'profile id')
+    if (typeof basePreset !== 'string') {
+      throw new ContextManagerError('invalid-profile', 'profile.basePreset must be a string')
+    }
+    const state = this.captureWritableState(expectedRevision)
+    this.requireProfileObject(state.stored, profileId)
+    await this.mutate(state, [{
+      op: 'set',
+      path: ['profiles', profileId, 'basePreset'],
+      value: basePreset,
+    }])
   }
 
   /**
@@ -539,7 +609,7 @@ export class ContextManagerService extends Service {
     }
   }
 
-  private readState(): {
+  private readState(redactSecrets = false): {
     stored: StoredContextManagerSettings
     persistence: ContextManagerSnapshot['persistence']
   } {
@@ -559,7 +629,7 @@ export class ContextManagerService extends Service {
     // is for wire/UI surfaces; consuming a redacted value here would make a
     // future secret-bearing field alter the service's own Domain state.
     const descriptor = settings
-      .describe()
+      .describe(redactSecrets ? { redactSecrets: true } : undefined)
       .find(item => item.ns === CONTEXT_MANAGER_SETTINGS_NAMESPACE)
 
     if (descriptor === undefined) {

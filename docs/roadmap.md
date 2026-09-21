@@ -433,13 +433,23 @@ M5 is complete after model discovery, user invocation, Pinned instruction visibi
 
 ---
 
-### M6A — Strict Typert Remote foundation — in progress (PR #19)
+### M6A — Strict Typert Remote foundation — complete in merged PR #19
 
 M6A establishes the browser boundary before exposing business state. It adds one Host Remote owner, `contextManager.protocol() -> { apiVersion: 1 }`, and generated package `./typert` / `./remote` artifacts. It intentionally adds no Profile/Prompt CRUD, runtime diagnostics, Remote events, or Web Client surface.
 
 The authoring generator/protocol is pinned to the oldest retained `0.1.1-rc.2` contract. One generated artifact is then executed against the real Typert Registry/API Gateway on all five retained DSH generations. Gateway SRC fallback is not accepted as release evidence.
 
 See [m6a-plan.md](m6a-plan.md).
+
+### M6B — Profiles and Prompt Resources Remote — in progress
+
+M6B exposes redacted browser profile snapshots, revision-fenced explicit profile mutations, PromptResource CRUD, and package-owned business-result errors that work across the retained Typert generations without depending on the newer RemoteError vocabulary. It deliberately excludes native preset/runtime diagnostics, Remote events, Client packaging, raw-profile editing, and rendered effective-context preview.
+
+See [m6b-plan.md](m6b-plan.md).
+
+### M6C — Preset/runtime diagnostics and change hints — planned
+
+M6C will project native preset state/authoring and existing runtime inspections through browser-safe DTOs. Any supported Remote event carrier is only a pull-on-change hint; retained 0.1.1 correctness must continue to work without event delivery. M6C does not render the final effective-context preview; that remains M8.
 
 ## Milestone 6 — Host Remote API
 
@@ -452,9 +462,8 @@ Likely groups:
 ```text
 profiles
 resources
-runtime diagnostics
 preset directory
-effective preview
+runtime diagnostics / preview ingredients
 ```
 
 Requirements:
