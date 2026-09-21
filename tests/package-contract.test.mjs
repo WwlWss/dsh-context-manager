@@ -101,39 +101,118 @@ test('built host entry does not import or bundle optional DSH runtime packages',
 })
 
 
-test('generated M6A Host Typert surface stays isolated from M2-M5 services', async () => {
+test('generated M6B Host Typert surface stays isolated from M2-M5 services', async () => {
   const host = await import(pathToFileURL(fromRoot(packageJson.exports['./typert'].default)).href)
   assert.equal(host.TYPERT.package, 'dsh-context-manager')
   assert.equal(host.TYPERT.face, 'host')
   assert.deepEqual(host.TYPERT.model.services, [])
   assert.deepEqual(host.TYPERT.model.events, [])
-  assert.equal(host.TYPERT.invocations.length, 1)
-  assert.equal(host.TYPERT.invocations[0].service, 'dshContextRemote')
-  const codec = host.TYPERT.invocations[0].result
-  assert.equal(codec.mode, 'strict')
-  assert.equal(typeof codec.schema?.parse, 'function')
-  assert.equal(typeof codec.create, 'function')
-  assert.equal(codec.create(), codec.schema)
+
+  const methods = host.TYPERT.invocations.map(item => item.method).sort()
+  assert.deepEqual(methods, [
+    'addPromptBinding',
+    'createProfile',
+    'createPromptResource',
+    'deleteProfile',
+    'deletePromptResource',
+    'getPromptResource',
+    'listPromptResources',
+    'profiles',
+    'protocol',
+    'removePromptBinding',
+    'removeSkillBinding',
+    'replacePromptResource',
+    'setDefaultProfile',
+    'setProfileBasePreset',
+    'setProfileDescription',
+    'setProfileName',
+    'setPromptBindingEnabled',
+    'setPromptBindingOrder',
+    'setPromptBindingPlacement',
+    'setPromptBindingResourceId',
+    'setSkillMode',
+  ])
+
+  for (const invocation of host.TYPERT.invocations) {
+    assert.equal(invocation.service, 'dshContextRemote')
+    assert.equal(invocation.namespace, 'contextManager')
+    assert.equal(invocation.result.mode, 'strict')
+    assert.equal(typeof invocation.result.schema?.parse, 'function')
+    assert.equal(typeof invocation.result.create, 'function')
+    assert.equal(invocation.result.create(), invocation.result.schema)
+    for (const parameter of invocation.parameters) {
+      assert.equal(parameter.codec.mode, 'strict')
+      assert.equal(typeof parameter.codec.schema?.parse, 'function')
+      assert.equal(typeof parameter.codec.create, 'function')
+      assert.equal(parameter.codec.create(), parameter.codec.schema)
+    }
+  }
 })
 
-test('generated M6A Remote contribution is strict and contains only protocol()', async () => {
+test('generated M6B Remote contribution exposes exactly the strict business surface', async () => {
   const remote = await import(pathToFileURL(fromRoot(packageJson.exports['./remote'].default)).href)
   const contribution = remote.TYPERT_REMOTE
   assert.equal(contribution.package, 'dsh-context-manager')
-  assert.equal(contribution.descriptors.length, 1)
+  assert.equal(contribution.descriptors.length, 21)
 
-  const [descriptor] = contribution.descriptors
-  assert.equal(descriptor.id, 'dsh-context-manager#contextManager/protocol')
-  assert.equal(descriptor.service, 'dshContextRemote')
-  assert.equal(descriptor.namespace, 'contextManager')
-  assert.equal(descriptor.method, 'protocol')
-  assert.equal(descriptor.implementation ?? descriptor.method, 'protocol')
-  assert.deepEqual(descriptor.invocation, { kind: 'direct' })
-  assert.deepEqual(descriptor.parameters, [])
-  assert.equal(descriptor.result.mode, 'strict')
-  assert.equal(typeof descriptor.result.schema?.parse, 'function')
-  assert.equal(typeof descriptor.result.create, 'function')
-  assert.equal(descriptor.result.create(), descriptor.result.schema)
-  assert.equal(descriptor.result.schema.safeParse({ apiVersion: 1 }).success, true)
-  assert.equal(descriptor.result.schema.safeParse({ apiVersion: '1' }).success, false)
+  const methods = contribution.descriptors.map(item => item.method).sort()
+  assert.deepEqual(methods, [
+    'addPromptBinding',
+    'createProfile',
+    'createPromptResource',
+    'deleteProfile',
+    'deletePromptResource',
+    'getPromptResource',
+    'listPromptResources',
+    'profiles',
+    'protocol',
+    'removePromptBinding',
+    'removeSkillBinding',
+    'replacePromptResource',
+    'setDefaultProfile',
+    'setProfileBasePreset',
+    'setProfileDescription',
+    'setProfileName',
+    'setPromptBindingEnabled',
+    'setPromptBindingOrder',
+    'setPromptBindingPlacement',
+    'setPromptBindingResourceId',
+    'setSkillMode',
+  ])
+
+  for (const descriptor of contribution.descriptors) {
+    assert.equal(descriptor.service, 'dshContextRemote')
+    assert.equal(descriptor.namespace, 'contextManager')
+    assert.deepEqual(descriptor.invocation, { kind: 'direct' })
+    assert.equal(descriptor.result.mode, 'strict')
+    assert.equal(typeof descriptor.result.schema?.parse, 'function')
+    assert.equal(typeof descriptor.result.create, 'function')
+    assert.equal(descriptor.result.create(), descriptor.result.schema)
+    for (const parameter of descriptor.parameters) {
+      assert.equal(parameter.codec.mode, 'strict')
+      assert.equal(typeof parameter.codec.schema?.parse, 'function')
+      assert.equal(typeof parameter.codec.create, 'function')
+      assert.equal(parameter.codec.create(), parameter.codec.schema)
+    }
+  }
+
+  const protocol = contribution.descriptors.find(item => item.method === 'protocol')
+  assert.ok(protocol)
+  assert.deepEqual(protocol.parameters, [])
+  assert.equal(protocol.result.schema.safeParse({ apiVersion: 1 }).success, true)
+  assert.equal(protocol.result.schema.safeParse({ apiVersion: '1' }).success, false)
+
+  const createProfile = contribution.descriptors.find(item => item.method === 'createProfile')
+  assert.ok(createProfile)
+  assert.deepEqual(createProfile.parameters.map(item => item.name), ['id', 'input', 'expectedRevision'])
+  assert.equal(createProfile.result.schema.safeParse({
+    ok: false,
+    error: {
+      code: 'profile-conflict',
+      message: 'stale',
+      expectedRevision: 1,
+      actualRevision: 2,
+    },
+  }).success, true)
 })
+
