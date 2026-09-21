@@ -88,8 +88,8 @@ export function apply(ctx: Context): void {
   ctx.plugin(ContextManagerPromptPlacementCapability)
   ctx.plugin(ContextManagerPromptRuntime)
   ctx.plugin(ContextManagerRequestSeries)
-  ctx.plugin(ContextManagerRemoteService)
   ctx.plugin(ContextManagerSkillRuntime)
   ctx.plugin(ContextManagerPinnedSkillRuntime)
+  ctx.plugin(ContextManagerRemoteService)
   ctx.logger('dsh-context-manager').info('Context Manager Host services loaded')
 }
