@@ -536,8 +536,32 @@ jobs:
           pnpm run build
           node ./tests/pinned-skill-runtime-agent-loop.e2e.mjs
 
+  remote-foundation-artifact:
+    name: M6A oldest-generated artifact
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22.20.0
+      - name: Enable pinned pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.7.0 --activate
+      - run: pnpm install --frozen-lockfile
+      - name: Build the one oldest-generation package artifact
+        run: pnpm run build
+      - name: Upload the exact M6A package artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: m6a-oldest-generated-lib
+          path: lib
+          if-no-files-found: error
+
   remote-foundation-contract:
     name: M6A strict Remote runtime (${{ matrix.version }})
+    needs: remote-foundation-artifact
     strategy:
       fail-fast: false
       matrix:
@@ -559,8 +583,13 @@ jobs:
           corepack enable
           corepack prepare pnpm@11.7.0 --activate
       - run: pnpm install --frozen-lockfile
-      - name: Build one oldest-generation strict Typert artifact
-        run: pnpm run build
+      - name: Discard install-time prepare output
+        run: rm -rf lib
+      - name: Restore the one oldest-generated package artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: m6a-oldest-generated-lib
+          path: lib
       - name: Switch only the runtime Typert/Gateway generation
         run: |
           pnpm add --ignore-scripts --save-dev --save-exact \
@@ -601,6 +630,7 @@ jobs:
           grep -Fx 'package/lib/typert.host.d.ts' .artifacts/package-files.txt
           grep -Fx 'package/lib/typert.remote-client.js' .artifacts/package-files.txt
           grep -Fx 'package/lib/typert.remote-client.d.ts' .artifacts/package-files.txt
+          grep -Fx 'package/lib/typert.remote-client.d.ts.map' .artifacts/package-files.txt
           grep -Fx 'package/cordis.patch.yml' .artifacts/package-files.txt
           grep -Fx 'package/package.json' .artifacts/package-files.txt
       - name: Verify packed package peer compatibility
