@@ -350,6 +350,14 @@ Development generation is pinned to the oldest retained `0.1.1-rc.2` Typert gene
 
 Retained `0.1.1-rc.2` predates the later shared `RemoteError` vocabulary and Remote-event stream. M6A therefore exposes neither domain mutation errors nor change events yet. Later M6 slices must preserve browser correctness without assuming either newer capability.
 
+## M6B profile/resource Remote compatibility
+
+M6B keeps the same oldest-generated strict artifact strategy. All five retained Settings generations expose `describe({ redactSecrets: true })`, so the browser profile read uses the public redaction switch without version branching and then projects only the explicit M6B DTO fields.
+
+Expected business failures do not depend on shared `RemoteError`. Context Manager returns a package-owned strict JSON result union. The stable native `SettingsConflictError` shape (`code: "SETTINGS_CONFLICT"`, `expected`, `actual`) is mapped to `profile-conflict`; Context Manager Domain/PromptResource error codes are mapped to the corresponding package error vocabulary. Unknown infrastructure/programming failures continue to throw.
+
+The M6B Typert workspace remains isolated from M2-M5 Host service classes through narrow structural ports plus compile-only assignability assertions. The generated contribution contains only the `dshContextRemote` invocation surface.
+
 ## Web client and presentation guardrails
 
 Future Web work remains additive to DSH composition:
