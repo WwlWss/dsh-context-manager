@@ -97,7 +97,7 @@ DSH Settings revision fencing is an in-process guarantee. If multiple DSH proces
 3. **Complete** — M3A native AgentPreset roster resolution, M3B live Session effective identity, and M3C DSH-owned copy-only native preset authoring bridge.
 4. **Complete** — Storage-backed Prompt Library, PromptBinding Domain state, five-generation placement compatibility, and Agent-scoped prompt/runtime-context composition.
 5. **Complete** — five-generation Skill/Scope contracts, targeted effective-profile hot-path reads, Context Manager invalidation, the Agent-scoped Pinned / Auto / Manual / Off native invocation-policy overlay, and the separate Pinned full-instruction replacement/reconciliation path.
-6. **In progress** — strict Host Remote API: M6A foundation complete; M6B profiles/Prompt Resources underway; preset/runtime diagnostics follow in M6C.
+6. **In progress** — strict Host Remote API: M6A foundation and M6B profiles/Prompt Resources complete; M6C preset/runtime diagnostics and pull change hints underway.
 7. Web client package and additive right-side Drawer.
 8. Preset / Prompt / Skill editor and effective-context preview.
 9. Project and Session bindings without mutating shipped preset files.
