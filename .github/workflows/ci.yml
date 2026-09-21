@@ -601,9 +601,53 @@ jobs:
       - name: Invoke generated descriptor through the real Gateway
         run: node ./tests/remote-upstream-runtime.mjs
 
+  client-foundation-contract:
+    name: M7A retained Client runtime (${{ matrix.version }})
+    needs: remote-foundation-artifact
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { version: 0.1.1-rc.2, cordis: 4.0.1, registry: '@deepseek-ai/dsh-client-runtime' }
+          - { version: 0.1.2-rc.1, cordis: 4.0.2, registry: '@deepseek-ai/dsh-client-ui-renderer' }
+          - { version: 0.1.5-rc.1, cordis: 4.0.2, registry: '@deepseek-ai/dsh-client-ui-renderer' }
+          - { version: 0.1.5-rc.2, cordis: 4.0.2, registry: '@deepseek-ai/dsh-client-ui-renderer' }
+          - { version: 0.1.6-alpha.2, cordis: 4.0.2, registry: '@deepseek-ai/dsh-client-ui-renderer' }
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22.20.0
+      - name: Enable pinned pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.7.0 --activate
+      - run: pnpm install --frozen-lockfile
+      - name: Discard install-time prepare output
+        run: rm -rf lib
+      - name: Restore the one oldest-built M7A client artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: m6c-oldest-generated-lib
+          path: lib
+      - name: Install selected retained Client runtime
+        run: |
+          pnpm add --ignore-scripts --save-dev --save-exact \
+            @deepseek-ai/cordis@${{ matrix.cordis }} \
+            @deepseek-ai/dsh-invariants@${{ matrix.version }} \
+            @deepseek-ai/dsh-client-ui-slots@${{ matrix.version }} \
+            "${{ matrix.registry }}@${{ matrix.version }}" \
+            react@18.2.0
+      - name: Load the exact Client artifact against the retained SlotRegistry
+        env:
+          DSH_CLIENT_REGISTRY_PACKAGE: ${{ matrix.registry }}
+        run: node ./tests/client-upstream-runtime.mjs
+
   package:
     name: verify packed bundle
-    needs: [verify, settings-modern, agent-presets-contract, session-preset-contract, prompt-library-contract, prompt-placement-contract, prompt-runtime-contract, prompt-runtime-agent-loop, skill-runtime-contract, skill-policy-runtime-contract, skill-policy-agent-loop, pinned-skill-runtime-contract, pinned-skill-agent-loop, remote-foundation-contract]
+    needs: [verify, settings-modern, agent-presets-contract, session-preset-contract, prompt-library-contract, prompt-placement-contract, prompt-runtime-contract, prompt-runtime-agent-loop, skill-runtime-contract, skill-policy-runtime-contract, skill-policy-agent-loop, pinned-skill-runtime-contract, pinned-skill-agent-loop, remote-foundation-contract, client-foundation-contract]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -631,6 +675,9 @@ jobs:
           grep -Fx 'package/lib/typert.remote-client.js' .artifacts/package-files.txt
           grep -Fx 'package/lib/typert.remote-client.d.ts' .artifacts/package-files.txt
           grep -Fx 'package/lib/typert.remote-client.d.ts.map' .artifacts/package-files.txt
+          grep -Fx 'package/lib/client.js' .artifacts/package-files.txt
+          grep -Fx 'package/lib/client.js.map' .artifacts/package-files.txt
+          grep -Fx 'package/lib/client-contract.d.ts' .artifacts/package-files.txt
           grep -Fx 'package/cordis.patch.yml' .artifacts/package-files.txt
           grep -Fx 'package/package.json' .artifacts/package-files.txt
       - name: Verify packed package peer compatibility
