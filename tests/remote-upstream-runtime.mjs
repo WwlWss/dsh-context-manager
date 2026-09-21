@@ -164,7 +164,12 @@ class FakePresetAuthoring extends Service {
     super(ctx, 'dshContextPresetAuthoring')
     this.rows = new Set()
   }
-  async read(id) { return `composition:${id}\n` }
+  async read(id) {
+    if (id === 'leak') {
+      throw new Error("EACCES: permission denied, open '/host/private/.dsh/preset/agent.cordis.yml'")
+    }
+    return `composition:${id}\n`
+  }
   async copy(_from, id) { this.rows.add(id) }
   async remove(id) { this.rows.delete(id) }
 }
@@ -360,6 +365,19 @@ try {
     ok: true,
     value: { id: 'standard', content: 'composition:standard\n' },
   })
+
+  await assert.rejects(
+    ctx.typertGateway.invoke({
+      namespace: 'contextManager',
+      method: 'readPreset',
+      args: { id: 'leak' },
+    }),
+    error => {
+      assert.equal(error.message, 'Context Manager Remote operation failed')
+      assert.equal(error.message.includes('/host/private'), false)
+      return true
+    },
+  )
 
   const presetCopy = await ctx.typertGateway.invoke({
     namespace: 'contextManager',
