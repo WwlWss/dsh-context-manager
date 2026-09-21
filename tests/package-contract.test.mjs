@@ -58,6 +58,7 @@ test('built host entry exposes the Context Manager Host service contracts', asyn
   assert.equal(entry.name, 'dsh-context-manager')
   assert.equal(typeof entry.apply, 'function')
   assert.equal(typeof entry.ContextManagerService, 'function')
+  assert.equal(typeof entry.ContextManagerChangeTracker, 'function')
   assert.equal(typeof entry.ContextManagerPresetDirectory, 'function')
   assert.equal(typeof entry.ContextManagerSessionPresetIdentity, 'function')
   assert.equal(typeof entry.ContextManagerPresetAuthoring, 'function')
