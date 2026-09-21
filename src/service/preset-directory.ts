@@ -33,7 +33,23 @@ export class ContextManagerPresetDirectory extends Service {
   }
 
   async snapshot(): Promise<ContextManagerPresetSnapshot> {
-    const domain = this.ownerCtx.dshContextManager.snapshot()
+    return this.snapshotFromDomain(this.ownerCtx.dshContextManager.snapshot())
+  }
+
+  /**
+   * Browser-bound preset read model.
+   *
+   * Profile intent is sourced from Context Manager's redacted Settings view so
+   * every Settings-backed browser read crosses the same DSH secret-redaction
+   * boundary. Native preset discovery remains the same path-free observation.
+   */
+  async snapshotForWire(): Promise<ContextManagerPresetSnapshot> {
+    return this.snapshotFromDomain(this.ownerCtx.dshContextManager.snapshotForWire())
+  }
+
+  private async snapshotFromDomain(
+    domain: Parameters<typeof buildPresetSnapshot>[0],
+  ): Promise<ContextManagerPresetSnapshot> {
     const agentPresets = getAgentPresetsCapability(this.ownerCtx)
 
     if (agentPresets === undefined) {
