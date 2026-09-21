@@ -608,11 +608,11 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { version: 0.1.1-rc.2, cordis: 4.0.1, registry: '@deepseek-ai/dsh-client-runtime' }
-          - { version: 0.1.2-rc.1, cordis: 4.0.2, registry: '@deepseek-ai/dsh-client-ui-renderer' }
-          - { version: 0.1.5-rc.1, cordis: 4.0.2, registry: '@deepseek-ai/dsh-client-ui-renderer' }
-          - { version: 0.1.5-rc.2, cordis: 4.0.2, registry: '@deepseek-ai/dsh-client-ui-renderer' }
-          - { version: 0.1.6-alpha.2, cordis: 4.0.2, registry: '@deepseek-ai/dsh-client-ui-renderer' }
+          - { version: 0.1.1-rc.2, cordis: 4.0.1 }
+          - { version: 0.1.2-rc.1, cordis: 4.0.2 }
+          - { version: 0.1.5-rc.1, cordis: 4.0.2 }
+          - { version: 0.1.5-rc.2, cordis: 4.0.2 }
+          - { version: 0.1.6-alpha.2, cordis: 4.0.2 }
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -632,18 +632,16 @@ jobs:
         with:
           name: m6c-oldest-generated-lib
           path: lib
-      - name: Install selected retained Client runtime
+      - name: Install selected retained Client test runtime
         run: |
           pnpm add --ignore-scripts --save-dev --save-exact \
             @deepseek-ai/cordis@${{ matrix.cordis }} \
-            @deepseek-ai/dsh-invariants@${{ matrix.version }} \
-            @deepseek-ai/dsh-client-ui-slots@${{ matrix.version }} \
-            "${{ matrix.registry }}@${{ matrix.version }}" \
-            react@18.2.0
-      - name: Load the exact Client artifact against the retained SlotRegistry
-        env:
-          DSH_CLIENT_REGISTRY_PACKAGE: ${{ matrix.registry }}
-        run: node ./tests/client-upstream-runtime.mjs
+            @deepseek-ai/dsh-client-test-runtime@${{ matrix.version }} \
+            react@18.2.0 \
+            react-dom@18.2.0 \
+            jsdom@29.1.1
+      - name: Load the exact Client artifact through the retained production SlotRegistry
+        run: pnpm exec vitest run ./tests/client-upstream-runtime.test.tsx --environment jsdom
 
   package:
     name: verify packed bundle
