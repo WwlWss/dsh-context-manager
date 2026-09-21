@@ -127,7 +127,7 @@ export interface ContextManagerPresetSnapshotPort {
 }
 
 export interface ContextManagerPresetDirectoryRemotePort {
-  snapshot(): Promise<ContextManagerPresetSnapshotPort>
+  snapshotForWire(): Promise<ContextManagerPresetSnapshotPort>
 }
 
 export interface ContextManagerPresetAuthoringRemotePort {
