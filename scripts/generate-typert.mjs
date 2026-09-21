@@ -68,6 +68,8 @@ try {
     'types.ts',
     'host-ports.ts',
     'project.ts',
+    'preset-project.ts',
+    'runtime-project.ts',
     'results.ts',
   ]) {
     await cp(
@@ -207,6 +209,8 @@ try {
     ['remote', 'types.ts'],
     ['remote', 'host-ports.ts'],
     ['remote', 'project.ts'],
+    ['remote', 'preset-project.ts'],
+    ['remote', 'runtime-project.ts'],
     ['remote', 'results.ts'],
   ]) {
     const production = await readFile(join(root, 'src', ...relative), 'utf8')
