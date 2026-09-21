@@ -101,7 +101,7 @@ test('built host entry does not import or bundle optional DSH runtime packages',
 })
 
 
-test('generated M6B Host Typert surface stays isolated from M2-M5 services', async () => {
+test('generated M6C Host Typert surface stays isolated from M2-M5 services', async () => {
   const host = await import(pathToFileURL(fromRoot(packageJson.exports['./typert'].default)).href)
   assert.equal(host.TYPERT.package, 'dsh-context-manager')
   assert.equal(host.TYPERT.face, 'host')
@@ -159,7 +159,7 @@ test('generated M6B Host Typert surface stays isolated from M2-M5 services', asy
   }
 })
 
-test('generated M6B Remote contribution exposes exactly the strict business surface', async () => {
+test('generated M6C Remote contribution exposes exactly the strict business surface', async () => {
   const remote = await import(pathToFileURL(fromRoot(packageJson.exports['./remote'].default)).href)
   const contribution = remote.TYPERT_REMOTE
   assert.equal(contribution.package, 'dsh-context-manager')
