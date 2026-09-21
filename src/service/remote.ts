@@ -472,7 +472,10 @@ export class ContextManagerRemoteService extends TypertRemoteService {
   }
 
   private requirePort<T>(key: string, label: string): T {
-    const port = this.ownerCtx.get(key) as T | undefined
+    const context = this.ownerCtx as unknown as {
+      get(service: string): unknown
+    }
+    const port = context.get(key) as T | undefined
     if (port === undefined) {
       throw new Error(`dsh-context-manager: Context Manager ${label} Host service is unavailable`)
     }
