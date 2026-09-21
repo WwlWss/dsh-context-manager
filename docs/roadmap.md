@@ -462,7 +462,6 @@ Likely groups:
 ```text
 profiles
 resources
-runtime diagnostics
 preset directory
 runtime diagnostics / preview ingredients
 ```
