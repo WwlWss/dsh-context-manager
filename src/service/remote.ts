@@ -273,7 +273,7 @@ export class ContextManagerRemoteService extends TypertRemoteService {
     input: ContextManagerRemotePromptResourceInput,
     expectedRevision: number,
   ): Promise<ContextManagerRemoteResult<ContextManagerRemoteMutationReceipt>> {
-    const invalid = this.promptRevisionError(expectedRevision)
+    const invalid = this.promptRevisionError<ContextManagerRemoteMutationReceipt>(expectedRevision)
     if (invalid !== undefined) return invalid
     return businessResult(async () => {
       const receipt = await this.promptPort().replacePrompt(id, input, expectedRevision)
@@ -286,7 +286,7 @@ export class ContextManagerRemoteService extends TypertRemoteService {
     id: string,
     expectedRevision: number,
   ): Promise<ContextManagerRemoteResult<ContextManagerRemoteDeleteReceipt>> {
-    const invalid = this.promptRevisionError(expectedRevision)
+    const invalid = this.promptRevisionError<ContextManagerRemoteDeleteReceipt>(expectedRevision)
     if (invalid !== undefined) return invalid
     return businessResult(async () => {
       await this.promptPort().deletePrompt(id, expectedRevision)
