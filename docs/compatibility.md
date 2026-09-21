@@ -436,3 +436,14 @@ Real ToolSkill + AgentLoop E2E runs on the oldest retained generation and the fo
 - unload/reload restores and reapplies policy without duplicate providers.
 
 M5C may build on the same effective-profile and parent-view seams, but Pinned full-instruction durability is not part of M5B.
+
+
+## M6C preset/runtime Remote and change hints
+
+M6C continues to generate one strict artifact with the oldest retained `0.1.1-rc.2` Typert toolchain and executes those same bytes through all five retained Registry/Gateway generations.
+
+Preset/runtime Remote DTOs are package-owned, JSON-safe projections. They do not reuse Host runtime utility types or expose Context objects, filesystem paths, Prompt bodies in diagnostics, Skill instruction bodies, or the Host-only active `ContextProfile` object.
+
+Context Manager does not augment the Typert forwarded-event selection for its own change event. Retained `0.1.1-rc.2` has no usable Gateway event stream, while later retained DSH lines route Host events through the application-owned static `API_REMOTE_FORWARDED_EVENTS` list in `@deepseek-ai/dsh-api-remotes`. A third-party type augmentation would not add a runtime forwarding source and would create a false compile-time contract.
+
+M6C therefore exposes unary `changes()` invalidation cursors. They are best-effort equality hints only, reset with a new Host-lifetime `instanceId`, and must never be used as mutation revision fences. Browser correctness remains based on authoritative unary reads plus the existing DSH Settings/PromptResource revisions.
