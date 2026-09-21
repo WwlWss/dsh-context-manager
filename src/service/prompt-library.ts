@@ -86,6 +86,7 @@ export class ContextManagerPromptLibrary extends Service {
       if (table.get(id) !== undefined) throw new ContextManagerError('prompt-resource-exists', `prompt resource ${JSON.stringify(id)} already exists`)
       const resource: PromptResource = { ...parsed, revision: 1 }
       await table.put(id, resource)
+      this.markPromptResourcesChanged()
       return receiptOf(id, 1)
     })
   }
@@ -126,6 +127,7 @@ export class ContextManagerPromptLibrary extends Service {
       this.assertRevision(id, this.requireRevision(id, current), expectedRevision)
       const deleted = await table.delete(id)
       if (!deleted) throw this.notFound(id)
+      this.markPromptResourcesChanged()
     })
   }
 
@@ -189,8 +191,16 @@ export class ContextManagerPromptLibrary extends Service {
         nextRevision = revision + 1
         return next
       })
+      this.markPromptResourcesChanged()
       return receiptOf(id, nextRevision)
     })
+  }
+
+  private markPromptResourcesChanged(): void {
+    const tracker = this.ctx.get('dshContextChanges') as
+      | { markPromptResources(): void }
+      | undefined
+    tracker?.markPromptResources()
   }
 
   private enqueueOperation<T>(operation: () => Promise<T>): Promise<T> {

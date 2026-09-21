@@ -564,3 +564,11 @@ pnpm run check
 The git-install `prepare` path intentionally emits only the runtime JavaScript needed for installation. Declaration generation and full type checking remain development/CI responsibilities.
 
 For a real DSH smoke test, use the exact tested DSH version documented in [compatibility.md](compatibility.md). Do not silently substitute an unreleased source checkout and call that published compatibility.
+
+## M6C Remote diagnostics and invalidation rules
+
+Runtime Remote diagnostics must project runtime facts rather than duplicate authoritative editable state. In particular, an active effective-profile result carries only `profileId` and `presetId`; browser profile content is pulled from `profiles()`. Prompt runtime diagnostics never expose PromptResource body text, and Skill/Pinned diagnostics never expose instruction bodies or Host paths.
+
+`changes()` cursors are invalidation hints only. Compare them for equality, re-pull the affected authoritative Remote surface when they change, and discard all cached assumptions when `instanceId` changes. Never send a change cursor as `expectedRevision`; profile writes use the DSH Settings revision and PromptResource writes use the resource revision.
+
+Because a cursor read and an authoritative Remote read are not one transaction, initial/group hydration must bracket reads with `changes() -> reads -> changes()`. If `instanceId` or a relevant channel cursor changes across the bracket, retry the affected surface before adopting the later cursor as its baseline. Never read a surface first and then blindly treat a later cursor as that already-read surface's baseline; that can hide a mutation that landed between the calls.

@@ -21,6 +21,7 @@ const BUSINESS_CODES = new Set<ContextManagerRemoteErrorCode>([
   'persistence-not-ready',
   'persistence-read-only',
   'persistence-document-invalid',
+  'preset-authoring-unavailable',
   'prompt-library-not-ready',
   'prompt-resource-exists',
   'prompt-resource-not-found',
@@ -73,6 +74,30 @@ export function mapBusinessError(error: unknown): ContextManagerRemoteError | un
   return undefined
 }
 
+const SAFE_REMOTE_INTERNAL_MESSAGE = 'Context Manager Remote operation failed'
+
+export function sanitizeUnexpectedRemoteError(error: unknown): Error {
+  return new Error(SAFE_REMOTE_INTERNAL_MESSAGE, { cause: error })
+}
+
+export function remoteRead<T>(operation: () => T): T {
+  try {
+    return operation()
+  } catch (error) {
+    throw sanitizeUnexpectedRemoteError(error)
+  }
+}
+
+export async function remoteReadAsync<T>(
+  operation: () => Promise<T> | T,
+): Promise<T> {
+  try {
+    return await operation()
+  } catch (error) {
+    throw sanitizeUnexpectedRemoteError(error)
+  }
+}
+
 export function ok<T>(value: T): ContextManagerRemoteResult<T> {
   return Object.freeze({ ok: true, value })
 }
@@ -88,7 +113,7 @@ export async function businessResult<T>(
     return ok(await operation())
   } catch (error) {
     const mapped = mapBusinessError(error)
-    if (mapped === undefined) throw error
+    if (mapped === undefined) throw sanitizeUnexpectedRemoteError(error)
     return fail(mapped)
   }
 }

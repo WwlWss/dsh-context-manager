@@ -1,6 +1,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 
 import { ContextManagerService } from './service/context-manager.js'
+import { ContextManagerChangeTracker } from './service/change-tracker.js'
 import { ContextManagerPresetAuthoring } from './service/preset-authoring.js'
 import { ContextManagerPresetDirectory } from './service/preset-directory.js'
 import { ContextManagerPinnedSkillRuntime } from './service/pinned-skill-runtime.js'
@@ -57,6 +58,8 @@ export type {
   PromptResourceSnapshot,
   UsablePromptResourceSummary,
 } from './library/prompt-library.js'
+export { ContextManagerChangeTracker } from './service/change-tracker.js'
+export type { ContextManagerChangeSnapshot } from './service/change-tracker.js'
 export { ContextManagerService, CONTEXT_MANAGER_SETTINGS_NAMESPACE } from './service/context-manager.js'
 export { ContextManagerPresetAuthoring } from './service/preset-authoring.js'
 export { ContextManagerPresetDirectory } from './service/preset-directory.js'
@@ -77,6 +80,7 @@ export const name = 'dsh-context-manager'
 
 export function apply(ctx: Context): void {
   ctx.plugin(ContextManagerService)
+  ctx.plugin(ContextManagerChangeTracker)
   ctx.plugin(ContextManagerPresetDirectory)
   ctx.plugin(ContextManagerSessionPresetIdentity)
   ctx.plugin(ContextManagerPresetAuthoring)
@@ -84,8 +88,8 @@ export function apply(ctx: Context): void {
   ctx.plugin(ContextManagerPromptPlacementCapability)
   ctx.plugin(ContextManagerPromptRuntime)
   ctx.plugin(ContextManagerRequestSeries)
-  ctx.plugin(ContextManagerRemoteService)
   ctx.plugin(ContextManagerSkillRuntime)
   ctx.plugin(ContextManagerPinnedSkillRuntime)
+  ctx.plugin(ContextManagerRemoteService)
   ctx.logger('dsh-context-manager').info('Context Manager Host services loaded')
 }

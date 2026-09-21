@@ -140,22 +140,156 @@ class FakePrompts extends Service {
   }
 }
 
+class FakePresetDirectory extends Service {
+  constructor(ctx) { super(ctx, 'dshContextPresetDirectory') }
+  async snapshotForWire() {
+    return {
+      directory: {
+        status: 'available',
+        defaultId: 'standard',
+        authorable: true,
+        presets: [{ id: 'standard', trust: 'system', isDefault: true, name: 'Standard' }],
+      },
+      profiles: {
+        main: {
+          basePreset: { status: 'resolved', configuredId: 'standard' },
+        },
+      },
+    }
+  }
+}
+
+class FakePresetAuthoring extends Service {
+  constructor(ctx) {
+    super(ctx, 'dshContextPresetAuthoring')
+    this.rows = new Set()
+  }
+  async read(id) {
+    if (id === 'leak') {
+      throw new Error("EACCES: permission denied, open '/host/private/.dsh/preset/agent.cordis.yml'")
+    }
+    return `composition:${id}\n`
+  }
+  async copy(_from, id) { this.rows.add(id) }
+  async remove(id) { this.rows.delete(id) }
+}
+
+class FakeSessionPreset extends Service {
+  constructor(ctx) { super(ctx, 'dshContextSessionPresetIdentity') }
+  snapshot(sessionId) { return { status: 'known', sessionId, presetId: 'standard' } }
+}
+
+class FakePromptPlacement extends Service {
+  constructor(ctx) { super(ctx, 'dshContextPromptPlacement') }
+  snapshot() {
+    return {
+      status: 'available',
+      placements: {
+        'before-persona': 'system-prompt',
+        'after-persona': 'system-prompt',
+        'before-tool-guidance': 'system-prompt',
+        'after-tool-guidance': 'system-prompt',
+        'runtime-context': 'runtime-context',
+      },
+    }
+  }
+}
+
+class FakePromptRuntime extends Service {
+  constructor(ctx) { super(ctx, 'dshContextPromptRuntime') }
+  async inspect(agentId) {
+    return {
+      status: 'resolved',
+      agentId,
+      profile: { status: 'active', profileId: 'main', presetId: 'standard' },
+      bindings: [{
+        state: 'eligible',
+        bindingId: 'p',
+        resourceId: 'resource',
+        placement: 'after-persona',
+        order: 0,
+        resourceRevision: 1,
+        nativeState: 'present',
+      }],
+    }
+  }
+}
+
+class FakeSkillRuntime extends Service {
+  constructor(ctx) { super(ctx, 'dshContextSkillRuntime') }
+  async inspect(agentId) {
+    return {
+      status: 'resolved',
+      agentId,
+      profile: { status: 'active', profileId: 'main', presetId: 'standard' },
+      catalogComplete: true,
+      bindings: [{
+        state: 'native-pass-through',
+        skillName: 'docker',
+        mode: 'auto',
+        winner: {
+          provider: 'filesystem',
+          invocation: { modelInvocable: true, userInvocable: true },
+        },
+      }],
+    }
+  }
+}
+
+class FakePinnedRuntime extends Service {
+  constructor(ctx) { super(ctx, 'dshContextPinnedSkillRuntime') }
+  async inspect(agentId) {
+    return {
+      status: 'resolved',
+      agentId,
+      profile: { status: 'active', profileId: 'main', presetId: 'standard' },
+      catalogComplete: true,
+      nativeState: 'present',
+      bindings: [{ state: 'loaded', skillName: 'docker', nativeProvider: 'filesystem' }],
+    }
+  }
+}
+
+class FakeChanges extends Service {
+  constructor(ctx) { super(ctx, 'dshContextChanges') }
+  snapshot() {
+    return {
+      instanceId: 'runtime-matrix',
+      generation: 9,
+      profiles: 1,
+      promptResources: 2,
+      presets: 3,
+      runtime: 4,
+    }
+  }
+}
+
 const ctx = new Context()
-const registryFiber = ctx.plugin(TypertRegistry)
-await registryFiber
-const profilesFiber = ctx.plugin(FakeProfiles)
-await profilesFiber
-const promptsFiber = ctx.plugin(FakePrompts)
-await promptsFiber
-const remoteFiber = ctx.plugin(ContextManagerRemoteService)
-await remoteFiber
-const gatewayFiber = ctx.plugin(TypertGatewayService)
-await gatewayFiber
+const fibers = []
+async function mount(plugin) {
+  const fiber = ctx.plugin(plugin)
+  await fiber
+  fibers.push(fiber)
+}
+
+await mount(TypertRegistry)
+await mount(FakeProfiles)
+await mount(FakePrompts)
+await mount(FakePresetDirectory)
+await mount(FakePresetAuthoring)
+await mount(FakeSessionPreset)
+await mount(FakePromptPlacement)
+await mount(FakePromptRuntime)
+await mount(FakeSkillRuntime)
+await mount(FakePinnedRuntime)
+await mount(FakeChanges)
+await mount(ContextManagerRemoteService)
+await mount(TypertGatewayService)
 
 const disposeContribution = ctx.typert.register(TYPERT)
 try {
-  assert.equal(TYPERT.invocations.length, 21)
-  assert.equal(TYPERT_REMOTE.descriptors.length, 21)
+  assert.equal(TYPERT.invocations.length, 31)
+  assert.equal(TYPERT_REMOTE.descriptors.length, 31)
   for (const invocation of TYPERT.invocations) {
     assertDualStrictCodec(invocation.result, `Host ${invocation.method} result`)
     for (const parameter of invocation.parameters) {
@@ -194,7 +328,6 @@ try {
   })
   assert.equal(created.ok, true)
   assert.equal(created.value.profiles.main.name, 'Main')
-  assert.equal(created.value.persistence.revision, 1)
 
   const stale = await ctx.typertGateway.invoke({
     namespace: 'contextManager',
@@ -207,58 +340,115 @@ try {
   })
   assert.equal(stale.ok, false)
   assert.equal(stale.error.code, 'profile-conflict')
-  assert.equal(stale.error.expectedRevision, 0)
-  assert.equal(stale.error.actualRevision, 1)
 
   const promptCreated = await ctx.typertGateway.invoke({
     namespace: 'contextManager',
     method: 'createPromptResource',
-    args: {
-      id: 'p',
-      input: { name: 'Prompt', content: 'body' },
-    },
+    args: { id: 'p', input: { name: 'Prompt', content: 'body' } },
   })
   assert.deepEqual(promptCreated, { ok: true, value: { id: 'p', revision: 1 } })
 
-  const promptList = await ctx.typertGateway.invoke({
+  const presets = await ctx.typertGateway.invoke({
     namespace: 'contextManager',
-    method: 'listPromptResources',
+    method: 'presets',
     args: {},
   })
-  assert.equal(promptList.ok, true)
-  assert.equal(promptList.value[0].id, 'p')
-  assert.equal(Object.hasOwn(promptList.value[0], 'content'), false)
+  assert.equal(presets.directory.status, 'available')
+  assert.equal(presets.directory.presets[0].id, 'standard')
 
-  const promptGet = await ctx.typertGateway.invoke({
+  const presetRead = await ctx.typertGateway.invoke({
     namespace: 'contextManager',
-    method: 'getPromptResource',
-    args: { id: 'p' },
+    method: 'readPreset',
+    args: { id: 'standard' },
   })
-  assert.equal(promptGet.ok, true)
-  assert.equal(promptGet.value.content, 'body')
+  assert.deepEqual(presetRead, {
+    ok: true,
+    value: { id: 'standard', content: 'composition:standard\n' },
+  })
 
-  const promptReplaced = await ctx.typertGateway.invoke({
-    namespace: 'contextManager',
-    method: 'replacePromptResource',
-    args: {
-      id: 'p',
-      input: { name: 'Prompt 2', content: 'updated' },
-      expectedRevision: 1,
+  await assert.rejects(
+    ctx.typertGateway.invoke({
+      namespace: 'contextManager',
+      method: 'readPreset',
+      args: { id: 'leak' },
+    }),
+    error => {
+      assert.equal(error.message, 'Context Manager Remote operation failed')
+      assert.equal(error.message.includes('/host/private'), false)
+      return true
     },
-  })
-  assert.deepEqual(promptReplaced, { ok: true, value: { id: 'p', revision: 2 } })
+  )
 
-  const promptDeleted = await ctx.typertGateway.invoke({
+  const presetCopy = await ctx.typertGateway.invoke({
     namespace: 'contextManager',
-    method: 'deletePromptResource',
-    args: { id: 'p', expectedRevision: 2 },
+    method: 'copyPreset',
+    args: { from: 'standard', id: 'mine', name: null },
   })
-  assert.deepEqual(promptDeleted, { ok: true, value: { id: 'p' } })
+  assert.deepEqual(presetCopy, { ok: true, value: { id: 'mine' } })
+
+  const presetRemove = await ctx.typertGateway.invoke({
+    namespace: 'contextManager',
+    method: 'removePreset',
+    args: { id: 'mine' },
+  })
+  assert.deepEqual(presetRemove, { ok: true, value: { id: 'mine' } })
+
+  assert.deepEqual(await ctx.typertGateway.invoke({
+    namespace: 'contextManager',
+    method: 'sessionPreset',
+    args: { sessionId: 'session-1' },
+  }), {
+    status: 'known',
+    sessionId: 'session-1',
+    presetId: 'standard',
+  })
+
+  const placement = await ctx.typertGateway.invoke({
+    namespace: 'contextManager',
+    method: 'promptPlacement',
+    args: {},
+  })
+  assert.equal(placement.status, 'available')
+  assert.equal(placement.placements['runtime-context'], 'runtime-context')
+
+  const promptRuntime = await ctx.typertGateway.invoke({
+    namespace: 'contextManager',
+    method: 'inspectPromptRuntime',
+    args: { agentId: 'agent-1' },
+  })
+  assert.equal(promptRuntime.status, 'resolved')
+  assert.equal(promptRuntime.profile.status, 'active')
+  assert.equal(promptRuntime.bindings[0].nativeState, 'present')
+
+  const skillRuntime = await ctx.typertGateway.invoke({
+    namespace: 'contextManager',
+    method: 'inspectSkillRuntime',
+    args: { agentId: 'agent-1' },
+  })
+  assert.equal(skillRuntime.status, 'resolved')
+  assert.equal(skillRuntime.bindings[0].winner.provider, 'filesystem')
+
+  const pinnedRuntime = await ctx.typertGateway.invoke({
+    namespace: 'contextManager',
+    method: 'inspectPinnedSkillRuntime',
+    args: { agentId: 'agent-1' },
+  })
+  assert.equal(pinnedRuntime.status, 'resolved')
+  assert.equal(pinnedRuntime.bindings[0].state, 'loaded')
+
+  assert.deepEqual(await ctx.typertGateway.invoke({
+    namespace: 'contextManager',
+    method: 'changes',
+    args: {},
+  }), {
+    instanceId: 'runtime-matrix',
+    generation: 9,
+    profiles: 1,
+    promptResources: 2,
+    presets: 3,
+    runtime: 4,
+  })
 } finally {
   await disposeContribution()
-  await gatewayFiber.dispose()
-  await remoteFiber.dispose()
-  await promptsFiber.dispose()
-  await profilesFiber.dispose()
-  await registryFiber.dispose()
+  for (const fiber of fibers.reverse()) await fiber.dispose()
 }

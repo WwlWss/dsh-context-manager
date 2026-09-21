@@ -2,35 +2,63 @@ import type { Context } from '@deepseek-ai/cordis'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 
 import type {
+  ContextManagerChangeRemotePort,
+  ContextManagerPinnedSkillRuntimeRemotePort,
+  ContextManagerPresetAuthoringRemotePort,
+  ContextManagerPresetDirectoryRemotePort,
   ContextManagerProfileRemotePort,
+  ContextManagerPromptPlacementRemotePort,
   ContextManagerPromptRemotePort,
+  ContextManagerPromptRuntimeRemotePort,
+  ContextManagerSessionPresetRemotePort,
+  ContextManagerSkillRuntimeRemotePort,
 } from '../remote/host-ports.js'
+import { projectPresetSnapshot } from '../remote/preset-project.js'
 import {
   projectProfilesSnapshot,
   projectPromptResource,
   projectPromptResourceList,
 } from '../remote/project.js'
 import {
+  projectPinnedRuntime,
+  projectPromptPlacement,
+  projectPromptRuntime,
+  projectSessionPreset,
+  projectSkillRuntime,
+} from '../remote/runtime-project.js'
+import {
   businessResult,
   fail,
   invalidRevision,
   mapBusinessError,
   ok,
+  remoteRead,
+  remoteReadAsync,
+  sanitizeUnexpectedRemoteError,
 } from '../remote/results.js'
 import {
   CONTEXT_MANAGER_REMOTE_API_VERSION,
+  type ContextManagerRemoteChangeSnapshot,
   type ContextManagerRemoteDeleteReceipt,
   type ContextManagerRemoteMutationReceipt,
+  type ContextManagerRemotePinnedSkillInspection,
+  type ContextManagerRemotePresetDocument,
+  type ContextManagerRemotePresetReceipt,
+  type ContextManagerRemotePresetSnapshot,
   type ContextManagerRemoteProfileInput,
   type ContextManagerRemoteProfilesSnapshot,
   type ContextManagerRemotePromptBinding,
   type ContextManagerRemotePromptPlacement,
+  type ContextManagerRemotePromptPlacementCapability,
+  type ContextManagerRemotePromptRuntimeInspection,
   type ContextManagerRemotePromptResource,
   type ContextManagerRemotePromptResourceInput,
   type ContextManagerRemotePromptResourceListItem,
   type ContextManagerRemoteProtocol,
   type ContextManagerRemoteResult,
+  type ContextManagerRemoteSessionPresetIdentity,
   type ContextManagerRemoteSkillMode,
+  type ContextManagerRemoteSkillRuntimeInspection,
 } from '../remote/types.js'
 
 export class ContextManagerRemoteService extends TypertRemoteService {
@@ -48,7 +76,7 @@ export class ContextManagerRemoteService extends TypertRemoteService {
 
   @Remote
   profiles(): ContextManagerRemoteProfilesSnapshot {
-    return projectProfilesSnapshot(this.profilePort().snapshotForWire())
+    return remoteRead(() => projectProfilesSnapshot(this.profilePort().snapshotForWire()))
   }
 
   @Remote
@@ -289,6 +317,91 @@ export class ContextManagerRemoteService extends TypertRemoteService {
     })
   }
 
+  @Remote
+  async presets(): Promise<ContextManagerRemotePresetSnapshot> {
+    return remoteReadAsync(async () => (
+      projectPresetSnapshot(await this.presetDirectoryPort().snapshotForWire())
+    ))
+  }
+
+  @Remote
+  async readPreset(
+    id: string,
+  ): Promise<ContextManagerRemoteResult<ContextManagerRemotePresetDocument>> {
+    return businessResult(async () => Object.freeze({
+      id,
+      content: await this.presetAuthoringPort().read(id),
+    }))
+  }
+
+  @Remote
+  async copyPreset(
+    from: string,
+    id: string,
+    name: string | null,
+  ): Promise<ContextManagerRemoteResult<ContextManagerRemotePresetReceipt>> {
+    return businessResult(async () => {
+      await this.presetAuthoringPort().copy(from, id, name === null ? undefined : name)
+      return Object.freeze({ id })
+    })
+  }
+
+  @Remote
+  async removePreset(
+    id: string,
+  ): Promise<ContextManagerRemoteResult<ContextManagerRemotePresetReceipt>> {
+    return businessResult(async () => {
+      await this.presetAuthoringPort().remove(id)
+      return Object.freeze({ id })
+    })
+  }
+
+  @Remote
+  sessionPreset(sessionId: string): ContextManagerRemoteSessionPresetIdentity {
+    return remoteRead(() => projectSessionPreset(this.sessionPresetPort().snapshot(sessionId)))
+  }
+
+  @Remote
+  promptPlacement(): ContextManagerRemotePromptPlacementCapability {
+    return remoteRead(() => projectPromptPlacement(this.promptPlacementPort().snapshot()))
+  }
+
+  @Remote
+  async inspectPromptRuntime(
+    agentId: string,
+  ): Promise<ContextManagerRemotePromptRuntimeInspection> {
+    return remoteReadAsync(() => projectPromptRuntime(this.promptRuntimePort(), agentId))
+  }
+
+  @Remote
+  async inspectSkillRuntime(
+    agentId: string,
+  ): Promise<ContextManagerRemoteSkillRuntimeInspection> {
+    return remoteReadAsync(() => projectSkillRuntime(this.skillRuntimePort(), agentId))
+  }
+
+  @Remote
+  async inspectPinnedSkillRuntime(
+    agentId: string,
+  ): Promise<ContextManagerRemotePinnedSkillInspection> {
+    return remoteReadAsync(() => projectPinnedRuntime(this.pinnedRuntimePort(), agentId))
+  }
+
+  @Remote
+  changes(): ContextManagerRemoteChangeSnapshot {
+    return remoteRead(() => {
+      const snapshot = this.changePort().snapshot()
+      return Object.freeze({
+        instanceId: snapshot.instanceId,
+        generation: snapshot.generation,
+        profiles: snapshot.profiles,
+        promptResources: snapshot.promptResources,
+        presets: snapshot.presets,
+        runtime: snapshot.runtime,
+      })
+    })
+  }
+
   private profilePort(): ContextManagerProfileRemotePort {
     const port = this.ownerCtx.get('dshContextManager') as ContextManagerProfileRemotePort | undefined
     if (port === undefined) {
@@ -305,6 +418,73 @@ export class ContextManagerRemoteService extends TypertRemoteService {
       }
       error.code = 'prompt-library-not-ready'
       throw error
+    }
+    return port
+  }
+
+  private presetDirectoryPort(): ContextManagerPresetDirectoryRemotePort {
+    return this.requirePort<ContextManagerPresetDirectoryRemotePort>(
+      'dshContextPresetDirectory',
+      'preset directory',
+    )
+  }
+
+  private presetAuthoringPort(): ContextManagerPresetAuthoringRemotePort {
+    return this.requirePort<ContextManagerPresetAuthoringRemotePort>(
+      'dshContextPresetAuthoring',
+      'preset authoring',
+    )
+  }
+
+  private sessionPresetPort(): ContextManagerSessionPresetRemotePort {
+    return this.requirePort<ContextManagerSessionPresetRemotePort>(
+      'dshContextSessionPresetIdentity',
+      'Session preset identity',
+    )
+  }
+
+  private promptPlacementPort(): ContextManagerPromptPlacementRemotePort {
+    return this.requirePort<ContextManagerPromptPlacementRemotePort>(
+      'dshContextPromptPlacement',
+      'prompt placement',
+    )
+  }
+
+  private promptRuntimePort(): ContextManagerPromptRuntimeRemotePort {
+    return this.requirePort<ContextManagerPromptRuntimeRemotePort>(
+      'dshContextPromptRuntime',
+      'Prompt Runtime',
+    )
+  }
+
+  private skillRuntimePort(): ContextManagerSkillRuntimeRemotePort {
+    return this.requirePort<ContextManagerSkillRuntimeRemotePort>(
+      'dshContextSkillRuntime',
+      'Skill Runtime',
+    )
+  }
+
+  private pinnedRuntimePort(): ContextManagerPinnedSkillRuntimeRemotePort {
+    return this.requirePort<ContextManagerPinnedSkillRuntimeRemotePort>(
+      'dshContextPinnedSkillRuntime',
+      'Pinned Skill Runtime',
+    )
+  }
+
+  private changePort(): ContextManagerChangeRemotePort {
+    return this.requirePort<ContextManagerChangeRemotePort>(
+      'dshContextChanges',
+      'change tracker',
+    )
+  }
+
+  private requirePort<T>(key: string, label: string): T {
+    const context = this.ownerCtx as unknown as {
+      get(service: string): unknown
+    }
+    const port = context.get(key) as T | undefined
+    if (port === undefined) {
+      throw new Error(`dsh-context-manager: Context Manager ${label} Host service is unavailable`)
     }
     return port
   }
@@ -331,7 +511,7 @@ export class ContextManagerRemoteService extends TypertRemoteService {
 
   private businessFailureOrThrow<T>(error: unknown): ContextManagerRemoteResult<T> {
     const mapped = mapBusinessError(error)
-    if (mapped === undefined) throw error
+    if (mapped === undefined) throw sanitizeUnexpectedRemoteError(error)
     return fail(mapped)
   }
 }

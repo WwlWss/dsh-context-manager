@@ -58,6 +58,7 @@ test('built host entry exposes the Context Manager Host service contracts', asyn
   assert.equal(entry.name, 'dsh-context-manager')
   assert.equal(typeof entry.apply, 'function')
   assert.equal(typeof entry.ContextManagerService, 'function')
+  assert.equal(typeof entry.ContextManagerChangeTracker, 'function')
   assert.equal(typeof entry.ContextManagerPresetDirectory, 'function')
   assert.equal(typeof entry.ContextManagerSessionPresetIdentity, 'function')
   assert.equal(typeof entry.ContextManagerPresetAuthoring, 'function')
@@ -101,7 +102,7 @@ test('built host entry does not import or bundle optional DSH runtime packages',
 })
 
 
-test('generated M6B Host Typert surface stays isolated from M2-M5 services', async () => {
+test('generated M6C Host Typert surface stays isolated from M2-M5 services', async () => {
   const host = await import(pathToFileURL(fromRoot(packageJson.exports['./typert'].default)).href)
   assert.equal(host.TYPERT.package, 'dsh-context-manager')
   assert.equal(host.TYPERT.face, 'host')
@@ -111,17 +112,27 @@ test('generated M6B Host Typert surface stays isolated from M2-M5 services', asy
   const methods = host.TYPERT.invocations.map(item => item.method).sort()
   assert.deepEqual(methods, [
     'addPromptBinding',
+    'changes',
+    'copyPreset',
     'createProfile',
     'createPromptResource',
     'deleteProfile',
     'deletePromptResource',
     'getPromptResource',
+    'inspectPinnedSkillRuntime',
+    'inspectPromptRuntime',
+    'inspectSkillRuntime',
     'listPromptResources',
+    'presets',
     'profiles',
+    'promptPlacement',
     'protocol',
+    'readPreset',
+    'removePreset',
     'removePromptBinding',
     'removeSkillBinding',
     'replacePromptResource',
+    'sessionPreset',
     'setDefaultProfile',
     'setProfileBasePreset',
     'setProfileDescription',
@@ -149,26 +160,36 @@ test('generated M6B Host Typert surface stays isolated from M2-M5 services', asy
   }
 })
 
-test('generated M6B Remote contribution exposes exactly the strict business surface', async () => {
+test('generated M6C Remote contribution exposes exactly the strict business surface', async () => {
   const remote = await import(pathToFileURL(fromRoot(packageJson.exports['./remote'].default)).href)
   const contribution = remote.TYPERT_REMOTE
   assert.equal(contribution.package, 'dsh-context-manager')
-  assert.equal(contribution.descriptors.length, 21)
+  assert.equal(contribution.descriptors.length, 31)
 
   const methods = contribution.descriptors.map(item => item.method).sort()
   assert.deepEqual(methods, [
     'addPromptBinding',
+    'changes',
+    'copyPreset',
     'createProfile',
     'createPromptResource',
     'deleteProfile',
     'deletePromptResource',
     'getPromptResource',
+    'inspectPinnedSkillRuntime',
+    'inspectPromptRuntime',
+    'inspectSkillRuntime',
     'listPromptResources',
+    'presets',
     'profiles',
+    'promptPlacement',
     'protocol',
+    'readPreset',
+    'removePreset',
     'removePromptBinding',
     'removeSkillBinding',
     'replacePromptResource',
+    'sessionPreset',
     'setDefaultProfile',
     'setProfileBasePreset',
     'setProfileDescription',
@@ -201,6 +222,35 @@ test('generated M6B Remote contribution exposes exactly the strict business surf
   assert.deepEqual(protocol.parameters, [])
   assert.equal(protocol.result.schema.safeParse({ apiVersion: 1 }).success, true)
   assert.equal(protocol.result.schema.safeParse({ apiVersion: '1' }).success, false)
+
+  const presets = contribution.descriptors.find(item => item.method === 'presets')
+  assert.ok(presets)
+  assert.equal(presets.result.schema.safeParse({
+    directory: {
+      status: 'available',
+      defaultId: 'standard',
+      authorable: true,
+      presets: [{
+        id: 'standard',
+        trust: 'system',
+        isDefault: true,
+      }],
+    },
+    profiles: {},
+  }).success, true)
+
+  const promptRuntime = contribution.descriptors.find(item => item.method === 'inspectPromptRuntime')
+  assert.ok(promptRuntime)
+  assert.equal(promptRuntime.result.schema.safeParse({
+    status: 'resolved',
+    agentId: 'agent-1',
+    profile: {
+      status: 'active',
+      profileId: 'main',
+      presetId: 'standard',
+    },
+    bindings: [],
+  }).success, true)
 
   const createProfile = contribution.descriptors.find(item => item.method === 'createProfile')
   assert.ok(createProfile)

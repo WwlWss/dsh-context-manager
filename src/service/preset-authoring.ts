@@ -32,11 +32,20 @@ export class ContextManagerPresetAuthoring extends Service {
     return readNativePresetComposition(this.ownerCtx, id)
   }
 
-  copy(from: string, id: string, name?: string): Promise<void> {
-    return copyNativePreset(this.ownerCtx, from, id, name)
+  async copy(from: string, id: string, name?: string): Promise<void> {
+    await copyNativePreset(this.ownerCtx, from, id, name)
+    this.markPresetsChanged()
   }
 
-  remove(id: string): Promise<void> {
-    return removeNativePreset(this.ownerCtx, id)
+  async remove(id: string): Promise<void> {
+    await removeNativePreset(this.ownerCtx, id)
+    this.markPresetsChanged()
+  }
+
+  private markPresetsChanged(): void {
+    const tracker = this.ownerCtx.get('dshContextChanges') as
+      | { markPresets(): void }
+      | undefined
+    tracker?.markPresets()
   }
 }

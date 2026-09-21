@@ -1,8 +1,13 @@
 import type {
+  ContextManagerRemoteChangeSnapshot,
   ContextManagerRemoteDiagnosticCode,
+  ContextManagerRemotePinnedSkillInspection,
   ContextManagerRemotePromptBinding,
   ContextManagerRemotePromptPlacement,
+  ContextManagerRemotePromptRuntimeInspection,
+  ContextManagerRemoteSessionPresetIdentity,
   ContextManagerRemoteSkillMode,
+  ContextManagerRemoteSkillRuntimeInspection,
 } from './types.js'
 
 export interface ContextManagerProfileSnapshotPort {
@@ -87,4 +92,83 @@ export interface ContextManagerPromptRemotePort {
   createPrompt(id: string, input: { readonly name: string; readonly description?: string; readonly content: string }): Promise<{ readonly id: string; readonly revision: number }>
   replacePrompt(id: string, input: { readonly name: string; readonly description?: string; readonly content: string }, expectedRevision: number): Promise<{ readonly id: string; readonly revision: number }>
   deletePrompt(id: string, expectedRevision: number): Promise<void>
+}
+
+
+export interface ContextManagerPresetSnapshotPort {
+    readonly directory:
+      | { readonly status: 'unavailable' }
+      | {
+          readonly status: 'available'
+          readonly defaultId: string
+          readonly authorable: boolean
+          readonly presets: readonly {
+            readonly id: string
+            readonly trust: 'system' | 'user'
+            readonly isDefault: boolean
+            readonly name?: string
+            readonly description?: string
+            readonly broken?: string
+          }[]
+        }
+    readonly profiles: {
+      readonly [profileId: string]: {
+        readonly basePreset:
+          | { readonly status: 'unavailable'; readonly configuredId: string }
+          | { readonly status: 'missing'; readonly configuredId: string }
+          | {
+              readonly status: 'broken'
+              readonly configuredId: string
+              readonly reason: string
+            }
+          | { readonly status: 'resolved'; readonly configuredId: string }
+      }
+    }
+}
+
+export interface ContextManagerPresetDirectoryRemotePort {
+  snapshotForWire(): Promise<ContextManagerPresetSnapshotPort>
+}
+
+export interface ContextManagerPresetAuthoringRemotePort {
+  read(id: string): Promise<string>
+  copy(from: string, id: string, name?: string): Promise<void>
+  remove(id: string): Promise<void>
+}
+
+export interface ContextManagerSessionPresetRemotePort {
+  snapshot(sessionId: string): ContextManagerRemoteSessionPresetIdentity
+}
+
+export type ContextManagerPromptPlacementSnapshotPort =
+  | { readonly status: 'unavailable' }
+  | {
+      readonly status: 'available'
+      readonly placements: {
+        readonly 'before-persona': 'system-prompt' | 'runtime-context'
+        readonly 'after-persona': 'system-prompt' | 'runtime-context'
+        readonly 'before-tool-guidance': 'system-prompt' | 'runtime-context'
+        readonly 'after-tool-guidance': 'system-prompt' | 'runtime-context'
+        readonly 'runtime-context': 'system-prompt' | 'runtime-context'
+      }
+    }
+
+export interface ContextManagerPromptPlacementRemotePort {
+  snapshot(): ContextManagerPromptPlacementSnapshotPort
+}
+
+export interface ContextManagerPromptRuntimeRemotePort {
+  inspect(agentId: string): Promise<ContextManagerRemotePromptRuntimeInspection>
+}
+
+export interface ContextManagerSkillRuntimeRemotePort {
+  inspect(agentId: string): Promise<ContextManagerRemoteSkillRuntimeInspection>
+}
+
+export interface ContextManagerPinnedSkillRuntimeRemotePort {
+  inspect(agentId: string): Promise<ContextManagerRemotePinnedSkillInspection>
+}
+
+export interface ContextManagerChangeRemotePort {
+  snapshot(): ContextManagerRemoteChangeSnapshot
 }
