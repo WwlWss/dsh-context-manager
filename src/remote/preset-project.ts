@@ -1,4 +1,4 @@
-import type { ContextManagerPresetDirectoryRemotePort } from './host-ports.js'
+import type { ContextManagerPresetSnapshotPort } from './host-ports.js'
 import type {
   ContextManagerRemoteBasePresetResolution,
   ContextManagerRemotePresetSnapshot,
@@ -25,7 +25,7 @@ function projectBasePreset(
 }
 
 export function projectPresetSnapshot(
-  snapshot: Awaited<ReturnType<ContextManagerPresetDirectoryRemotePort['snapshot']>>,
+  snapshot: ContextManagerPresetSnapshotPort,
 ): ContextManagerRemotePresetSnapshot {
   const profiles: Record<string, {
     readonly basePreset: ContextManagerRemoteBasePresetResolution
