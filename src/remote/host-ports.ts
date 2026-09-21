@@ -2,10 +2,8 @@ import type {
   ContextManagerRemoteChangeSnapshot,
   ContextManagerRemoteDiagnosticCode,
   ContextManagerRemotePinnedSkillInspection,
-  ContextManagerRemotePresetSnapshot,
   ContextManagerRemotePromptBinding,
   ContextManagerRemotePromptPlacement,
-  ContextManagerRemotePromptPlacementCapability,
   ContextManagerRemotePromptRuntimeInspection,
   ContextManagerRemoteSessionPresetIdentity,
   ContextManagerRemoteSkillMode,
@@ -98,7 +96,36 @@ export interface ContextManagerPromptRemotePort {
 
 
 export interface ContextManagerPresetDirectoryRemotePort {
-  snapshot(): Promise<ContextManagerRemotePresetSnapshot>
+  snapshot(): Promise<{
+    readonly directory:
+      | { readonly status: 'unavailable' }
+      | {
+          readonly status: 'available'
+          readonly defaultId: string
+          readonly authorable: boolean
+          readonly presets: readonly {
+            readonly id: string
+            readonly trust: 'system' | 'user'
+            readonly isDefault: boolean
+            readonly name?: string
+            readonly description?: string
+            readonly broken?: string
+          }[]
+        }
+    readonly profiles: {
+      readonly [profileId: string]: {
+        readonly basePreset:
+          | { readonly status: 'unavailable'; readonly configuredId: string }
+          | { readonly status: 'missing'; readonly configuredId: string }
+          | {
+              readonly status: 'broken'
+              readonly configuredId: string
+              readonly reason: string
+            }
+          | { readonly status: 'resolved'; readonly configuredId: string }
+      }
+    }
+  }>
 }
 
 export interface ContextManagerPresetAuthoringRemotePort {
@@ -112,7 +139,15 @@ export interface ContextManagerSessionPresetRemotePort {
 }
 
 export interface ContextManagerPromptPlacementRemotePort {
-  snapshot(): ContextManagerRemotePromptPlacementCapability
+  snapshot():
+    | { readonly status: 'unavailable' }
+    | {
+        readonly status: 'available'
+        readonly placements: {
+          readonly [placement in ContextManagerRemotePromptPlacement]:
+            'system-prompt' | 'runtime-context'
+        }
+      }
 }
 
 export interface ContextManagerPromptRuntimeRemotePort {
