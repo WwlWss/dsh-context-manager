@@ -4,6 +4,34 @@ import { fileURLToPath } from 'node:url'
 
 import { WorkspaceTypertGenerator } from '@deepseek-ai/dsh-typert-generator'
 
+/**
+ * Preserve the oldest 0.1.1 strict-codec ABI while adding the 0.1.6 factory ABI.
+ *
+ * Retained pre-0.1.6 Registry/Gateway builds consume `codec.schema`; 0.1.6-alpha.2
+ * consumes `codec.create()`. Both generations accept the extra field, so one
+ * oldest-generated artifact can carry both without runtime version branching.
+ */
+function addTypertFactoryCompatibility(source, label) {
+  let strictCodecs = 0
+  const withCodecFactories = source.replace(
+    /(^[ \t]*typeSymbol: [^\n]+,\n)([ \t]*)schema: ([A-Za-z_$][\w$]*),$/gmu,
+    (_match, typeSymbolLine, indent, schema) => {
+      strictCodecs += 1
+      return typeSymbolLine + indent + 'schema: ' + schema + ',\n' + indent + 'create: () => ' + schema + ','
+    },
+  )
+  if (strictCodecs === 0) {
+    throw new Error('M6A ' + label + ' Typert artifact contains no legacy strict codec to project')
+  }
+
+  // Old Host contributions also store exported schemas as eager instances. The
+  // current Registry expects factories; retain both shapes for the same reason.
+  return withCodecFactories.replace(
+    /^([ \t]*)\{ name: ([^,\n]+), schema: ([A-Za-z_$][\w$]*) \},$/gmu,
+    (_match, indent, name, schema) =>
+      indent + '{ name: ' + name + ', schema: ' + schema + ', create: () => ' + schema + ' },',
+  )
+}
 const root = fileURLToPath(new URL('../', import.meta.url))
 const out = join(root, 'lib')
 const temporary = await mkdtemp(join(root, '.typert-workspace-'))
@@ -133,6 +161,7 @@ try {
       'lib/typert.host.d.ts',
       'lib/typert.remote-client.js',
       'lib/typert.remote-client.d.ts',
+      'lib/typert.remote-client.d.ts.map',
     ],
   }, null, 2) + '\n')
 
@@ -152,11 +181,14 @@ try {
     throw new Error('M6A Typert generation emitted no Remote contract')
   }
 
+  const hostRuntime = addTypertFactoryCompatibility(artifact.js, 'Host')
+  const remoteRuntime = addTypertFactoryCompatibility(artifact.remote.js, 'Remote')
+
   await mkdir(out, { recursive: true })
   await Promise.all([
-    writeFile(join(out, 'typert.host.js'), artifact.js),
+    writeFile(join(out, 'typert.host.js'), hostRuntime),
     writeFile(join(out, 'typert.host.d.ts'), artifact.dts),
-    writeFile(join(out, 'typert.remote-client.js'), artifact.remote.js),
+    writeFile(join(out, 'typert.remote-client.js'), remoteRuntime),
     writeFile(join(out, 'typert.remote-client.d.ts'), artifact.remote.dts),
     writeFile(join(out, 'typert.remote-client.d.ts.map'), artifact.remote.dtsMap),
   ])
