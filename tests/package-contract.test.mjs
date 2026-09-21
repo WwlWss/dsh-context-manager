@@ -30,7 +30,20 @@ test('package manifest points at real build, types, and bundle artifacts', async
     types: './lib/remote/types.d.ts',
     default: './lib/remote/types.js',
   })
+  assert.deepEqual(packageJson.exports['./client'], {
+    types: './lib/client-contract.d.ts',
+    default: './lib/client.js',
+  })
   assert.equal(packageJson.dsh?.bundle?.patch, './cordis.patch.yml')
+  assert.deepEqual(packageJson.dsh?.client, {
+    platform: 'web',
+    inject: [
+      '@deepseek-ai/dsh-api-remotes',
+      '@deepseek-ai/dsh-client-ui-renderer',
+      '@deepseek-ai/dsh-client-ui-layout',
+      '@deepseek-ai/dsh-client-ui-sidebar',
+    ],
+  })
   assert.equal(packageJson.dependencies?.zod, '^4.4.3')
 
   await access(fromRoot(packageJson.main))
@@ -43,6 +56,9 @@ test('package manifest points at real build, types, and bundle artifacts', async
   await access(fromRoot('./lib/typert.remote-client.d.ts.map'))
   await access(fromRoot(packageJson.exports['./types'].types))
   await access(fromRoot(packageJson.exports['./types'].default))
+  await access(fromRoot(packageJson.exports['./client'].types))
+  await access(fromRoot(packageJson.exports['./client'].default))
+  await access(fromRoot('./lib/client.js.map'))
 })
 
 test('bundle patch inserts only the namespaced context-manager row', async () => {
