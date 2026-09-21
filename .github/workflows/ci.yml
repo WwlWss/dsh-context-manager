@@ -537,7 +537,7 @@ jobs:
           node ./tests/pinned-skill-runtime-agent-loop.e2e.mjs
 
   remote-foundation-artifact:
-    name: M6C oldest-generated artifact
+    name: oldest-built package artifact
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -550,12 +550,12 @@ jobs:
           corepack enable
           corepack prepare pnpm@11.7.0 --activate
       - run: pnpm install --frozen-lockfile
-      - name: Build the one oldest-generation M6C package artifact
+      - name: Build the one oldest-generation package artifact
         run: pnpm run build
-      - name: Upload the exact M6C package artifact
+      - name: Upload the exact oldest-built package artifact
         uses: actions/upload-artifact@v4
         with:
-          name: m6c-oldest-generated-lib
+          name: dsh-context-manager-oldest-lib
           path: lib
           if-no-files-found: error
 
@@ -585,10 +585,10 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: Discard install-time prepare output
         run: rm -rf lib
-      - name: Restore the one oldest-generated M6C artifact
+      - name: Restore the one oldest-built package artifact
         uses: actions/download-artifact@v4
         with:
-          name: m6c-oldest-generated-lib
+          name: dsh-context-manager-oldest-lib
           path: lib
       - name: Switch only the runtime Typert/Gateway generation
         run: |
@@ -602,7 +602,7 @@ jobs:
         run: node ./tests/remote-upstream-runtime.mjs
 
   client-foundation-contract:
-    name: M7A retained Client runtime (${{ matrix.version }})
+    name: M7A retained Client SlotCore contract (${{ matrix.version }})
     needs: remote-foundation-artifact
     strategy:
       fail-fast: false
@@ -627,10 +627,10 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: Discard install-time prepare output
         run: rm -rf lib
-      - name: Restore the one oldest-built M7A client artifact
+      - name: Restore the one oldest-built Client artifact
         uses: actions/download-artifact@v4
         with:
-          name: m6c-oldest-generated-lib
+          name: dsh-context-manager-oldest-lib
           path: lib
       - name: Install selected retained production SlotCore
         run: |
@@ -638,7 +638,7 @@ jobs:
             @deepseek-ai/cordis@${{ matrix.cordis }} \
             @deepseek-ai/dsh-invariants@${{ matrix.version }} \
             @deepseek-ai/dsh-client-ui-slots@${{ matrix.version }}
-      - name: Load the exact Client artifact through the retained production SlotCore
+      - name: Validate the exact Client artifact against retained production SlotCore
         run: node ./tests/client-upstream-runtime.mjs
 
   package:
