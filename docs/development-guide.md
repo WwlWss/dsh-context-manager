@@ -396,6 +396,16 @@ Do not abuse `ctx.compaction` merely because it also replaces history if its pro
 
 The representative "small summary -> old body shadow -> native compaction fallback" workflow belongs in examples/documentation, not in the core type system. The plugin supplies authorable transformation capability; the preset author supplies the summary protocol and thresholds.
 
+## 13A. Host Remote rules
+
+Use a dedicated Remote projection/controller layer. Do not make browser protocol shape an accidental by-product of existing Host service methods.
+
+Every shipped endpoint must have a generated strict Typert descriptor exposed through package `./typert` and `./remote` artifacts. Do not treat Gateway SRC fallback as a release contract.
+
+Keep Remote DTOs JSON-safe and deliberately narrower than Host objects. Browser reads that can include Settings-backed data must use the DSH redaction contract at the wire boundary; Host-authoritative internal reads remain unredacted.
+
+Retained `0.1.1-rc.2` has Typert unary Remote but predates the later typed `RemoteError` vocabulary and forwarded Remote-event stream. Do not build cross-generation Context Manager correctness on those newer facilities unless a compatibility adapter explicitly proves the behavior.
+
 ## 14. Web client rules
 
 When the Web face is introduced, follow DSH's dynamic client package contract exactly:

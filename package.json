@@ -10,18 +10,36 @@
       "types": "./lib/index.d.ts",
       "default": "./lib/index.js"
     },
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    "./typert": {
+      "types": "./lib/typert.host.d.ts",
+      "default": "./lib/typert.host.js"
+    },
+    "./remote": {
+      "types": "./lib/typert.remote-client.d.ts",
+      "default": "./lib/typert.remote-client.js"
+    },
+    "./types": {
+      "types": "./lib/remote/types.d.ts",
+      "default": "./lib/remote/types.js"
+    }
   },
   "files": [
     "lib/**",
+    "lib/remote/types.js",
+    "lib/remote/types.d.ts",
+    "lib/typert.remote-client.d.ts",
+    "lib/typert.remote-client.js",
+    "lib/typert.host.d.ts",
+    "lib/typert.host.js",
     "cordis.patch.yml",
     "README.md",
     "LICENSE"
   ],
   "scripts": {
     "clean": "node ./scripts/clean.mjs",
-    "build": "tsdown --config tsdown.config.ts",
-    "prepare": "tsdown --config tsdown.prepare.config.ts",
+    "build": "tsdown --config tsdown.config.ts && node ./scripts/generate-typert.mjs",
+    "prepare": "tsdown --config tsdown.prepare.config.ts && node ./scripts/generate-typert.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "node --test ./tests/*.test.mjs",
     "check": "pnpm run typecheck && pnpm run clean && pnpm run build && pnpm run test"
@@ -47,7 +65,8 @@
     "@deepseek-ai/dsh-settings": "^0.1.1-rc.2 || ^0.1.2-rc.1 || ^0.1.5-rc.1 || ^0.1.6-alpha.2",
     "@deepseek-ai/schemastery": "^3.18.1",
     "@deepseek-ai/dsh-scope": "^0.1.1-rc.2 || ^0.1.2-rc.1 || ^0.1.5-rc.1 || ^0.1.6-alpha.2",
-    "@deepseek-ai/dsh-skill": "^0.1.1-rc.2 || ^0.1.2-rc.1 || ^0.1.5-rc.1 || ^0.1.6-alpha.2"
+    "@deepseek-ai/dsh-skill": "^0.1.1-rc.2 || ^0.1.2-rc.1 || ^0.1.5-rc.1 || ^0.1.6-alpha.2",
+    "@deepseek-ai/dsh-typert-protocol": "^0.1.1-rc.2 || ^0.1.2-rc.1 || ^0.1.5-rc.1 || ^0.1.6-alpha.2"
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "4.0.1",
@@ -59,7 +78,9 @@
     "@deepseek-ai/dsh-scope": "0.1.1-rc.2",
     "@deepseek-ai/dsh-skill": "0.1.1-rc.2",
     "@deepseek-ai/dsh-llm": "0.1.1-rc.2",
-    "@deepseek-ai/dsh-invariants": "0.1.1-rc.2"
+    "@deepseek-ai/dsh-invariants": "0.1.1-rc.2",
+    "@deepseek-ai/dsh-typert-protocol": "0.1.1-rc.2",
+    "@deepseek-ai/dsh-typert-generator": "0.1.1-rc.2"
   },
   "dsh": {
     "bundle": {

@@ -342,6 +342,14 @@ Therefore future history work must verify the complete current public extension 
 
 The small-summary pattern is only a representative user-authored preset/use case. Context Manager must provide generic authorable selectors/triggers/extractors/replacements; it must not hard-code `<summary>`, a turn threshold, or summary generation as special Domain semantics.
 
+## M6A Typert Remote compatibility
+
+M6A introduces the first production dependency on `@deepseek-ai/dsh-typert-protocol`. The shared `TypertRemoteService` / `@Remote` authoring seam and generated Remote contribution shape exist on every retained DSH line from `0.1.1-rc.2` onward.
+
+Development generation is pinned to the oldest retained `0.1.1-rc.2` Typert generator/protocol contract. That generator emits eager strict codecs as `{ schema }`, while `0.1.6-alpha.2` changed the Registry/Gateway contract to lazy `{ create() }` factories. The post-generation compatibility projection retains the legacy `schema` field and adds `create: () => schema` to each generated strict codec; generated Host schema exports receive the analogous dual shape. Both retained ABI families accept the extra field, so production code has no runtime DSH-version branch. CI builds and uploads one exact `lib/` artifact under the oldest toolchain, then every runtime-matrix job downloads those same bytes before switching only Cordis/Typert/Gateway packages with lifecycle scripts disabled. The artifact is exercised against the real Typert Registry and API Gateway from `0.1.1-rc.2`, `0.1.2-rc.1`, `0.1.5-rc.1`, `0.1.5-rc.2`, and `0.1.6-alpha.2`. A runtime result obtained only through Gateway SRC fallback is not sufficient.
+
+Retained `0.1.1-rc.2` predates the later shared `RemoteError` vocabulary and Remote-event stream. M6A therefore exposes neither domain mutation errors nor change events yet. Later M6 slices must preserve browser correctness without assuming either newer capability.
+
 ## Web client and presentation guardrails
 
 Future Web work remains additive to DSH composition:

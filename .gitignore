@@ -1,4 +1,5 @@
 # Project build artifacts
+/.typert-workspace-*/
 /lib/
 /.artifacts/
 
