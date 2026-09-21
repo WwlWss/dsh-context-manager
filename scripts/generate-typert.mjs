@@ -21,7 +21,7 @@ function addTypertFactoryCompatibility(source, label) {
     },
   )
   if (strictCodecs === 0) {
-    throw new Error('M6A ' + label + ' Typert artifact contains no legacy strict codec to project')
+    throw new Error('M6 ' + label + ' Typert artifact contains no legacy strict codec to project')
   }
 
   // Old Host contributions also store exported schemas as eager instances. The
