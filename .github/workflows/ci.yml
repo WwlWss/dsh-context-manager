@@ -639,7 +639,8 @@ jobs:
             @deepseek-ai/dsh-client-test-runtime@${{ matrix.version }} \
             react@18.2.0 \
             react-dom@18.2.0 \
-            jsdom@29.1.1
+            jsdom@29.1.1 \
+            vitest@4.1.8
       - name: Load the exact Client artifact through the retained production SlotRegistry
         run: pnpm exec vitest run ./tests/client-upstream-runtime.test.tsx --environment jsdom
 
