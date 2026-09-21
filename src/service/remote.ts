@@ -33,11 +33,6 @@ import {
   type ContextManagerRemoteSkillMode,
 } from '../remote/types.js'
 
-type RemoteContextPorts = {
-  readonly dshContextManager?: ContextManagerProfileRemotePort
-  readonly dshContextPromptLibrary?: ContextManagerPromptRemotePort
-}
-
 export class ContextManagerRemoteService extends TypertRemoteService {
   private readonly ownerCtx: Context
 
@@ -295,7 +290,7 @@ export class ContextManagerRemoteService extends TypertRemoteService {
   }
 
   private profilePort(): ContextManagerProfileRemotePort {
-    const port = (this.ownerCtx as unknown as RemoteContextPorts).dshContextManager
+    const port = this.ownerCtx.get('dshContextManager') as ContextManagerProfileRemotePort | undefined
     if (port === undefined) {
       throw new Error('dsh-context-manager: Context Manager profile Host service is unavailable')
     }
@@ -303,7 +298,7 @@ export class ContextManagerRemoteService extends TypertRemoteService {
   }
 
   private promptPort(): ContextManagerPromptRemotePort {
-    const port = (this.ownerCtx as unknown as RemoteContextPorts).dshContextPromptLibrary
+    const port = this.ownerCtx.get('dshContextPromptLibrary') as ContextManagerPromptRemotePort | undefined
     if (port === undefined) {
       const error = new Error('Context Manager prompt library storage is not ready') as Error & {
         code: string
