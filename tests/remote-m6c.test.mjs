@@ -298,8 +298,8 @@ test('M6C maps stable preset-authoring absence but leaves unknown native failure
 })
 
 test('M6C runtime diagnostics strip Host profile bodies, prompt content, skill bodies, and paths', async (t) => {
-  const { remote } = await boot()
-  t.after(() => remote.ctx?.fiber?.dispose?.())
+  const { ctx, remote } = await boot()
+  t.after(() => ctx.fiber.dispose())
 
   assert.deepEqual(remote.sessionPreset('s1'), {
     status: 'known',
