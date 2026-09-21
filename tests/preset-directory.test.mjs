@@ -153,6 +153,49 @@ test('native roster remains available when Settings is absent', async () => {
   assert.deepEqual(Object.keys(snapshot.profiles), [])
 })
 
+test('wire preset snapshot derives profile intent from the redacted Settings view', async () => {
+  const state = nativeState({
+    presets: [
+      { id: 'standard', trust: 'system' },
+      { id: 'redacted-preset', trust: 'system' },
+    ],
+  })
+  const { ctx, directory } = await boot({
+    profiles: { main: profile('standard', 'Main') },
+    presetState: state,
+  })
+
+  const settings = ctx.settings
+  const originalDescribe = settings.describe.bind(settings)
+  settings.describe = (options) => {
+    const rows = originalDescribe(options)
+    if (options?.redactSecrets !== true) return rows
+    return rows.map(row => row.ns === CONTEXT_MANAGER_SETTINGS_NAMESPACE
+      ? {
+          ...row,
+          value: {
+            ...row.value,
+            profiles: {
+              ...row.value.profiles,
+              main: {
+                ...row.value.profiles.main,
+                basePreset: 'redacted-preset',
+              },
+            },
+          },
+        }
+      : row)
+  }
+
+  const host = await directory.snapshot()
+  const wire = await directory.snapshotForWire()
+
+  assert.equal(host.profiles.main.basePreset.status, 'resolved')
+  assert.equal(host.profiles.main.basePreset.configuredId, 'standard')
+  assert.equal(wire.profiles.main.basePreset.status, 'resolved')
+  assert.equal(wire.profiles.main.basePreset.configuredId, 'redacted-preset')
+})
+
 test('optional agentPresets attach and detach are observed without a stale cache', async () => {
   const state = nativeState({
     presets: [{ id: 'standard', trust: 'system' }],
