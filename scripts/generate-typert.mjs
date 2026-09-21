@@ -64,10 +64,17 @@ try {
     join(root, 'src', 'service', 'remote.ts'),
     join(packageRoot, 'src', 'service', 'remote.ts'),
   )
-  await cp(
-    join(root, 'src', 'remote', 'types.ts'),
-    join(packageRoot, 'src', 'remote', 'types.ts'),
-  )
+  for (const remoteFile of [
+    'types.ts',
+    'host-ports.ts',
+    'project.ts',
+    'results.ts',
+  ]) {
+    await cp(
+      join(root, 'src', 'remote', remoteFile),
+      join(packageRoot, 'src', 'remote', remoteFile),
+    )
+  }
 
   await writeFile(join(temporary, 'tsconfig.host.json'), JSON.stringify({
     compilerOptions: {
@@ -170,15 +177,15 @@ try {
     ['host'],
   )
   if (artifacts.length !== 1) {
-    throw new Error(`M6A Typert generation expected one Host artifact, received ${artifacts.length}`)
+    throw new Error(`M6 Typert generation expected one Host artifact, received ${artifacts.length}`)
   }
 
   const artifact = artifacts[0]
   if (artifact === undefined || artifact.package !== 'dsh-context-manager' || artifact.face !== 'host') {
-    throw new Error('M6A Typert generation returned the wrong package or face')
+    throw new Error('M6 Typert generation returned the wrong package or face')
   }
   if (artifact.remote === undefined) {
-    throw new Error('M6A Typert generation emitted no Remote contract')
+    throw new Error('M6 Typert generation emitted no Remote contract')
   }
 
   const hostRuntime = addTypertFactoryCompatibility(artifact.js, 'Host')
@@ -198,11 +205,14 @@ try {
   for (const relative of [
     ['service', 'remote.ts'],
     ['remote', 'types.ts'],
+    ['remote', 'host-ports.ts'],
+    ['remote', 'project.ts'],
+    ['remote', 'results.ts'],
   ]) {
     const production = await readFile(join(root, 'src', ...relative), 'utf8')
     const copied = await readFile(join(packageRoot, 'src', ...relative), 'utf8')
     if (production !== copied) {
-      throw new Error(`M6A Typert source copy drifted during generation: ${relative.join('/')}`)
+      throw new Error(`M6 Typert source copy drifted during generation: ${relative.join('/')}`)
     }
   }
 } finally {
