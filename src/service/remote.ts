@@ -14,6 +14,7 @@ import {
   businessResult,
   fail,
   invalidRevision,
+  mapBusinessError,
   ok,
 } from '../remote/results.js'
 import {
@@ -334,10 +335,8 @@ export class ContextManagerRemoteService extends TypertRemoteService {
   }
 
   private businessFailureOrThrow<T>(error: unknown): ContextManagerRemoteResult<T> {
-    const record = error as { readonly code?: unknown; readonly message?: unknown }
-    if (typeof record?.code === 'string') {
-      return businessResult<T>(() => { throw error }) as unknown as ContextManagerRemoteResult<T>
-    }
-    throw error
+    const mapped = mapBusinessError(error)
+    if (mapped === undefined) throw error
+    return fail(mapped)
   }
 }
