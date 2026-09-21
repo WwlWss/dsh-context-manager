@@ -537,7 +537,7 @@ jobs:
           node ./tests/pinned-skill-runtime-agent-loop.e2e.mjs
 
   remote-foundation-artifact:
-    name: M6B oldest-generated artifact
+    name: M6C oldest-generated artifact
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -550,17 +550,17 @@ jobs:
           corepack enable
           corepack prepare pnpm@11.7.0 --activate
       - run: pnpm install --frozen-lockfile
-      - name: Build the one oldest-generation M6B package artifact
+      - name: Build the one oldest-generation M6C package artifact
         run: pnpm run build
-      - name: Upload the exact M6B package artifact
+      - name: Upload the exact M6C package artifact
         uses: actions/upload-artifact@v4
         with:
-          name: m6b-oldest-generated-lib
+          name: m6c-oldest-generated-lib
           path: lib
           if-no-files-found: error
 
   remote-foundation-contract:
-    name: M6B business Remote runtime (${{ matrix.version }})
+    name: M6C preset/runtime Remote (${{ matrix.version }})
     needs: remote-foundation-artifact
     strategy:
       fail-fast: false
@@ -585,10 +585,10 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: Discard install-time prepare output
         run: rm -rf lib
-      - name: Restore the one oldest-generated M6B artifact
+      - name: Restore the one oldest-generated M6C artifact
         uses: actions/download-artifact@v4
         with:
-          name: m6b-oldest-generated-lib
+          name: m6c-oldest-generated-lib
           path: lib
       - name: Switch only the runtime Typert/Gateway generation
         run: |
