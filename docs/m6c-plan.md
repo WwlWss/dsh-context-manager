@@ -1,6 +1,6 @@
 # M6C — Preset / Runtime Diagnostics / Change Hints plan
 
-Status: **implementation in progress**.
+Status: **complete in merged PR #21**.
 
 M6C completes the Host Remote API milestone after merged M6A and M6B. It projects already-existing native preset/runtime observations through explicit browser-safe DTOs and adds best-effort pull invalidation cursors. The Host remains authoritative; no browser cache, cursor, or event becomes a write fence or replicated source of truth.
 
