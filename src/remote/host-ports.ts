@@ -1,8 +1,15 @@
 import type {
+  ContextManagerRemoteChangeSnapshot,
   ContextManagerRemoteDiagnosticCode,
+  ContextManagerRemotePinnedSkillInspection,
+  ContextManagerRemotePresetSnapshot,
   ContextManagerRemotePromptBinding,
   ContextManagerRemotePromptPlacement,
+  ContextManagerRemotePromptPlacementCapability,
+  ContextManagerRemotePromptRuntimeInspection,
+  ContextManagerRemoteSessionPresetIdentity,
   ContextManagerRemoteSkillMode,
+  ContextManagerRemoteSkillRuntimeInspection,
 } from './types.js'
 
 export interface ContextManagerProfileSnapshotPort {
@@ -87,4 +94,39 @@ export interface ContextManagerPromptRemotePort {
   createPrompt(id: string, input: { readonly name: string; readonly description?: string; readonly content: string }): Promise<{ readonly id: string; readonly revision: number }>
   replacePrompt(id: string, input: { readonly name: string; readonly description?: string; readonly content: string }, expectedRevision: number): Promise<{ readonly id: string; readonly revision: number }>
   deletePrompt(id: string, expectedRevision: number): Promise<void>
+}
+
+
+export interface ContextManagerPresetDirectoryRemotePort {
+  snapshot(): Promise<ContextManagerRemotePresetSnapshot>
+}
+
+export interface ContextManagerPresetAuthoringRemotePort {
+  read(id: string): Promise<string>
+  copy(from: string, id: string, name?: string): Promise<void>
+  remove(id: string): Promise<void>
+}
+
+export interface ContextManagerSessionPresetRemotePort {
+  snapshot(sessionId: string): ContextManagerRemoteSessionPresetIdentity
+}
+
+export interface ContextManagerPromptPlacementRemotePort {
+  snapshot(): ContextManagerRemotePromptPlacementCapability
+}
+
+export interface ContextManagerPromptRuntimeRemotePort {
+  inspect(agentId: string): Promise<ContextManagerRemotePromptRuntimeInspection>
+}
+
+export interface ContextManagerSkillRuntimeRemotePort {
+  inspect(agentId: string): Promise<ContextManagerRemoteSkillRuntimeInspection>
+}
+
+export interface ContextManagerPinnedSkillRuntimeRemotePort {
+  inspect(agentId: string): Promise<ContextManagerRemotePinnedSkillInspection>
+}
+
+export interface ContextManagerChangeRemotePort {
+  snapshot(): ContextManagerRemoteChangeSnapshot
 }
