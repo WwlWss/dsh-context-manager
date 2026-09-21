@@ -32,6 +32,9 @@ import {
   invalidRevision,
   mapBusinessError,
   ok,
+  remoteRead,
+  remoteReadAsync,
+  sanitizeUnexpectedRemoteError,
 } from '../remote/results.js'
 import {
   CONTEXT_MANAGER_REMOTE_API_VERSION,
@@ -73,7 +76,7 @@ export class ContextManagerRemoteService extends TypertRemoteService {
 
   @Remote
   profiles(): ContextManagerRemoteProfilesSnapshot {
-    return projectProfilesSnapshot(this.profilePort().snapshotForWire())
+    return remoteRead(() => projectProfilesSnapshot(this.profilePort().snapshotForWire()))
   }
 
   @Remote
@@ -316,7 +319,9 @@ export class ContextManagerRemoteService extends TypertRemoteService {
 
   @Remote
   async presets(): Promise<ContextManagerRemotePresetSnapshot> {
-    return projectPresetSnapshot(await this.presetDirectoryPort().snapshot())
+    return remoteReadAsync(async () => (
+      projectPresetSnapshot(await this.presetDirectoryPort().snapshotForWire())
+    ))
   }
 
   @Remote
@@ -353,45 +358,47 @@ export class ContextManagerRemoteService extends TypertRemoteService {
 
   @Remote
   sessionPreset(sessionId: string): ContextManagerRemoteSessionPresetIdentity {
-    return projectSessionPreset(this.sessionPresetPort().snapshot(sessionId))
+    return remoteRead(() => projectSessionPreset(this.sessionPresetPort().snapshot(sessionId)))
   }
 
   @Remote
   promptPlacement(): ContextManagerRemotePromptPlacementCapability {
-    return projectPromptPlacement(this.promptPlacementPort().snapshot())
+    return remoteRead(() => projectPromptPlacement(this.promptPlacementPort().snapshot()))
   }
 
   @Remote
   async inspectPromptRuntime(
     agentId: string,
   ): Promise<ContextManagerRemotePromptRuntimeInspection> {
-    return projectPromptRuntime(this.promptRuntimePort(), agentId)
+    return remoteReadAsync(() => projectPromptRuntime(this.promptRuntimePort(), agentId))
   }
 
   @Remote
   async inspectSkillRuntime(
     agentId: string,
   ): Promise<ContextManagerRemoteSkillRuntimeInspection> {
-    return projectSkillRuntime(this.skillRuntimePort(), agentId)
+    return remoteReadAsync(() => projectSkillRuntime(this.skillRuntimePort(), agentId))
   }
 
   @Remote
   async inspectPinnedSkillRuntime(
     agentId: string,
   ): Promise<ContextManagerRemotePinnedSkillInspection> {
-    return projectPinnedRuntime(this.pinnedRuntimePort(), agentId)
+    return remoteReadAsync(() => projectPinnedRuntime(this.pinnedRuntimePort(), agentId))
   }
 
   @Remote
   changes(): ContextManagerRemoteChangeSnapshot {
-    const snapshot = this.changePort().snapshot()
-    return Object.freeze({
-      instanceId: snapshot.instanceId,
-      generation: snapshot.generation,
-      profiles: snapshot.profiles,
-      promptResources: snapshot.promptResources,
-      presets: snapshot.presets,
-      runtime: snapshot.runtime,
+    return remoteRead(() => {
+      const snapshot = this.changePort().snapshot()
+      return Object.freeze({
+        instanceId: snapshot.instanceId,
+        generation: snapshot.generation,
+        profiles: snapshot.profiles,
+        promptResources: snapshot.promptResources,
+        presets: snapshot.presets,
+        runtime: snapshot.runtime,
+      })
     })
   }
 
@@ -504,7 +511,7 @@ export class ContextManagerRemoteService extends TypertRemoteService {
 
   private businessFailureOrThrow<T>(error: unknown): ContextManagerRemoteResult<T> {
     const mapped = mapBusinessError(error)
-    if (mapped === undefined) throw error
+    if (mapped === undefined) throw sanitizeUnexpectedRemoteError(error)
     return fail(mapped)
   }
 }
