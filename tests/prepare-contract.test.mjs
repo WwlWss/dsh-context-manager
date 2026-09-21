@@ -23,5 +23,31 @@ test('git-install prepare emits the declared runtime entry', async () => {
   }
   const remote = await import(pathToFileURL(path.resolve(root, packageJson.exports['./remote'].default)).href)
   assert.equal(remote.TYPERT_REMOTE.package, 'dsh-context-manager')
-  assert.equal(remote.TYPERT_REMOTE.descriptors.length, 1)
+  assert.equal(remote.TYPERT_REMOTE.descriptors.length, 21)
+  assert.deepEqual(
+    remote.TYPERT_REMOTE.descriptors.map(item => item.method).sort(),
+    [
+      'addPromptBinding',
+      'createProfile',
+      'createPromptResource',
+      'deleteProfile',
+      'deletePromptResource',
+      'getPromptResource',
+      'listPromptResources',
+      'profiles',
+      'protocol',
+      'removePromptBinding',
+      'removeSkillBinding',
+      'replacePromptResource',
+      'setDefaultProfile',
+      'setProfileBasePreset',
+      'setProfileDescription',
+      'setProfileName',
+      'setPromptBindingEnabled',
+      'setPromptBindingOrder',
+      'setPromptBindingPlacement',
+      'setPromptBindingResourceId',
+      'setSkillMode',
+    ],
+  )
 })
