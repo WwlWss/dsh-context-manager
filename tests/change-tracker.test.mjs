@@ -123,7 +123,7 @@ test('change tracker partitions profile, preset, prompt-resource, and runtime in
   ctx.emit('settings/document-updated', 'unrelated', 10)
   assert.deepEqual(tracker.snapshot(), beforeUnrelatedSettings)
 
-  for (const event of ['agent/created', 'agent/disposed', 'agent-preset/selected', 'skills/change']) {
+  for (const event of ['agent/created', 'agent/disposed', 'agent-preset/selected', 'skills/change', 'system-prompt/change']) {
     const before = tracker.snapshot()
     ctx.emit(event)
     const after = tracker.snapshot()
