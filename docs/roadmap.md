@@ -447,13 +447,13 @@ M6B exposes redacted browser profile snapshots, revision-fenced explicit profile
 
 See [m6b-plan.md](m6b-plan.md).
 
-### M6C — Preset/runtime diagnostics and change hints — in progress
+### M6C — Preset/runtime diagnostics and change hints — complete in merged PR #21
 
 M6C projects native preset state/authoring and existing runtime inspections through browser-safe DTOs and adds unary invalidation cursors. Context Manager does not declare a custom forwarded Remote event because the retained Host event allowlist is owned centrally by DSH and is not third-party extensible. The cursor is only a pull hint, never a revision or replicated source of truth. M6C does not render the final effective-context preview; that remains M8.
 
 See [m6c-plan.md](m6c-plan.md).
 
-## Milestone 6 — Host Remote API
+## Milestone 6 — Host Remote API — complete
 
 Goal: create a stable browser boundary before writing substantial UI.
 
