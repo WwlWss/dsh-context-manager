@@ -450,3 +450,10 @@ M6C therefore exposes unary `changes()` invalidation cursors. They are best-effo
 
 
 Unexpected Host/native failures at the Context Manager browser boundary are deliberately sanitized before they reach Typert Gateway. Retained Gateway generations preserve the thrown `Error.message` in their internal-failure wire payload, so Context Manager Remote methods must throw a fixed package-owned message and retain the original exception only as the Host-side `cause`. Stable package-owned business errors continue to use the typed result envelope.
+
+
+## M7A Client compatibility
+
+The M7A browser bundle is built with `tsconfig.client.json` and emitted as one DSH lazy-CJS loader artifact. The retained Client matrix reuses that exact oldest-built `lib/client.js` against each retained generation's published production `SlotCore` to verify declaration, registration, injection-face storage, and teardown for `sidebar.footer.action` and `shell.overlay`.
+
+This matrix is intentionally named a SlotCore contract rather than a full Client-runtime E2E. DSH's published cross-generation Client test helper is not a usable package-level runtime seam, while the production `SlotRegistry` wrapper's caller-`ctx.effect` ownership was source-audited separately across the retained lines. The plugin follows the same `ctx.slots.inject(... => ctx.slots.register(...))` pattern used by shipped DSH Client packages.
