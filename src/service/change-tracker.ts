@@ -15,7 +15,7 @@ interface ContextManagerChangeEvents {
   on(event: 'settings/document-updated', listener: (ns: string, revision: number) => void): () => void
   on(event: 'agent/created' | 'agent/disposed', listener: (...args: unknown[]) => void): () => void
   on(event: 'agent-preset/selected', listener: (...args: unknown[]) => void): () => void
-  on(event: 'skills/change', listener: () => void): () => void
+  on(event: 'skills/change' | 'system-prompt/change', listener: () => void): () => void
 }
 
 declare module '@deepseek-ai/cordis' {
@@ -62,6 +62,9 @@ export class ContextManagerChangeTracker extends Service {
       this.bump({ runtime: true })
     })
     events.on('skills/change', () => {
+      this.bump({ runtime: true })
+    })
+    events.on('system-prompt/change', () => {
       this.bump({ runtime: true })
     })
   }
