@@ -236,10 +236,13 @@ export type ContextManagerRemotePromptPlacementCapability =
     }
   | {
       readonly status: 'available'
-      readonly placements: Record<
-        ContextManagerRemotePromptPlacement,
-        ContextManagerRemotePromptPlacementChannel
-      >
+      readonly placements: {
+        readonly 'before-persona': ContextManagerRemotePromptPlacementChannel
+        readonly 'after-persona': ContextManagerRemotePromptPlacementChannel
+        readonly 'before-tool-guidance': ContextManagerRemotePromptPlacementChannel
+        readonly 'after-tool-guidance': ContextManagerRemotePromptPlacementChannel
+        readonly 'runtime-context': ContextManagerRemotePromptPlacementChannel
+      }
     }
 
 export type ContextManagerRemoteEffectiveProfileResolution =
