@@ -88,8 +88,29 @@ The tracker is intentionally not an audit log and does not promise to observe ar
 | Agent created/disposed | runtime |
 | live `agent-preset/selected` | runtime |
 | native `skills/change` | runtime |
+| native `system-prompt/change` | runtime |
 
 Failed mutations and stale-write refusals do not bump a cursor.
+
+### Client bootstrap / refresh handshake
+
+A unary cursor is not an atomic transaction with any authoritative read. A Client must not read a surface first and then blindly adopt a later cursor as that surface's baseline: a Host mutation can land between those two calls and make the surface stale while the new cursor already reflects the mutation.
+
+For initial hydration or any grouped refresh, use a bracketing handshake:
+
+```text
+before = changes()
+        ↓
+read authoritative surface(s)
+        ↓
+after = changes()
+```
+
+If `instanceId` changed, discard every cached surface and retry. If a channel cursor relevant to one of the reads changed between `before` and `after`, retry that surface before adopting `after` as its baseline.
+
+A Client may also keep an earlier baseline cursor, perform an authoritative read, and continue comparing future cursors against that earlier baseline. What it must not do is replace the baseline with a post-read cursor whose intervening mutations were never reconciled.
+
+The cursor remains a best-effort invalidation hint; reconnect/focus/safety refreshes still pull authoritative state.
 
 ## Native Presets Remote
 
