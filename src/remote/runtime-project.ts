@@ -179,7 +179,7 @@ function projectPinnedBinding(
 }
 
 export function projectSessionPreset(
-  snapshot: ReturnType<ContextManagerSessionPresetRemotePort['snapshot']>,
+  snapshot: ContextManagerRemoteSessionPresetIdentity,
 ): ContextManagerRemoteSessionPresetIdentity {
   switch (snapshot.status) {
     case 'unavailable':
