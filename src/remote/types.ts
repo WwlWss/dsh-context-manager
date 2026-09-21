@@ -28,16 +28,16 @@ export interface ContextManagerRemoteProfileInput {
   readonly name: string
   readonly description?: string
   readonly basePreset: string
-  readonly skills?: Readonly<Record<string, ContextManagerRemoteSkillBinding>>
-  readonly prompts?: Readonly<Record<string, ContextManagerRemotePromptBinding>>
+  readonly skills?: Record<string, ContextManagerRemoteSkillBinding>
+  readonly prompts?: Record<string, ContextManagerRemotePromptBinding>
 }
 
 export interface ContextManagerRemoteProfile {
   readonly name: string
   readonly description?: string
   readonly basePreset: string
-  readonly skills: Readonly<Record<string, ContextManagerRemoteSkillBinding>>
-  readonly prompts: Readonly<Record<string, ContextManagerRemotePromptBinding>>
+  readonly skills: Record<string, ContextManagerRemoteSkillBinding>
+  readonly prompts: Record<string, ContextManagerRemotePromptBinding>
 }
 
 export type ContextManagerRemoteDiagnosticCode =
@@ -65,7 +65,7 @@ export interface ContextManagerRemoteProfilesSnapshot {
   readonly schemaCompatible: boolean
   readonly configuredDefaultProfileId?: string
   readonly usableDefaultProfileId?: string
-  readonly profiles: Readonly<Record<string, ContextManagerRemoteProfile>>
+  readonly profiles: Record<string, ContextManagerRemoteProfile>
   readonly diagnostics: readonly ContextManagerRemoteDiagnostic[]
   readonly persistence: ContextManagerRemotePersistence
 }
