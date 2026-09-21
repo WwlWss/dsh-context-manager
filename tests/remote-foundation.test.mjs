@@ -9,7 +9,8 @@ import {
 
 test('M6A protocol service exposes only stable wire metadata', async () => {
   const ctx = new Context()
-  await ctx.plugin(ContextManagerRemoteService)
+  const fiber = ctx.plugin(ContextManagerRemoteService)
+  await fiber
 
   assert.deepEqual(ctx.dshContextRemote.protocol(), {
     apiVersion: CONTEXT_MANAGER_REMOTE_API_VERSION,
@@ -17,5 +18,5 @@ test('M6A protocol service exposes only stable wire metadata', async () => {
   assert.equal(ctx.dshContextRemote.typertRemote.serviceKey, 'dshContextRemote')
   assert.equal(ctx.dshContextRemote.typertRemote.namespace, 'contextManager')
 
-  await ctx.dispose()
+  await fiber.dispose()
 })
