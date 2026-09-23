@@ -30,7 +30,7 @@ Context Manager owns user-facing organization and explicit overlays: modular pro
 
 ## Host profile domain
 
-The Host is authoritative for Context Manager state. Browser/client code will edit it through a later Remote surface rather than keeping a second independent truth.
+The Host is authoritative for Context Manager state. Browser/client code edits it through the implemented strict Remote surface rather than keeping a second independent truth.
 
 DSH Settings currently provides schema defaults/composition base plus one user layer. Therefore `ctx.settings` stores the reusable Context Manager profile library and a global `defaultProfileId`; it must not be misrepresented as native Global -> Project -> Session inheritance. Future project/session bindings belong to their appropriate DSH persistence scopes.
 
@@ -227,17 +227,35 @@ M6A publishes only the strict generated Typert contract for `contextManager.prot
 
 The authoring baseline is the oldest retained Typert generation. The same generated artifact is runtime-tested against every retained DSH generation so later Hosts cannot silently require a different package artifact.
 
+
 ## Host and Web client boundary
 
-Follow the DSH data direction:
+The browser boundary exists today:
 
-`Host authoritative state -> Remote API -> Client model -> UI adapter/presentation -> Slot -> React`
+```text
+Host authoritative state
+        ↓
+strict Remote DTOs / operations
+        ↓
+React-free Client business model
+        ↓
+plain derived props / callbacks + declared presentation stores
+        ↓
+Slot adapters / presentation
+        ↓
+React
+```
 
-Browser presentation components must not read Host files directly.
+The Host remains authoritative for persisted and runtime facts. The Client may cache/hydrate those facts for interaction, but it must invalidate and re-pull through Remote change hints rather than becoming a second source of truth.
 
-The package starts with only a Host entry. When browser UI is introduced, add a separate `./client` export and a `dsh.client` manifest with `platform: web` and only the DSH client packages the browser face actually injects. Do not import Host-only modules into the client bundle. Host and client build outputs must be independently covered by package-contract tests before the client manifest is enabled.
+Keep two browser ownership layers distinct:
 
-A malformed `dsh.client` declaration or a missing advertised client bundle can fail Web client module composition, so the browser face must not be added speculatively. The PR that first enables it must prove that a packed install contains the declared client artifact and that DSH can discover it.
+- **Client business state** owns protocol compatibility, authoritative Remote snapshots, cursors, loading/error state, and explicit mutations. It remains React-free.
+- **Presentation state** owns Drawer visibility, selection, tabs, drafts, panel sizing, and similar view-only facts. State shared across Slot entries/remounts belongs in a declared Slot store; component-private facts stay local React state.
+
+Presentation components receive plain data, callbacks, and framework-supported hooks/stores. They do not receive entire mutable controller/service objects and do not contain manual external-subscription wiring such as package-owned `useSyncExternalStore` bridges.
+
+Remote reads are browser-safe projections, not Host service instances. Client code must never reach into Host files, Cordis contexts, Sessions, Agents, or registries directly.
 
 ## Web placement
 
