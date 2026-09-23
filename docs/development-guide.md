@@ -20,55 +20,87 @@ That has concrete implementation consequences:
 - Never expose a control whose promised semantics DSH cannot actually implement. A disabled capability with a clear diagnostic is better than fake freedom.
 - Every mutation must correspond to a user-visible or API-visible explicit operation. A narrow edit changes only the requested leaf.
 
-## 2. Upstream contracts to read first
 
-DSH evolves quickly. Before changing an integration, inspect the public documentation and the exact supported source line rather than coding from memory.
+## 2. Upstream contract preflight
 
-Current reviewed references are recorded in [compatibility.md](compatibility.md). The committed legacy regression baseline is `dsh-v0.1.1-rc.2`; the prior-modern regression line is `dsh-v0.1.2-rc.1`; published regression also covers `dsh-v0.1.5-rc.1` and `dsh-v0.1.5-rc.2`; DSH `0.1.6-alpha.2` is the current forward-alpha compatibility target; and the current source-forward target reviewed for M3/M4 is official `master` at `ddefc45f...`. Treat those tracks separately: install-tested package compatibility and source review are not interchangeable claims.
+DSH evolves quickly. Before changing an integration, inspect the public documentation, published package surface, and exact retained generations rather than coding from memory. The exact authoritative support matrix and source-forward review target belong in [compatibility.md](compatibility.md), not in this handbook.
 
-For the corresponding feature, read these upstream documents first:
+A capability preflight must record:
+
+- the public package/service/Remote/Slot seam production intends to consume;
+- the minimum retained published generation, newest install-tested generation, and current source-forward tree relevant to that seam;
+- package exports and packed files, not only monorepo source paths;
+- whether the seam can actually be imported/loaded in the environment where production needs it;
+- lifecycle and ownership semantics, including unload/HMR behavior;
+- upstream non-negotiable rules that constrain the design;
+- the evidence class each planned test can honestly establish;
+- the exact compatibility claim the PR intends to make.
+
+A helper, type, or test utility visible in the DSH monorepo is **not** a published integration seam merely because source inspection can see it. If a retained generation does not publish or load the proposed package, use a retained public seam, a narrow version adapter, or a package-owned structural bridge only after a preflight proves the contract. Do not widen peer ranges first and discover runtime loadability later.
+
+For the corresponding feature, read these upstream areas before implementation:
 
 | Area | DSH reference |
 | --- | --- |
 | Package/plugin structure | current DSH plugin/publish documentation and bundle examples |
 | Cordis lifecycle and events | `docs/cordis-primer.md` and generated Cordis API docs |
-| Settings | `docs/subsystems/settings.md` / `.zh.md`, public `@deepseek-ai/dsh-settings` declarations/source |
-| Agent/session lifecycle | `docs/subsystems/core.md`, `docs/subsystems/session.md` |
-| System prompt/runtime context | `docs/subsystems/system-prompt.md` |
-| Agent presets | agent-preset package docs and public `ctx.agentPresets` surface |
+| Settings | Settings subsystem docs plus public `@deepseek-ai/dsh-settings` declarations/source |
+| Agent/session lifecycle | core/session subsystem docs |
+| System prompt/runtime context | system-prompt subsystem docs |
+| Agent presets | agent-preset docs and public `ctx.agentPresets` surface |
 | Skills | skill subsystem docs and public `ctx.skills` surface |
 | Compaction/history replacement | current compaction packages plus Session Surface docs/types |
 | Web client packaging | current client-module docs and `packages/client/AGENTS.md` |
 | Slots/UI composition | current Slots/conversation docs |
 
-Do not import DSH `src/` internals in production code merely because the repository source is visible. Source inspection is for understanding public semantics and tracking upstream drift; runtime integration should use public package exports, Cordis services/events, Remotes, and declared Slots.
+Do not import DSH `src/` internals in production code merely because the repository source is visible. Source inspection is design evidence; runtime integration should use public package exports, Cordis services/events, Remotes, and declared Slots.
+
 
 ## 3. Repository boundaries
 
-The intended long-term layout is capability-oriented:
+The capability-oriented layout is now partly implemented:
 
 ```text
 src/
   domain/           pure stored/domain types, parsing, diagnostics
   service/          authoritative Context Manager Host services
   adapters/         narrow DSH subsystem integrations
-  remote/           future Host Remote/BFF surface
-  client/           future browser plugin face
+  remote/           strict browser-facing DTO/projection/wire boundary
+  client/           browser-safe Client model, presentation adapters, and Slot registrations
   transforms/       future Host transform engines
-  library/          future content-library abstractions
+  library/          content-library abstractions
 ```
 
-Not every directory must exist before its first real implementation. Do not create speculative abstractions merely to match this tree.
+Not every future directory must exist before its first real implementation. Do not create speculative abstractions merely to match this tree.
 
 Rules:
 
-- `domain/` should stay as close to pure TypeScript data logic as practical. It must not reach into Agent, Web, filesystem, or DSH package internals.
+- `domain/` stays as close to pure TypeScript data logic as practical. It must not reach into Agent, Web, filesystem, or DSH package internals.
 - DSH-specific behavior belongs in a narrow adapter or Host service.
-- Client code must remain browser-safe and must never import Host-only modules.
+- `remote/` is the Host-to-browser boundary. It projects browser-safe DTOs and explicit operations; it must not leak Host service objects, filesystem paths, secrets, or implementation-only identities.
+- `client/` is already a real production surface. It must remain browser-safe and must never import Host-only modules.
 - A feature that needs an optional DSH capability should attach to that capability explicitly and degrade only that feature when it is absent.
-- Do not turn `ContextManagerService` into a god object. PR2 owns profile persistence/domain semantics; later runtime concerns should be separate services/adapters when their lifecycle differs.
+- Do not turn `ContextManagerService` into a god object. Persistence, runtime policy, Remote projection, Client business state, and presentation state have different ownership/lifecycle boundaries.
 
 The project currently uses explicit `.js` suffixes in TypeScript source imports because that is the package's existing ESM build convention. DSH's monorepo-local `.ts` import rule is an upstream repository convention, not a requirement to copy blindly into this standalone package.
+
+### Browser state layers
+
+Do not collapse browser business state into React presentation state.
+
+```text
+Host authoritative state
+        ↓ Remote DTOs / operations
+React-free Client business model/controller
+        ↓ derived plain props/callbacks
+Slot presentation store / framework hook channel
+        ↓
+React local component state
+```
+
+The React-free Client business model owns Remote-facing facts such as protocol compatibility, profiles, presets, runtime diagnostics, change cursors, loading state, and operation errors. Shared presentation facts such as Drawer open/closed state, selected row, active tab, drafts, or panel sizing belong in a Slot-declared presentation store when they must survive entry remounts or be shared across entries. Truly component-private facts remain ordinary React local state.
+
+Business objects are not UI stores. Presentation components must not invent manual subscription machinery around business objects.
 
 ## 4. The three state layers
 
@@ -396,42 +428,81 @@ Do not abuse `ctx.compaction` merely because it also replaces history if its pro
 
 The representative "small summary -> old body shadow -> native compaction fallback" workflow belongs in examples/documentation, not in the core type system. The plugin supplies authorable transformation capability; the preset author supplies the summary protocol and thresholds.
 
+
 ## 13A. Host Remote rules
 
-Use a dedicated Remote projection/controller layer. Do not make browser protocol shape an accidental by-product of existing Host service methods.
+The Host Remote is a strict browser boundary, not a convenience mirror of Host services.
 
-Every shipped endpoint must have a generated strict Typert descriptor exposed through package `./typert` and `./remote` artifacts. Do not treat Gateway SRC fallback as a release contract.
+- DTOs are JSON-compatible projections with explicit browser-safe semantics.
+- Host paths, secrets, Cordis contexts, service instances, Sessions, Agents, registries, and other Host-only objects never cross the wire.
+- Reads used for browser transport obey DSH redaction rules, while authoritative Host Domain reads remain verbatim.
+- Remote errors use stable machine-readable codes. Clients must not parse English text to decide behavior.
+- Mutation operations carry the authoritative revision/state token required by the owning subsystem. Never substitute a change cursor for a Settings/resource revision.
 
-Keep Remote DTOs JSON-safe and deliberately narrower than Host objects. Browser reads that can include Settings-backed data must use the DSH redaction contract at the wire boundary; Host-authoritative internal reads remain unredacted. Never rebuild or whole-replace a Stored profile from a redacted/narrow browser DTO; ordinary browser editing must use explicit path-local mutations so omitted secrets and forward-compatible siblings survive by construction.
+### Change hints and stable hydration
 
-Retained `0.1.1-rc.2` has Typert unary Remote but predates the later typed `RemoteError` vocabulary and forwarded Remote-event stream. Do not build cross-generation Context Manager correctness on those newer facilities unless a compatibility adapter explicitly proves the behavior.
+M6C change cursors are invalidation hints only. Equality changes mean "re-pull the affected authoritative surface"; a cursor is not a revision, transaction id, or replicated source of truth.
+
+An `instanceId` change invalidates every browser-side assumption for that Remote instance.
+
+Because `changes()` and authoritative reads are separate Remote calls, initial or grouped hydration must use:
+
+```text
+changes -> authoritative reads -> changes
+```
+
+If `instanceId` or a relevant cursor changes across that bracket, discard the affected read and retry before adopting the later cursor as baseline. Never read a surface first and then blindly accept a later cursor as if it described the already-read bytes.
+
+Runtime diagnostics project runtime facts rather than duplicate editable state. Active effective-profile results carry identity/facts needed for diagnostics; editable profile/resource content comes from the authoritative profile/resource endpoints. Prompt diagnostics never expose PromptResource bodies, and Skill/Pinned diagnostics never expose instruction bodies or Host paths.
+
+### Artifact ABI
+
+Remote/client compatibility claims that depend on generated wire artifacts must test the exact built bytes that consumers receive. Build once on the designated producer toolchain, retain that artifact, and run retained consumers against the same artifact instead of rebuilding separately per consumer generation.
+
 
 ## 14. Web client rules
 
-When the Web face is introduced, follow DSH's dynamic client package contract exactly:
+The Web client exists today and is governed by the same strict compatibility discipline as Host integrations.
 
-- declare `dsh.client` only in the PR that also ships a valid `./client` artifact;
-- keep Host and Client outputs independently testable;
-- malformed/missing advertised client artifacts are boot failures, so never add the manifest speculatively;
-- use public Slots for UI composition;
-- do not replace stock single-occupant surfaces merely to add a Context Manager button or panel.
+### 14.1 Dynamic package and build boundary
 
-The initial Context Manager drawer belongs on an additive shell overlay. Rich conversation presentation should use an additive public conversation surface if the then-current DSH client contract still provides one; re-check the exact Slot names before implementation rather than treating an old name as permanent.
+Keep Host and Client TypeScript/bundle graphs separate. The published `./client` artifact must contain the package-local/generated code it needs and may depend only on synchronous loader requests that the retained DSH Client runtime actually publishes. Package-contract tests must verify the emitted files and loader ABI.
 
-Do not try to register a second keyed stock assistant renderer.
+### 14.2 Client dependency graph
 
-### React/client data discipline
+Browser code must not import Host-only packages or rely on monorepo-private test helpers. A source-visible package is not a usable browser dependency until package preflight proves it is published, exported, loadable, and compatible across the retained matrix.
 
-Follow the upstream `packages/client/AGENTS.md` rules current at implementation time:
+### 14.3 Remote mount lifecycle
 
-- `ctx` belongs in plugin `apply`/inject closures, not business components;
-- components receive plain data/callbacks through the declared Slot shares;
-- live external facts arrive through framework-provided hooks or declared stores, not custom subscription machinery inside components;
-- business objects such as Sessions stay in the object layer rather than being mirrored into a second UI store;
-- UI domains share JSON-compatible data/callbacks, not arbitrary service objects or `ReactNode` values;
-- registration occurs in `apply`, never through module-level side effects.
+Mount the generated Remote contribution through the retained public Client seam. Mount/unmount must be owned by the plugin lifecycle so unload/HMR removes every Remote and Slot registration without patching stock DSH state.
 
-The future Host Remote is the browser boundary. Do not let client code read Host files or reach into Host services directly.
+### 14.4 Additive Slots only
+
+Use public additive Slot surfaces. Do not replace keyed stock occupants, patch stock Chat internals, or take over layout regions owned by DSH. Registration occurs in `apply`, never through module-level side effects.
+
+### 14.5 Reactive channels
+
+Follow DSH Client's three-channel rule:
+
+1. if the parent already knows the value, pass owner props;
+2. if only one component knows it, use local React state;
+3. if presentation state must be shared across entries or survive remounts, declare a store at registration.
+
+Business components contain no manual subscription machinery. Do not call `useSyncExternalStore` around package-owned business objects and do not hand-wire `subscribe()` listeners inside presentation components. If reactive facts are registrant-private, expose them through the retained framework hook compartment; if they are shared presentation state, use a declared store.
+
+### 14.6 Business state versus presentation state
+
+React-free Client business state includes protocol compatibility, Remote hydration, profile/preset/resource data, runtime diagnostics, change cursors, loading state, and operation errors. Shared UI state includes Drawer open/closed, selection, tabs, drafts, widths, and similar view concerns.
+
+Do not mirror Sessions, Remotes, controllers, or other service objects into a second UI store. Do not inject an entire mutable controller/service object into presentation components. Inject plain data, callbacks, and framework-supported hooks/stores.
+
+### 14.7 Compatibility discipline
+
+Before using a Client store/hook/Slot API, preflight the minimum retained generation and every generation where the public package boundary changed. If a newer package did not exist on the minimum line, do not import it unconditionally merely because a structurally similar type existed somewhere upstream. Select the smallest public seam that is actually loadable across the supported range, or isolate generation differences behind a narrow adapter.
+
+### 14.8 Styling and localization
+
+Client styling and product copy follow retained upstream Client rules: use shared/theme token seams instead of hard-coded literal colors where a token exists, and route user-visible product strings through the typed localization mechanism that the retained Client contract actually exposes. If the minimum retained line lacks a required public localization seam, record that as a compatibility constraint during preflight rather than inventing a private dependency.
 
 ## 15. Performance rules
 
@@ -458,90 +529,129 @@ Do not automatically map diagnostic severity to mutation policy. If the UI later
 
 Errors intended for Remote use should have stable machine-readable codes. Do not make clients parse English error text to decide behavior.
 
-## 17. Testing policy
 
-Every new capability should test the layer it claims, not only its happy-path helper function.
+## 17. Testing and evidence policy
 
-### Domain tests
+Every capability must test the layer it claims, and every compatibility statement must name what evidence actually proved it.
 
-Cover:
+### Evidence classes
 
-- parsing and immutability;
-- malformed-resource isolation;
-- unknown-field preservation;
-- explicit leaf mutations;
-- deletion semantics;
-- schema-version behavior.
+Evidence classes are complementary, not a single "higher is always better" ladder:
 
-### Settings integration tests
+- **E1 — source audit:** verifies upstream intent, ownership, lifecycle, and non-negotiable design rules.
+- **E2 — published declaration / compile contract:** proves the public types/exports consumed by production exist for a published generation.
+- **E3 — structural or focused unit/runtime test:** proves package-owned logic and narrow adapters behave as intended.
+- **E4 — published production-core runtime:** executes the real published runtime/service/store/Slot core that production consumes.
+- **E5 — public service end-to-end:** exercises the public subsystem through a realistic operation/lifecycle path.
+- **E6 — artifact/install/composition:** proves the packed/generated artifact can be installed, loaded, or composed as shipped.
 
-Use a real `SettingsProvider` subclass and cover:
+Test names and PR claims must not imply evidence stronger or broader than the lane actually provides. E6 does not replace E5, and a full bundle smoke does not prove every runtime branch. Conversely, a deep service E2E does not prove the packed artifact contains the right files.
 
-- provider absence/attach/detach;
-- read-only behavior where relevant;
-- revision conflicts;
-- queued write races;
-- external edits and last-good behavior;
-- no mutation on failure.
+### Domain and Settings evidence
 
-### Runtime adapter tests
+Domain tests cover parsing/immutability, malformed-resource isolation, unknown-field preservation, explicit leaf mutation, deletion semantics, and schema-version behavior.
 
-For every DSH subsystem adapter, test both capability presence and absence. Runtime claims need cold/resume/disposal coverage where lifecycle can change semantics. Validate only the Host surface each path consumes, and add cross-layer tests whenever one explicit mutation is expected to change resolved state without rewriting Stored or Effective state.
+Settings integration uses a real `SettingsProvider` subclass and covers capability attach/detach, read-only behavior where relevant, revision conflicts, queued write races, external edits/last-good behavior, and no mutation on failure.
 
-### Web tests
+### Runtime adapter evidence
 
-When the client face exists, add package-contract checks for `./client` plus focused Slot/store/component tests. Rich renderer/helper work also needs sandbox/bridge tests that prove parent-page authority is not ambient.
+For every DSH subsystem adapter, test both capability presence and absence. Runtime claims need cold/resume/disposal coverage where lifecycle changes semantics. Execute every retained compatibility branch used by production rather than merely compiling it.
 
-### Compatibility tests
+### Web evidence
 
-CI deliberately separates compatibility concerns instead of relying on one broad semver install:
+Client work needs package-contract checks for `./client`, retained public Slot/store/runtime execution, lifecycle cleanup, and browser-appropriate component/model tests. A monorepo test helper is not evidence unless it is itself part of the published seam production can consume.
 
-1. the committed/frozen development dependency set remains on legacy `0.1.1-rc.2` Settings and runs the normal Windows/Linux Node 22/24 suite;
-2. focused modern Settings lanes install exact supported generations `0.1.2-rc.1`, `0.1.5-rc.1`, `0.1.5-rc.2`, and the install-tested forward alpha `0.1.6-alpha.2` with matching Cordis/Schemastery packages and rerun the relevant type/build/Domain regressions;
-3. the AgentPreset Host-contract/runtime lanes cover `0.1.1-rc.2`, `0.1.2-rc.1`, `0.1.5-rc.1`, `0.1.5-rc.2`, and `0.1.6-alpha.2`, including the real native M3C `copy -> read -> remove` cycle;
-4. the Session preset identity lanes cover the same five generations and exercise the legacy event path and modern public projection path with real published Session/projection objects;
-5. the M4A Prompt Library Storage Domain matrix covers those same five generations with both a compile contract and real Storage/StorageJson/StorageDomain durable reopen runtime test;
-6. M4C1/M4C2 focused lanes cover all five generations for SystemPrompt placement/runtime contracts, with real AgentLoop endpoint E2E on the legacy and forward-alpha lines;
-7. the M5A Skill/Scope lane compiles and executes the public SkillRegistry/Scope contract on all five generations, including nearest-scope precedence, dynamic parent rebind/cache behavior, same-layer rank/ties, provider-candidate ownership, invalidation/disposal, policy preservation, policy-neutral `get()`, `renderSkillContent()`, and `scopeParentOf()`;
-8. the M5B policy runtime lane executes managed Auto/Manual/Off/Pinned overlay behavior on all five retained generations, with real ToolSkill + AgentLoop endpoint coverage on the oldest and forward-alpha lines;
-9. the M5C pinned-runtime lane executes parent-native resolution, M5B-policy effectiveness gating, canonical rendering, literal-safe prompt substitution, incomplete/missing-definition behavior, multi-Agent isolation, cancellation, and native complete-prompt suppression on all five retained generations; real AgentLoop coverage additionally runs the legacy `0.1.1-rc.2` path, `0.1.5-rc.1` as the first retained in-history system-prompt path, and `0.1.6-alpha.2` as the forward-alpha path, including request-series reconciliation and hot unload/reload;
-10. strict packed-package peer installation is verified against both the retained stable Settings line `0.1.5-rc.2` and the forward-alpha line `0.1.6-alpha.2`;
-11. full DSH CLI/bundle composition smoke covers `0.1.2-rc.1`, `0.1.5-rc.1`, `0.1.5-rc.2`, and `0.1.6-alpha.2`.
+### Same-artifact compatibility
 
-Keep the exact authoritative matrix and reviewed source SHA in [compatibility.md](compatibility.md). When a new public generation is added, update CI and these maintainer docs together rather than letting the handbook lag behind the executable support claim.
+When the ABI is generated or built, compatibility matrices must prefer "build once, consume many":
 
-This separation prevents common false positives: compiling only against newest declarations while accidentally breaking the minimum line, passing `--dump-config` while never executing a runtime adapter branch, or testing structural fakes without proving the published Host declaration still matches the consumed seam.
+1. build the retained producer artifact once;
+2. retain the exact bytes;
+3. install/execute those bytes against each intended consumer generation.
 
-Do not mutate the committed lockfile just to test a newer generation. Compatibility lanes change only their disposable CI workspace. Do not add every DSH release to the OS/Node matrix; add a focused compatibility lane when a public contract used by production code actually changes or when a maintained intermediate generation provides meaningful regression value.
+Do not rebuild a subtly different Client/Remote artifact inside every consumer lane and then claim one shipped artifact is compatible with all of them.
 
-A source-forward review of DSH `master` is design evidence, not a support claim. An unreleased source tree does not justify widening peer ranges or claiming install-tested support.
+The exact authoritative matrix, source-forward target, and per-capability retained lanes belong in [compatibility.md](compatibility.md) and executable CI. This handbook defines the evidence rules; it must not duplicate a milestone-by-milestone version list that can drift from CI.
+
+A source-forward review of DSH `master` is design evidence, not a support claim. A newly published upstream generation is a **candidate** until the compatibility-intake slice proves the package/ABI/runtime lanes required by the affected seams. Do not widen peer ranges or support language before that intake passes.
+
 
 ## 18. PR workflow
 
-For each feature PR:
+Feature work follows an explicit state machine:
 
-1. State the user-visible capability and the exact DSH public seam that can implement it.
-2. Identify which state layer changes: stored, Domain, runtime, client presentation, or several of them.
-3. Decide whether a new persisted field is actually needed. Do not persist a knob before its runtime adapter exists.
-4. If adding a binding, make it object-shaped and ensure narrow writes preserve unknown siblings.
-5. Add runtime validation at untyped boundaries; TypeScript is not a wire/security boundary.
-6. Add failure-path tests before claiming the capability.
-7. Check the legacy regression line, latest installable line, and current source-forward target as applicable.
-8. If a compatibility adapter branches at runtime, add a test that actually executes every supported branch; a bundle/config smoke is not enough.
-9. Update [compatibility.md](compatibility.md) if the minimum tested DSH contract changes.
-10. Update [roadmap.md](roadmap.md) when a milestone moves or a public DSH limitation changes the planned implementation.
-11. Keep the PR Draft until the latest head is green and a final source-level review finds no blocker.
+```text
+PLAN
+  -> UPSTREAM PREFLIGHT
+  -> DRAFT IMPLEMENTATION
+  -> TARGETED TESTS
+  -> CI STABILIZATION
+  -> STRICT SOURCE REVIEW
+  -> FIX / CI LOOP
+  -> FINAL REVIEW
+  -> READY
+  -> MERGE
+  -> POST-MERGE CLOSEOUT
+```
 
-Before merge, verify:
+### PLAN gate
+
+Record the user-visible capability, ownership layers, exact public seam, non-goals, compatibility hypothesis, evidence plan, failure semantics, unload/HMR behavior, and acceptance criteria. New persisted fields require a real runtime owner; do not persist knobs for future semantics.
+
+### UPSTREAM PREFLIGHT gate
+
+Verify exports, packed files, loadability, lifecycle, minimum retained line, newest tested line, current source-forward behavior, and upstream non-negotiable rules. Resolve cross-generation seam questions before implementation.
+
+### DRAFT IMPLEMENTATION and TARGETED TESTS
+
+Feature PRs stay Draft by default. Keep changes narrow. Add focused failure-path and compatibility-branch tests alongside the implementation; do not use a broad CI matrix as the first debugger.
+
+### CI STABILIZATION
+
+Classify failures before changing production code:
+
+- **P — production defect:** implementation violates the intended contract;
+- **H — harness defect:** test/CI wiring does not execute the intended contract correctly;
+- **U — upstream publication/compatibility defect:** the assumed public package/export/runtime seam is absent or changed;
+- **I — infrastructure/transient defect:** runner/network/cache/tooling failure unrelated to product semantics.
+
+Do not "fix CI" by weakening production behavior when the failure is H/U/I.
+
+### STRICT SOURCE REVIEW
+
+Review the complete intended diff after the latest intended functional change and after targeted/CI evidence is green. Check ownership, lifecycle, compatibility branches, failure semantics, performance, package artifacts, and whether the tests prove the claims.
+
+### FIX / CI LOOP
+
+Any functional fix returns to targeted tests and CI. If the fix changes reviewed behavior materially, repeat strict source review.
+
+### FINAL REVIEW -> READY gate
+
+Before marking Ready, record:
+
+- exact head SHA reviewed;
+- latest green required CI run for that SHA;
+- evidence classes actually achieved;
+- known unsupported cases or deferred debt;
+- confirmation that no functional commit landed after final review.
+
+No P1/P2 source-review finding may remain open. Documentation-only PRs may skip Draft when they have no executable artifact, but they still require exact-head review.
+
+### MERGE and POST-MERGE CLOSEOUT
+
+Merge only the reviewed green head. After merge, update milestone status/closeout documentation when needed and verify that the next slice starts from the merged contract rather than an earlier plan.
+
+Before merge, also verify:
 
 - no shipped DSH preset/provider/file is rewritten;
-- component/runtime hot-unload restores stock behavior through its documented native cleanup path; permanent whole-bundle removal must immediately remove Context Manager providers/hooks but must not claim it can rewrite already-admitted in-history prompt bytes after the coordinator itself is gone unless DSH exposes a tested durable public cleanup seam; explicit DSH-native resources the user authored through Context Manager are not treated as disposable plugin-owned state;
+- hot unload restores stock behavior through documented native cleanup;
 - unknown user data survives unrelated edits;
 - stale writes fail rather than retry silently;
-- Host-only values cannot leak over a wire surface;
-- the feature does not claim semantics stronger than the tested DSH version provides;
-- every compatibility branch used in production is executed by at least one focused test lane;
+- Host-only values cannot leak over the wire;
+- the feature does not claim semantics stronger than its evidence;
+- every production compatibility branch is executed by at least one focused lane;
 - package exports and packed artifacts match the manifest.
+
 
 ## 19. Local development
 
@@ -559,16 +669,8 @@ pnpm install --frozen-lockfile
 pnpm run check
 ```
 
-`pnpm run check` performs type checking, a clean production build, and the package/domain/runtime test suite on the committed legacy dependency set. CI adds five-generation Settings/AgentPreset/Session/Prompt/Skill-focused compatibility lanes where applicable, endpoint AgentLoop regressions, packed-bundle verification, and published DSH bundle smoke described above.
+`pnpm run check` performs type checking, a clean production build, and the package/domain/runtime test suite on the committed dependency baseline. CI adds the focused compatibility, runtime, artifact, and composition lanes recorded in [compatibility.md](compatibility.md).
 
-The git-install `prepare` path intentionally emits only the runtime JavaScript needed for installation. Declaration generation and full type checking remain development/CI responsibilities.
+The git-install `prepare` path emits the complete installable artifact required by declared package exports, including required declarations, generated Typert faces/contributions, and the Web Client artifact. Full source typechecking and non-install test output remain development/CI responsibilities.
 
-For a real DSH smoke test, use the exact tested DSH version documented in [compatibility.md](compatibility.md). Do not silently substitute an unreleased source checkout and call that published compatibility.
-
-## M6C Remote diagnostics and invalidation rules
-
-Runtime Remote diagnostics must project runtime facts rather than duplicate authoritative editable state. In particular, an active effective-profile result carries only `profileId` and `presetId`; browser profile content is pulled from `profiles()`. Prompt runtime diagnostics never expose PromptResource body text, and Skill/Pinned diagnostics never expose instruction bodies or Host paths.
-
-`changes()` cursors are invalidation hints only. Compare them for equality, re-pull the affected authoritative Remote surface when they change, and discard all cached assumptions when `instanceId` changes. Never send a change cursor as `expectedRevision`; profile writes use the DSH Settings revision and PromptResource writes use the resource revision.
-
-Because a cursor read and an authoritative Remote read are not one transaction, initial/group hydration must bracket reads with `changes() -> reads -> changes()`. If `instanceId` or a relevant channel cursor changes across the bracket, retry the affected surface before adopting the later cursor as its baseline. Never read a surface first and then blindly treat a later cursor as that already-read surface's baseline; that can hide a mutation that landed between the calls.
+For a real DSH smoke test, use an exact tested DSH version documented in [compatibility.md](compatibility.md). Do not silently substitute an unreleased source checkout and call that published compatibility.

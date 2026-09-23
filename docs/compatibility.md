@@ -11,9 +11,11 @@ DeepSeek Harness evolves quickly. Context Manager separates **installable/tested
 | 0.1.5 published regression | `dsh-v0.1.5-rc.1` | Retained because it remains an important published/default-install line. CI reruns modern Settings, AgentPreset M3A/M3C checks, M3B Session runtime, M4C1 placement, M4C2 Agent/SystemPrompt smoke, M5A Skill/Scope contract, and full bundle composition smoke against it. |
 | Current stable regression | `dsh-v0.1.5-rc.2` | Install-tested published line retained as the stable regression anchor. CI runs modern Settings, M3A/M3C, M3B projection/runtime, M4A Storage, M4C1 placement, M4C2 Agent/SystemPrompt smoke, the M5A Skill/Scope contract, strict packed-package peer installation, and full DSH bundle composition. |
 | Install-tested forward alpha | `dsh-v0.1.6-alpha.2` | Published forward-compatibility line validated by CI across modern Settings, AgentPreset, Session projection/runtime, Prompt Library Storage, M4C1 placement, M4C2 Agent/SystemPrompt, and the M5A Skill/Scope contract. A real 0.1.6 AgentLoop recording-adapter E2E proves the modern model-visible Surface/runtime-context path, dynamic profile/resource resolution, native suppression, and unload/reload behavior. Strict packed-package and bundle composition lanes remain in place. |
-| Latest official repository | `master` / `ddefc45f...` | Source-forward architecture target reviewed from official source. The tree identifies as `0.1.6-alpha.2`, preserves the M2-M4C2 seams consumed by Context Manager, adds native live AgentPreset selection, and keeps the base prompt `AssembleContext` at scope/signal while `@deepseek-ai/dsh-agent` publicly augments it with optional Agent identity. Source review remains distinct from package/runtime evidence. |
+| Latest official repository | `master` / `46a7f68b...` | Source-forward architecture target. The current official head is the 2026-09-23 merge for `0.1.7-rc.1`. Source review remains distinct from package/runtime evidence and does **not** make `0.1.7-rc.1` a supported Context Manager line. |
 
 Support claims must name what was actually tested. A GitHub source tree and an installable npm package remain distinct evidence even when their package version currently matches.
+
+DSH `0.1.7-rc.1` is a **published compatibility-intake candidate**, not an install-tested supported line in this repository yet. Do not add its prerelease tuple to peer ranges or describe it as supported until the dedicated intake slice passes the affected package, same-artifact Remote/Client, install, and composition evidence.
 
 The modern published lines used by CI ship `@deepseek-ai/cordis@4.0.2` and `@deepseek-ai/schemastery@3.18.2`; compatibility lanes use those public package generations while the ordinary development lockfile remains on the legacy generation. Keeping the frozen legacy lock means both Settings API shapes and both M3B Session-read branches remain visible instead of silently raising the minimum baseline.
 
@@ -213,7 +215,7 @@ CI executes both declaration contracts and runtime behavior against:
 
 The runtime smoke creates an actual published-package `Session`, appends an actual `agent-preset/selected` record, and on modern lines registers the actual native `agentPresetProjectionDefinition` with the actual `SessionProjectionRegistry`. This ensures the compatibility branches production relies on are executed rather than merely simulated by structural fakes.
 
-Current official source at `ddefc45f...` still defines the same `string | null` AgentPreset projection and `stateOf(session, 'agentPreset')` read path, so no additional M3B adapter is needed. It now also exposes native live AgentPreset selection: successful selection records `agent-preset/selected` after the composition swap commits. Context Manager must observe this changing effective identity but must not call `select()` merely to enforce a profile.
+The previously reviewed `0.1.6-alpha.2` source-forward tree defined the same `string | null` AgentPreset projection and `stateOf(session, 'agentPreset')` read path, so no additional M3B adapter was required for that supported generation. That line also exposed native live AgentPreset selection: successful selection records `agent-preset/selected` after the composition swap commits. Context Manager must observe changing effective identity but must not call `select()` merely to enforce a profile. The newer `0.1.7-rc.1` publication remains subject to the compatibility intake recorded at the top of this document.
 
 ### DSH 0.1.6 live preset switching
 
@@ -358,18 +360,25 @@ Expected business failures do not depend on shared `RemoteError`. Context Manage
 
 The M6B Typert workspace remains isolated from M2-M5 Host service classes through narrow structural ports plus compile-only assignability assertions. The generated contribution contains only the `dshContextRemote` invocation surface.
 
-## Web client and presentation guardrails
 
-Future Web work remains additive to DSH composition:
+## Web client and presentation compatibility
 
-- advertise a `dsh.client` face only in the PR that actually ships and contract-tests the client artifact;
-- do not replace the occupied single `details` surface merely to add Context Manager UI;
-- prefer additive public shell/conversation slots when available;
-- do not patch the stock keyed assistant renderer;
-- display-only transforms must remain separate from model-visible history transforms;
-- user-enabled HTML/JavaScript helpers must run in an isolated browser runtime with an explicit capability bridge, not with ambient parent-page authority.
+The Web client is now a shipped package surface, not a future placeholder.
 
-As with the prompt and Skill sections, these are maintained architectural guardrails, not claims that a Web client already exists.
+Compatibility rules:
+
+- `./client` and `dsh.client` are support claims and must be verified as packed artifacts;
+- additive public Slots remain the only allowed composition path; do not replace occupied/keyed stock surfaces;
+- generated Remote and Client artifacts are tested as exact retained bytes where ABI compatibility is claimed;
+- business components follow retained DSH Client reactive-channel rules: no package-owned `useSyncExternalStore` or manual subscription wiring in presentation components;
+- shared presentation state uses a retained declared-store/hook seam proven by package preflight;
+- Client business objects remain React-free and are not injected wholesale as presentation services;
+- display-only transforms remain separate from model-visible history transforms;
+- user-enabled HTML/JavaScript helpers must run in an isolated browser runtime with an explicit capability bridge.
+
+M7A established the loader/Remote/Slot artifact foundation but intentionally leaves a transitional presentation-contract debt: the current skeleton uses manual external-store subscription and controller injection. M7B0 owns removal of that debt before M7B1 adds authoritative Remote business state.
+
+A cross-generation Client package visible in upstream source is not enough. Before production imports it, verify that the minimum retained published line actually exports and loads it. If not, isolate the real generation difference behind a narrow compatibility seam rather than silently raising the minimum version.
 
 ## Windows fork fixes are not plugin dependencies
 
@@ -379,23 +388,27 @@ In particular, local Win32 safety patches and any future Session/projection perf
 
 A user must be able to switch official DSH <-> patched DSH without installing a different Context Manager build.
 
+
 ## Compatibility rules for future PRs
 
 When a PR begins using a new DSH seam:
 
 1. identify the public package/service/Remote/Slot contract that owns the behavior;
-2. compare the newest relevant installable DSH package(s) with the latest official repository source;
-3. add a focused adapter only for an actual signature/semantic difference;
-4. never import production code from DSH `src/` internals;
-5. add a focused runtime/contract test that actually executes every supported compatibility branch relied on by production code;
-6. use real published-service smoke tests for mutation boundaries where structural fakes alone cannot prove integration;
-7. use bundle smoke tests for installation/composition claims, not as a substitute for runtime API tests;
-8. use source-forward review for repository changes and keep that evidence distinct from package testing;
-9. keep unsupported/missing optional capabilities explicit instead of simulating them;
-10. update this document when the minimum tested DSH contract changes.
+2. inspect package exports and packed files on the minimum retained generation before implementation;
+3. compare the newest relevant installable DSH package(s) with the latest official repository source;
+4. verify runtime loadability/lifecycle, not only TypeScript declarations;
+5. add a focused adapter only for an actual signature/semantic difference;
+6. never import production code from DSH `src/` internals;
+7. execute every supported compatibility branch relied on by production;
+8. use real published-service runtime/E2E tests for mutation/lifecycle boundaries where structural fakes are insufficient;
+9. use bundle/artifact smoke for installation/composition claims, not as a substitute for service runtime evidence;
+10. when compatibility depends on generated/built ABI, build once and run the exact same bytes across retained consumers;
+11. keep unsupported/missing optional capabilities explicit instead of simulating them;
+12. update this document and executable CI together when the authoritative support matrix changes.
+
+Newly published DSH generations enter through a dedicated compatibility-intake slice. Until that slice passes, they may be documented as candidates/source-forward evidence but must not widen peer ranges or the supported matrix.
 
 The compatibility objective is **one plugin codebase across supported official DSH lines and compatible forks**, not one plugin version per host build.
-
 
 ## M5B Skill policy runtime compatibility
 
@@ -457,3 +470,7 @@ Unexpected Host/native failures at the Context Manager browser boundary are deli
 The M7A browser bundle is built with `tsconfig.client.json` and emitted as one DSH lazy-CJS loader artifact. The retained Client matrix reuses that exact oldest-built `lib/client.js` against each retained generation's published production `SlotCore` to verify declaration, registration, injection-face storage, and teardown for `sidebar.footer.action` and `shell.overlay`.
 
 This matrix is intentionally named a SlotCore contract rather than a full Client-runtime E2E. DSH's published cross-generation Client test helper is not a usable package-level runtime seam, while the production `SlotRegistry` wrapper's caller-`ctx.effect` ownership was source-audited separately across the retained lines. The plugin follows the same `ctx.slots.inject(... => ctx.slots.register(...))` pattern used by shipped DSH Client packages.
+
+M7A's loader/Remote/Slot compatibility result remains valid, but its presentation skeleton is not the final Client architecture. Source review across the retained Client rules found two transitional issues to remove in M7B0: business-component `useSyncExternalStore` wiring and whole-controller injection. M7B0 must preserve the proven M7A artifact/lifecycle behavior while moving presentation reactivity onto a retained public store/hook seam.
+
+The separately published DSH `0.1.7-rc.1` line is not included in the matrix above yet. Its intake must first run the relevant published Client/Remote/package preflight and same-artifact compatibility lanes; only a passing intake may update peer tuples and supported-version language.
