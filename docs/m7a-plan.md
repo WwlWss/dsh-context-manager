@@ -1,5 +1,7 @@
 # M7A — Client Artifact / Loader ABI / Remote Mount / Slot Skeletons
 
+**Status: complete — merged in PR #23.** The loader/Remote/Slot foundation is retained. M7B0 owns the presentation-contract cleanup identified by the post-merge source review.
+
 Status: **implementation in progress**.
 
 M7A establishes the browser artifact and lifecycle boundary only. Profile state, Remote reads, CRUD, cursor polling, diagnostics, and rich editors remain M7B/M7C.
@@ -57,14 +59,45 @@ Host and Client typechecking and bundling use separate TypeScript programs. Host
 
 The browser bundle keeps only `react` external. Generated Remote codecs and package-local code are bundled into the one Client artifact. Package tests scan the emitted artifact and fail if extra synchronous module-table requests or asynchronous chunks appear.
 
-## Deferred to M7B/M7C
+## Post-merge contract debt and handoff
+
+M7A proved the package artifact, loader ABI, generated Remote mount lifecycle, additive Slot registration, teardown, and same-oldest-built Client artifact across the retained production `SlotCore` generations.
+
+The source-level closeout also found presentation code that must **not** become the pattern for later M7 work:
+
+- `Trigger` and `Drawer` currently call React `useSyncExternalStore` against a package-owned interaction controller;
+- the Slot injection face passes the whole controller object into presentation components;
+- production styling still contains literal fallback colors and product copy is hard-coded English.
+
+Retained DSH Client rules consistently require business components to contain no manual subscription machinery, use owner props/local state/declared stores for the three supported reactive channels, and keep whole business/service objects out of presentation injection. M7B0 must remove this debt without regressing M7A's proven loader, Remote, Slot, or unload/HMR behavior.
+
+The exact cross-generation presentation-store/localization seam remains a **preflight question**, not an implementation assumption. In particular, a newer standalone Client store package must not be imported unconditionally if the minimum retained generation exposes only an older public structural/runtime seam.
+
+## Deferred after M7A
+
+### M7B0 — Client contract cleanup
+
+- retained store/hook/Slot seam preflight;
+- remove component `useSyncExternalStore` and manual subscribe wiring;
+- replace whole-controller injection with plain props/callbacks and the supported reactive channel;
+- move shared Drawer state to the proved presentation-store/hook seam;
+- token/style cleanup and localization-contract preflight.
+
+### M7B1 — Authoritative Client model
 
 - `protocol()` compatibility guard;
 - `changes -> reads -> changes` stable hydration;
-- change polling / reconnect invalidation;
-- profile list and selection;
-- Profile CRUD and revision chains;
-- preset/profile diagnostics;
-- production Drawer styling.
+- `instanceId` reset and change polling/reconnect invalidation;
+- profile/preset/runtime-diagnostic pulls;
+- React-free business loading/error/cursor state.
 
-M7A is complete when the same published Client artifact is proven to use the retained loader ABI, mount the generated Remote contribution, and register/unregister both additive entries against each retained generation's production `SlotCore`. The retained matrix deliberately does not claim a full browser `SlotRegistry` end-to-end: published upstream Client test helpers are not usable as a cross-generation runtime seam, while the production `SlotRegistry` contract and its `ctx.effect` ownership are source-audited separately. A full assembled browser smoke remains a later closeout concern.
+### M7B2 — Mutation controller
+
+- Profile CRUD and revision chains;
+- conflict/read-only/unavailable operation state;
+- no silent stale-write retry;
+- mutation followed by authoritative rehydrate.
+
+### M7C/M7D
+
+M7C owns the production Profile Drawer. M7D owns assembled browser/package/compatibility closeout, including repeated mount/unmount, same-artifact Client execution, packed install/load checks, and final source-forward review.
