@@ -480,93 +480,155 @@ Avoid creating a second browser-side source of truth.
 
 ---
 
+
 ## Milestone 7 — Web client foundation and Context Manager Drawer
 
-M7A is in progress: the first slice establishes the published Client artifact, retained loader ABI, generated Remote mount lifecycle, and the additive `sidebar.footer.action` + `shell.overlay` skeleton. See [m7a-plan.md](m7a-plan.md).
+Goal: turn the shipped M7A browser artifact into a contract-correct, authoritative, compatibility-tested editor shell without creating a second source of truth.
 
-Goal: install the browser face safely before complex editors.
+### M7A — Client artifact / loader ABI / Remote mount / additive Slot skeleton — complete
 
-Packaging:
+M7A established the published `./client` artifact, retained loader ABI, generated Remote mount lifecycle, and additive `sidebar.footer.action` + `shell.overlay` skeleton. The same oldest-built artifact is exercised against retained production `SlotCore` generations.
 
-- add `./client` export;
-- add `dsh.client` manifest only when the built artifact exists;
-- extend package-contract tests to verify the exact client artifact;
-- keep Host and Client bundles separated.
+M7A is intentionally recorded with transitional debt rather than retroactively called final architecture: its current presentation layer uses package-owned `useSyncExternalStore` wiring and injects a controller object into components. Retained DSH Client rules prohibit business-component subscription machinery and require shared presentation state to use the framework store/hook channels. M7B0 removes that debt before new business behavior is layered on top.
 
-UI composition:
+See [m7a-plan.md](m7a-plan.md).
 
-- use an additive shell surface available in the supported DSH client contract for the main Context Manager Drawer;
-- add a trigger through an additive list slot where the current DSH shell exposes one;
-- never replace the single-occupant stock `details` subtree;
-- keep a root-safe entry only if product access is needed outside an active Session.
+### M7B0 — Client contract cleanup
 
-Client architecture:
+Before adding substantial Remote state:
 
-- follow upstream Slot shares and store rules;
-- `ctx` remains in `apply`/inject closures;
-- components receive plain data/callbacks;
-- shared interaction state goes into declared stores only when it genuinely must survive/remount across entries;
-- Session/Workspace business objects remain in the DSH client object layer.
+- preflight the retained Client store/hook/Slot seams, including the minimum retained generation;
+- remove component-level `useSyncExternalStore` / manual subscription wiring;
+- stop injecting the whole interaction controller/service object into presentation entries;
+- move shared Drawer/view state to the retained declared-store or hook seam proven by preflight;
+- keep business state React-free and presentation state view-only;
+- align production styling with retained theme/token rules;
+- establish the localization seam that is actually public across the retained range, or record the exact minimum-line limitation rather than importing a newer-only package;
+- preserve M7A loader, Remote mount, additive Slot, unload/HMR, and same-artifact compatibility behavior.
 
-First UI should be intentionally boring: profile list, selection, diagnostics, and CRUD. Rich editors come after the transport/lifecycle proves stable.
+The exact cross-generation store implementation choice belongs in the M7B0 plan after preflight; the roadmap does not hard-code a package that may not exist on the minimum line.
 
----
+### M7B1 — Authoritative Client model
 
-## Milestone 8 — Preset / Prompt / Skill editor and effective-context preview
+Add a React-free Client model over the strict Host Remote:
 
-Goal: make the core Context Manager useful without yet adding regex/helper complexity.
+- run `protocol()` compatibility guard before adopting data;
+- hydrate with `changes -> authoritative reads -> changes`;
+- track `instanceId` and invalidate all assumptions when it changes;
+- pull profiles, preset/runtime diagnostics, and other M6 surfaces without duplicating Host authority;
+- keep stable observable/model identity where the retained framework seam requires it;
+- expose loading/error state and derived plain callbacks/data through the supported inject/hook boundary;
+- poll/reconnect through change hints rather than treating cursors as revisions.
 
-Features:
+### M7B2 — Mutation controller
 
-- profile editor;
-- locked native preset view;
-- prompt resource browser/editor;
-- drag ordering inside supported anchors;
-- skill policy editor;
-- diagnostics panel;
-- advanced stored-payload editor;
-- effective-context preview.
+Add explicit browser mutations on top of the authoritative Client model:
 
-Preview rules:
+- maintain Settings/resource revision chains separately from change cursors;
+- never silently retry stale writes;
+- surface conflicts, unavailable/read-only capabilities, and stable Remote error codes;
+- after a successful mutation, rehydrate authoritative state rather than locally fabricating the expected result;
+- keep operation state isolated enough that one failed mutation does not poison unrelated read surfaces.
 
-- clearly distinguish configured from effective state;
-- show unresolved resources without fallback;
-- show prompt sections in actual runtime order;
-- show why a requested insertion is suppressed or unavailable;
-- eventually show token estimates only through a dedicated tokenization/measurement capability, not inside ordinary Settings normalization.
+### M7C — Profile Drawer
 
-Do not present preview as authoritative unless it uses the same runtime adapter resolution as the real agent path.
+Build the production Drawer on the cleaned Client contracts:
 
----
+- profile list and selection;
+- create/delete and metadata/base-preset editing already supported by Remote;
+- preset/profile/runtime diagnostics;
+- clear loading, conflict, unavailable, and malformed states;
+- view-only drafts/selection/tab state owned by the presentation layer;
+- additive right-side shell behavior that does not replace stock DSH occupants.
+
+Do not reimplement Prompt/Skill resource editors here; M8 owns those feature editors.
+
+### M7D — Browser/package/compatibility closeout
+
+Before declaring Milestone 7 complete:
+
+- assembled browser smoke through the real public loader/Remote/Slot composition path where the retained published seams allow it;
+- unload/HMR and repeated mount/unmount checks;
+- packed `./client` install/load verification;
+- same-built-artifact execution across the retained Client matrix;
+- final source-forward review against current upstream Client rules;
+- exact-head source review and evidence record.
+
+A newly published DSH Client generation is not automatically added to the support claim. It enters through a separate compatibility-intake slice first.
+
+
+## Milestone 8 — Resource editors and effective-context preview
+
+Goal: build focused editors on top of the completed M7 authoritative Client/Drawer foundation.
+
+### M8A — PromptResource + PromptBinding editor
+
+- browse/create/edit/delete Prompt Library resources through M6 Remote operations;
+- edit PromptBindings without replacing unknown sibling fields;
+- expose semantic placement and deterministic local ordering;
+- show capability/suppression diagnostics without auto-repairing configured intent.
+
+### M8B — Skill policy editor
+
+- edit Pinned / Auto / Manual / Off through explicit leaf mutations;
+- show native resolution and policy-effectiveness diagnostics separately;
+- never expose instruction bodies through runtime diagnostics;
+- preserve unknown binding siblings.
+
+### M8C — Native preset view / copy / remove UX
+
+- locked structural view of shipped/native presets;
+- exact DSH-native copy-only authoring;
+- native remove operation with DSH-owned writable-root/collision/default semantics;
+- no invented blank preset creation, overwrite, implicit rename, or arbitrary filesystem path editing.
+
+### M8D — Effective-context preview
+
+Keep preview as a derived read model, not an alternate assembly engine. If implementation needs a nontrivial model/UI split, plan it explicitly as M8D1 preview model and M8D2 presentation.
+
+Preview must explain configured/resolved/effective facts and placement/policy constraints using the same authoritative resolution logic as runtime. It must not claim byte-for-byte model input unless the public DSH seam can actually prove that view.
+
+### M8E — Advanced stored-payload editor
+
+Expose the existing advanced profile/resource editing seam while preserving persistence integrity, revision fencing, unknown fields, and malformed-resource isolation. This is not a raw Settings document recovery editor.
+
 
 ## Milestone 9 — Project and Session bindings
 
-Goal: allow one reusable profile to be selected/overridden per project/workspace/session without pretending DSH Settings itself has a Global -> Project -> Session hierarchy.
+Goal: add narrower selection scopes without pretending DSH Settings is a native inheritance system.
 
-First decide the owning DSH persistence scope for each binding.
+### M9A — Workspace/Session persistence contract probe
 
-Potential model:
+Before designing stored bindings, verify the current public DSH ownership seam for each scope:
+
+- which subsystem owns durable Workspace and Session identity/state;
+- create/read/update/delete public operations;
+- revision, locking, or conflict semantics;
+- resume/reopen behavior;
+- lifecycle/disposal ownership;
+- whether a third-party plugin can persist an additive binding without mutating shipped/native preset files.
+
+If a scope lacks a public lossless persistence seam, record it as unsupported rather than emulating it in global Settings.
+
+### M9B — Domain model
+
+Define the smallest forward-compatible Workspace/Session binding objects only after M9A establishes real persistence ownership. Narrow edits preserve unknown siblings and unresolved profile ids remain valid stored intent.
+
+### M9C — Runtime resolver
+
+Extend effective-profile selection precedence:
 
 ```text
-Global profile library      → Settings
-Workspace/project binding   → workspace-owned persistence
-Session binding             → session-owned durable metadata/event or another public DSH session seam
-Runtime effective overlay   → agent/session scope
+Session binding
+  -> Workspace binding
+  -> global default
 ```
 
-Do not store fake project/session inheritance inside the global Settings namespace simply because it is convenient.
+Selection source does not change Agent-scoped prompt/skill registration ownership. Exact live effective-preset matching remains the runtime fence.
 
-Define explicit inheritance semantics only after all participating persistence scopes are known.
+### M9D — Client UX
 
-Tests must include:
-
-- session create/resume;
-- workspace switch;
-- deleted/missing referenced profile;
-- profile edited while an existing session is running;
-- immutable native base-preset identity versus live overlay changes.
-
----
+Expose configured source, resolved profile, and effective runtime result separately. Missing profile references remain diagnostics; do not silently fall back or rewrite bindings.
 
 ## Milestone 10 — Transform resource model
 
@@ -620,97 +682,44 @@ Regex execution needs a performance strategy before arbitrary user expressions a
 
 ---
 
+
 ## Milestone 12 — Durable history-Surface transforms
 
-Goal: provide **generic user-authored** model-visible history transformation/replacement capability using the public DSH Session/Surface lifecycle available at implementation time.
+Goal: implement model-visible historical replacement only through a public DSH Session/Surface contract whose current ownership and safety rules are verified first.
 
-A representative preset-authored use case is:
+### M12A — Session/Surface extension contract probe
 
-> The preset instructs the model to emit a compact tagged representation for each reply; after a user-selected age/turn threshold, a history transform shadows the old full body with that extracted representation while newer history stays full.
+Re-check current published SessionHandle/Surface/maintenance/locking APIs before committing a resource schema:
 
-`<summary>...</summary>` is only one possible protocol. Context Manager core must not privilege it. A preset author could instead use `<memory>`, custom delimiters, a selected paragraph, diff-only retention, dialogue-only retention, or another deterministic extraction/replacement rule.
+- public third-party extension point for producing/committing replacement ops;
+- exact Surface position/seq semantics;
+- protocol constraints such as tool-call/result pairing;
+- concurrency/fencing/maintenance ownership;
+- resume/durable behavior;
+- unload/disposal consequences;
+- whether existing compaction helpers are public and appropriate to reuse.
 
-DSH foundation currently observed in source:
+Source evidence that DSH internally supports replacement is not enough to claim an arbitrary plugin extension seam. If the public seam is insufficient, narrow or defer the milestone.
 
-- append-only SessionEvent log remains truth;
-- model-visible history comes from the derived Surface;
-- `SurfaceOp.replace` remains the low-level durable replacement primitive;
-- built-in compaction demonstrates current transaction/locking/edge-validation behavior.
+### M12B — Generic policy primitives
 
-These facts are architecture evidence, not yet a verified arbitrary-plugin history-transform extension seam. Before Milestone 12 implementation, re-check the exact public SessionHandle/maintenance/locking APIs on every supported DSH line.
+After M12A passes, define selector/trigger/extractor/replacement policy as separate forward-compatible leaves. Do not collapse display transforms, prompt/source transforms, and model-visible Surface replacement into one generic regex object.
 
-### 12A. Generic policy primitives
+### M12C — Define conversation units precisely
 
-The core Domain should describe generic operations rather than `SmallSummary`, `SummaryTag`, or a built-in 20-turn rule.
+Selectors operate on DSH Surface semantics, not raw array indices or invented "floor" numbers. Boundaries must remain identifiable and valid when a replacement is committed.
 
-Conceptually the authorable policy needs separate answers for:
+### M12D — Extract versus generate
 
-```text
-selector   → which model-visible historical units are candidates
-trigger    → when the rule becomes eligible
-extractor  → how replacement content is derived
-replacement→ how the derived content shadows/replaces the selected range
-```
+Keep deterministic extraction/replacement distinct from any future model-generated summarization. A regex extractor does not implicitly gain model authority.
 
-Regex/tag extraction may be one extractor implementation, not the architecture itself.
+### M12E — Commit safely
 
-The editor should preserve explicit user choices and diagnose cases it cannot represent. It must not silently pick a fallback threshold, tag, or summary behavior.
+Use the verified public maintenance/replacement path, preserve append-only source history, honor protocol constraints, and reject stale/invalid boundaries instead of guessing new ones.
 
-### 12B. Define conversation units precisely
+### M12F — Preview and undo
 
-Do not count raw surface nodes as if they were always user-facing floors. One completed DSH turn can contain multiple assistant steps and tool call/result nodes.
-
-Any selector that uses turns/floors must define behavior for:
-
-- interrupted turns;
-- tool-heavy turns;
-- synthetic/injected user messages;
-- existing compaction checkpoint nodes;
-- source text that does not satisfy the configured extractor;
-- several matches;
-- malformed/unclosed configured delimiters when the extractor uses them.
-
-### 12C. Extract versus generate
-
-Two different transform capabilities may eventually exist:
-
-**Extracted replacement** — deterministically derive replacement text from content the conversation already contains. This is the representative preset-authored small-summary workflow and requires no additional model call.
-
-**Generated replacement** — ask a model to derive replacement text for a selected range. This has routing/token/cancellation semantics much closer to compaction and must remain a separate execution type if implemented.
-
-Do not conflate them and do not make generated summaries the default hidden behavior of an extraction rule.
-
-### 12D. Commit safely
-
-A history transform must:
-
-- serialize against active agent work through the current public lifecycle/maintenance seam;
-- re-read the Surface just before commit;
-- choose a valid replacement range using current visible seqs/positions rather than stale array indexes;
-- preserve tool call/result balance and other protocol invariants;
-- account for all source events required by the current Surface contract;
-- coordinate with built-in compaction so overlapping replacements cannot race;
-- append a valid transition rather than rewriting/deleting retained source events;
-- survive persistence, migration, replay, and resume with identical derived Surface.
-
-Whether this becomes its own provider/service or composes with a DSH compaction service should be decided by semantic fit, not code reuse alone. Native compaction is a DSH-owned coarse summarization policy; Context Manager's purpose is to execute user-authored transformation policy, not to relabel compaction as an editor feature.
-
-### 12E. Preview and undo
-
-Before committing a replacement, the UI should eventually be able to preview:
-
-```text
-selected/shadowed Surface range
-configured extractor result
-source event ids/provenance
-estimated model-visible reduction
-```
-
-"Undo" cannot mean mutating the old log back into existence—it already exists. A reversible product operation must be designed as another valid Surface transition or a session fork/reconstruction mechanism supported by DSH. Do not advertise undo until this is worked out.
-
-Native DSH compaction may still act later as a coarse context-window fallback. That coexistence is useful, but it remains distinct from the user-authored Context Manager transform.
-
----
+Preview shows the proposed model-visible Surface effect before explicit commit when feasible. Undo/restore semantics must be based on public durable Session facts, not a private shadow log.
 
 ## Milestone 13 — Display regex / presentation transforms
 
