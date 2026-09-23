@@ -630,6 +630,12 @@ Selection source does not change Agent-scoped prompt/skill registration ownershi
 
 Expose configured source, resolved profile, and effective runtime result separately. Missing profile references remain diagnostics; do not silently fall back or rewrite bindings.
 
+## Contract-first rule for M10-M16
+
+For every M10-M16 slice that introduces a new DSH subsystem dependency, Client extension point, persistence owner, renderer authority, or import/export runtime boundary, begin with a public-contract probe before defining durable schema or production adapters. Record package exports/files, minimum retained availability, lifecycle/ownership, failure semantics, unload behavior, and the evidence class needed to support the claim. If no public lossless seam exists, narrow or defer the capability rather than binding production to source internals.
+
+Pure package-owned Domain/resource work may proceed without an artificial upstream probe, but it must not pre-commit fields whose eventual runtime owner has not been verified.
+
 ## Milestone 10 — Transform resource model
 
 Goal: add regex/transform resources while keeping model-facing and presentation-only behavior separated.
