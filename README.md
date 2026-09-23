@@ -72,7 +72,7 @@ Deleting a native preset never repairs or rewrites Context Manager profile refer
 
 ## Important compatibility notes
 
-The install-tested compatibility matrix retains four published regression lines — legacy `0.1.1-rc.2`, prior-modern `0.1.2-rc.1`, `0.1.5-rc.1`, and stable `0.1.5-rc.2` — plus the install-tested forward alpha `0.1.6-alpha.2`. DSH `0.1.7-rc.1` is published upstream but is only a compatibility-intake candidate here until its dedicated package/runtime/same-artifact lanes pass; it is not yet part of this repository's support claim. Source review remains a separate claim from package testing. See [docs/compatibility.md](docs/compatibility.md) for the exact matrix.
+The exact install-tested DSH matrix is maintained only in [docs/compatibility.md](docs/compatibility.md) and executable CI. Newly published upstream generations enter through a dedicated compatibility-intake slice before peer ranges or support language expand. Source-forward review remains a separate claim from package/runtime evidence.
 
 The M3A/M3C AgentPreset adapters do not import or bundle `@deepseek-ai/dsh-agent-presets`. The capability is optional and discovered through Cordis. CI temporarily installs exact published AgentPreset packages to compile the minimum public Host contract, runs the structural bridge behavior suite, and then mounts the real published `AgentPresets` service against temporary roots to execute an actual `copy -> read -> remove` cycle through Context Manager on every supported AgentPreset generation.
 
