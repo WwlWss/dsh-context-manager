@@ -215,7 +215,7 @@ CI executes both declaration contracts and runtime behavior against:
 
 The runtime smoke creates an actual published-package `Session`, appends an actual `agent-preset/selected` record, and on modern lines registers the actual native `agentPresetProjectionDefinition` with the actual `SessionProjectionRegistry`. This ensures the compatibility branches production relies on are executed rather than merely simulated by structural fakes.
 
-Current official source at `ddefc45f...` still defines the same `string | null` AgentPreset projection and `stateOf(session, 'agentPreset')` read path, so no additional M3B adapter is needed. It now also exposes native live AgentPreset selection: successful selection records `agent-preset/selected` after the composition swap commits. Context Manager must observe this changing effective identity but must not call `select()` merely to enforce a profile.
+The previously reviewed `0.1.6-alpha.2` source-forward tree defined the same `string | null` AgentPreset projection and `stateOf(session, 'agentPreset')` read path, so no additional M3B adapter was required for that supported generation. That line also exposed native live AgentPreset selection: successful selection records `agent-preset/selected` after the composition swap commits. Context Manager must observe changing effective identity but must not call `select()` merely to enforce a profile. The newer `0.1.7-rc.1` publication remains subject to the compatibility intake recorded at the top of this document.
 
 ### DSH 0.1.6 live preset switching
 
