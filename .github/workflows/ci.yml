@@ -537,7 +537,7 @@ jobs:
           node ./tests/pinned-skill-runtime-agent-loop.e2e.mjs
 
   remote-foundation-artifact:
-    name: M6C oldest-generated artifact
+    name: oldest-built package artifact
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -550,12 +550,12 @@ jobs:
           corepack enable
           corepack prepare pnpm@11.7.0 --activate
       - run: pnpm install --frozen-lockfile
-      - name: Build the one oldest-generation M6C package artifact
+      - name: Build the one oldest-generation package artifact
         run: pnpm run build
-      - name: Upload the exact M6C package artifact
+      - name: Upload the exact oldest-built package artifact
         uses: actions/upload-artifact@v4
         with:
-          name: m6c-oldest-generated-lib
+          name: dsh-context-manager-oldest-lib
           path: lib
           if-no-files-found: error
 
@@ -585,10 +585,10 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: Discard install-time prepare output
         run: rm -rf lib
-      - name: Restore the one oldest-generated M6C artifact
+      - name: Restore the one oldest-built package artifact
         uses: actions/download-artifact@v4
         with:
-          name: m6c-oldest-generated-lib
+          name: dsh-context-manager-oldest-lib
           path: lib
       - name: Switch only the runtime Typert/Gateway generation
         run: |
@@ -601,9 +601,49 @@ jobs:
       - name: Invoke generated descriptor through the real Gateway
         run: node ./tests/remote-upstream-runtime.mjs
 
+  client-foundation-contract:
+    name: M7A retained Client SlotCore contract (${{ matrix.version }})
+    needs: remote-foundation-artifact
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { version: 0.1.1-rc.2, cordis: 4.0.1 }
+          - { version: 0.1.2-rc.1, cordis: 4.0.2 }
+          - { version: 0.1.5-rc.1, cordis: 4.0.2 }
+          - { version: 0.1.5-rc.2, cordis: 4.0.2 }
+          - { version: 0.1.6-alpha.2, cordis: 4.0.2 }
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22.20.0
+      - name: Enable pinned pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.7.0 --activate
+      - run: pnpm install --frozen-lockfile
+      - name: Discard install-time prepare output
+        run: rm -rf lib
+      - name: Restore the one oldest-built Client artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: dsh-context-manager-oldest-lib
+          path: lib
+      - name: Install selected retained production SlotCore
+        run: |
+          pnpm add --ignore-scripts --save-dev --save-exact \
+            @deepseek-ai/cordis@${{ matrix.cordis }} \
+            @deepseek-ai/dsh-invariants@${{ matrix.version }} \
+            @deepseek-ai/dsh-client-ui-slots@${{ matrix.version }}
+      - name: Validate the exact Client artifact against retained production SlotCore
+        run: node ./tests/client-upstream-runtime.mjs
+
   package:
     name: verify packed bundle
-    needs: [verify, settings-modern, agent-presets-contract, session-preset-contract, prompt-library-contract, prompt-placement-contract, prompt-runtime-contract, prompt-runtime-agent-loop, skill-runtime-contract, skill-policy-runtime-contract, skill-policy-agent-loop, pinned-skill-runtime-contract, pinned-skill-agent-loop, remote-foundation-contract]
+    needs: [verify, settings-modern, agent-presets-contract, session-preset-contract, prompt-library-contract, prompt-placement-contract, prompt-runtime-contract, prompt-runtime-agent-loop, skill-runtime-contract, skill-policy-runtime-contract, skill-policy-agent-loop, pinned-skill-runtime-contract, pinned-skill-agent-loop, remote-foundation-contract, client-foundation-contract]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -631,6 +671,9 @@ jobs:
           grep -Fx 'package/lib/typert.remote-client.js' .artifacts/package-files.txt
           grep -Fx 'package/lib/typert.remote-client.d.ts' .artifacts/package-files.txt
           grep -Fx 'package/lib/typert.remote-client.d.ts.map' .artifacts/package-files.txt
+          grep -Fx 'package/lib/client.js' .artifacts/package-files.txt
+          grep -Fx 'package/lib/client.js.map' .artifacts/package-files.txt
+          grep -Fx 'package/lib/client-contract.d.ts' .artifacts/package-files.txt
           grep -Fx 'package/cordis.patch.yml' .artifacts/package-files.txt
           grep -Fx 'package/package.json' .artifacts/package-files.txt
       - name: Verify packed package peer compatibility

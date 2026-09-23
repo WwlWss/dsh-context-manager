@@ -8,14 +8,11 @@
     "verbatimModuleSyntax": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
-    "types": [
-      "node"
-    ]
+    "lib": ["ES2024", "DOM", "DOM.Iterable"],
+    "types": []
   },
   "include": [
-    "src/**/*.ts"
-  ],
-  "exclude": [
-    "src/client/**"
+    "src/client/**/*.ts",
+    "src/client/**/*.d.ts"
   ]
 }

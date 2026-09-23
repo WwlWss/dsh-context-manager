@@ -16,11 +16,12 @@ test('git-install prepare emits the declared runtime entry', async () => {
   assert.equal(typeof entry.ContextManagerService, 'function')
   assert.equal(typeof entry.ContextManagerRemoteService, 'function')
 
-  for (const subpath of ['./typert', './remote']) {
+  for (const subpath of ['./typert', './remote', './client']) {
     const contract = packageJson.exports[subpath]
     await access(path.resolve(root, contract.default))
     await access(path.resolve(root, contract.types))
   }
+  await access(path.resolve(root, './lib/client.js.map'))
   const remote = await import(pathToFileURL(path.resolve(root, packageJson.exports['./remote'].default)).href)
   assert.equal(remote.TYPERT_REMOTE.package, 'dsh-context-manager')
   assert.equal(remote.TYPERT_REMOTE.descriptors.length, 31)

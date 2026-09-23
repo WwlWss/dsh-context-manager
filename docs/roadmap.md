@@ -482,6 +482,8 @@ Avoid creating a second browser-side source of truth.
 
 ## Milestone 7 — Web client foundation and Context Manager Drawer
 
+M7A is in progress: the first slice establishes the published Client artifact, retained loader ABI, generated Remote mount lifecycle, and the additive `sidebar.footer.action` + `shell.overlay` skeleton. See [m7a-plan.md](m7a-plan.md).
+
 Goal: install the browser face safely before complex editors.
 
 Packaging:

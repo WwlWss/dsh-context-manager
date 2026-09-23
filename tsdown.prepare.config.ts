@@ -25,7 +25,7 @@ const hostPackages = new Set([
  * as part of prepare instead of relying on a stale build tree.
  */
 export default defineConfig({
-  entry: ['src/index.ts', 'src/remote/types.ts'],
+  entry: ['src/index.ts', 'src/remote/types.ts', 'src/client-contract.ts'],
   outDir: 'lib',
   format: ['esm'],
   platform: 'node',
