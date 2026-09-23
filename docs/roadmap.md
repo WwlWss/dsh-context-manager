@@ -593,9 +593,10 @@ Preview must explain configured/resolved/effective facts and placement/policy co
 Expose the existing advanced profile/resource editing seam while preserving persistence integrity, revision fencing, unknown fields, and malformed-resource isolation. This is not a raw Settings document recovery editor.
 
 
+
 ## Milestone 9 — Project and Session bindings
 
-Goal: add narrower selection scopes without pretending DSH Settings is a native inheritance system.
+Goal: allow one reusable profile to be selected/overridden per project/workspace/session without pretending DSH Settings itself has a Global -> Project -> Session hierarchy.
 
 ### M9A — Workspace/Session persistence contract probe
 
@@ -608,7 +609,16 @@ Before designing stored bindings, verify the current public DSH ownership seam f
 - lifecycle/disposal ownership;
 - whether a third-party plugin can persist an additive binding without mutating shipped/native preset files.
 
-If a scope lacks a public lossless persistence seam, record it as unsupported rather than emulating it in global Settings.
+The intended ownership model remains:
+
+```text
+Global profile library      → Settings
+Workspace/project binding   → workspace-owned persistence
+Session binding             → session-owned durable metadata/event or another public DSH session seam
+Runtime effective overlay   → agent/session scope
+```
+
+If a scope lacks a public lossless persistence seam, record it as unsupported rather than emulating it in global Settings. Define explicit inheritance semantics only after all participating persistence scopes are known.
 
 ### M9B — Domain model
 
@@ -629,6 +639,14 @@ Selection source does not change Agent-scoped prompt/skill registration ownershi
 ### M9D — Client UX
 
 Expose configured source, resolved profile, and effective runtime result separately. Missing profile references remain diagnostics; do not silently fall back or rewrite bindings.
+
+Tests across M9 must include:
+
+- session create/resume;
+- workspace switch;
+- deleted/missing referenced profile;
+- profile edited while an existing session is running;
+- immutable native base-preset identity versus live overlay changes.
 
 ## Contract-first rule for M10-M16
 
@@ -689,43 +707,103 @@ Regex execution needs a performance strategy before arbitrary user expressions a
 ---
 
 
+
 ## Milestone 12 — Durable history-Surface transforms
 
-Goal: implement model-visible historical replacement only through a public DSH Session/Surface contract whose current ownership and safety rules are verified first.
+Goal: provide **generic user-authored** model-visible history transformation/replacement capability only through a verified public DSH Session/Surface lifecycle.
+
+A representative preset-authored use case is:
+
+> The preset instructs the model to emit a compact tagged representation for each reply; after a user-selected age/turn threshold, a history transform shadows the old full body with that extracted representation while newer history stays full.
+
+`<summary>...</summary>` is only one possible protocol. Context Manager core must not privilege it. A preset author could instead use `<memory>`, custom delimiters, a selected paragraph, diff-only retention, dialogue-only retention, or another deterministic extraction/replacement rule.
+
+Source review currently establishes architecture facts such as an append-only SessionEvent log, a derived model-visible Surface, `SurfaceOp.replace`, and built-in compaction transaction/edge-validation behavior. Those facts are **not** by themselves proof that an arbitrary third-party plugin has a published extension seam.
 
 ### M12A — Session/Surface extension contract probe
 
-Re-check current published SessionHandle/Surface/maintenance/locking APIs before committing a resource schema:
+Before committing a durable transform schema or production adapter, re-check the exact published contract on every retained generation:
 
 - public third-party extension point for producing/committing replacement ops;
 - exact Surface position/seq semantics;
+- public maintenance/locking/concurrency ownership;
 - protocol constraints such as tool-call/result pairing;
-- concurrency/fencing/maintenance ownership;
 - resume/durable behavior;
 - unload/disposal consequences;
-- whether existing compaction helpers are public and appropriate to reuse.
+- whether existing compaction/session helpers are public and semantically appropriate to reuse.
 
-Source evidence that DSH internally supports replacement is not enough to claim an arbitrary plugin extension seam. If the public seam is insufficient, narrow or defer the milestone.
+If the public seam is insufficient, narrow or defer the capability rather than importing Session internals or claiming source evidence as runtime support.
 
 ### M12B — Generic policy primitives
 
-After M12A passes, define selector/trigger/extractor/replacement policy as separate forward-compatible leaves. Do not collapse display transforms, prompt/source transforms, and model-visible Surface replacement into one generic regex object.
+The core Domain should describe generic operations rather than `SmallSummary`, `SummaryTag`, or a built-in 20-turn rule.
+
+Conceptually the authorable policy needs separate answers for:
+
+```text
+selector    → which model-visible historical units are candidates
+trigger     → when the rule becomes eligible
+extractor   → how replacement content is derived
+replacement → how the derived content shadows/replaces the selected range
+```
+
+Regex/tag extraction may be one extractor implementation, not the architecture itself.
+
+The editor should preserve explicit user choices and diagnose cases it cannot represent. It must not silently pick a fallback threshold, tag, or summary behavior.
 
 ### M12C — Define conversation units precisely
 
-Selectors operate on DSH Surface semantics, not raw array indices or invented "floor" numbers. Boundaries must remain identifiable and valid when a replacement is committed.
+Do not count raw surface nodes as if they were always user-facing floors. One completed DSH turn can contain multiple assistant steps and tool call/result nodes.
+
+Any selector that uses turns/floors must define behavior for:
+
+- interrupted turns;
+- tool-heavy turns;
+- synthetic/injected user messages;
+- existing compaction checkpoint nodes;
+- source text that does not satisfy the configured extractor;
+- several matches;
+- malformed/unclosed configured delimiters when the extractor uses them.
 
 ### M12D — Extract versus generate
 
-Keep deterministic extraction/replacement distinct from any future model-generated summarization. A regex extractor does not implicitly gain model authority.
+Two different transform capabilities may eventually exist:
+
+**Extracted replacement** — deterministically derive replacement text from content the conversation already contains. This is the representative preset-authored small-summary workflow and requires no additional model call.
+
+**Generated replacement** — ask a model to derive replacement text for a selected range. This has routing/token/cancellation semantics much closer to compaction and must remain a separate execution type if implemented.
+
+Do not conflate them and do not make generated summaries the default hidden behavior of an extraction rule.
 
 ### M12E — Commit safely
 
-Use the verified public maintenance/replacement path, preserve append-only source history, honor protocol constraints, and reject stale/invalid boundaries instead of guessing new ones.
+A history transform must:
+
+- serialize against active agent work through the verified current public lifecycle/maintenance seam;
+- re-read the Surface just before commit;
+- choose a valid replacement range using current visible seqs/positions rather than stale array indexes;
+- preserve tool call/result balance and other protocol invariants;
+- account for all source events required by the current Surface contract;
+- coordinate with built-in compaction so overlapping replacements cannot race;
+- append a valid transition rather than rewriting/deleting retained source events;
+- survive persistence, migration, replay, and resume with identical derived Surface.
+
+Whether this becomes its own provider/service or composes with a DSH compaction service should be decided by semantic fit, not code reuse alone. Native compaction is a DSH-owned coarse summarization policy; Context Manager's purpose is to execute user-authored transformation policy, not to relabel compaction as an editor feature.
 
 ### M12F — Preview and undo
 
-Preview shows the proposed model-visible Surface effect before explicit commit when feasible. Undo/restore semantics must be based on public durable Session facts, not a private shadow log.
+Before committing a replacement, the UI should eventually be able to preview:
+
+```text
+selected/shadowed Surface range
+configured extractor result
+source event ids/provenance
+estimated model-visible reduction
+```
+
+"Undo" cannot mean mutating the old log back into existence—it already exists. A reversible product operation must be designed as another valid Surface transition or a session fork/reconstruction mechanism supported by DSH. Do not advertise undo until this is worked out.
+
+Native DSH compaction may still act later as a coarse context-window fallback. That coexistence is useful, but it remains distinct from the user-authored Context Manager transform.
 
 ## Milestone 13 — Display regex / presentation transforms
 
