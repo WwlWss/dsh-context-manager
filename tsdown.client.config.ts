@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises'
 import { basename, dirname, resolve } from 'node:path'
 
 import { transform } from 'lightningcss'
-import { defineConfig } from 'tsdown'
+import { defineConfig, type TsdownPlugin } from 'tsdown'
 
 const CLIENT_ID = 'dsh-context-manager'
 const CSS_PREFIX = '\0dsh-context-manager-css:'
@@ -24,7 +24,7 @@ function styleInjectionModule(fileId: string, css: string, classMap: Readonly<Re
   ].join('\n')
 }
 
-const cssModulesInline = {
+const cssModulesInline: TsdownPlugin = {
   name: 'dsh-context-manager-css-modules-inline',
   resolveId(source: string, importer: string | undefined): string | null {
     if (!source.endsWith('.module.css')) return null
@@ -34,6 +34,7 @@ const cssModulesInline = {
   async load(id: string): Promise<string | null> {
     if (!id.startsWith(CSS_PREFIX) || !id.endsWith(CSS_SUFFIX)) return null
     const fileId = id.slice(CSS_PREFIX.length, -CSS_SUFFIX.length)
+    this.addWatchFile(fileId)
     const source = await readFile(fileId)
     const { code, exports: cssExports } = transform({
       filename: fileId,
