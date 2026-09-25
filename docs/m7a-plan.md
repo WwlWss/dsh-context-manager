@@ -2,8 +2,6 @@
 
 **Status: complete — merged in PR #23.** The loader/Remote/Slot foundation is retained. M7B0 owns the presentation-contract cleanup identified by the post-merge source review.
 
-Status: **implementation in progress**.
-
 M7A establishes the browser artifact and lifecycle boundary only. Profile state, Remote reads, CRUD, cursor polling, diagnostics, and rich editors remain M7B/M7C.
 
 ## Scope
@@ -63,25 +61,19 @@ The browser bundle keeps only `react` external. Generated Remote codecs and pack
 
 M7A proved the package artifact, loader ABI, generated Remote mount lifecycle, additive Slot registration, teardown, and same-oldest-built Client artifact across the retained production `SlotCore` generations.
 
-The source-level closeout also found presentation code that must **not** become the pattern for later M7 work:
+The source-level closeout found three presentation debts that were intentionally handed to M7B0: component-level `useSyncExternalStore`, whole-controller injection, and literal/hard-coded presentation styling/copy.
 
-- `Trigger` and `Drawer` currently call React `useSyncExternalStore` against a package-owned interaction controller;
-- the Slot injection face passes the whole controller object into presentation components;
-- production styling still contains literal fallback colors and product copy is hard-coded English.
-
-Retained DSH Client rules consistently require business components to contain no manual subscription machinery, use owner props/local state/declared stores for the three supported reactive channels, and keep whole business/service objects out of presentation injection. M7B0 must remove this debt without regressing M7A's proven loader, Remote, Slot, or unload/HMR behavior.
-
-The exact cross-generation presentation-store/localization seam remains a **preflight question**, not an implementation assumption. In particular, a newer standalone Client store package must not be imported unconditionally if the minimum retained generation exposes only an older public structural/runtime seam.
+M7B0 has now removed those debts while preserving M7A's loader, Remote, additive Slot, teardown, and same-artifact compatibility behavior. The retained-generation preflight selected the stable Slot-facing structural StoreHandle contract rather than importing the newer standalone store implementation package unconditionally.
 
 ## Deferred after M7A
 
-### M7B0 — Client contract cleanup
+### M7B0 — Client contract cleanup — complete on PR #25
 
-- retained store/hook/Slot seam preflight;
-- remove component `useSyncExternalStore` and manual subscribe wiring;
-- replace whole-controller injection with plain props/callbacks and the supported reactive channel;
-- move shared Drawer state to the proved presentation-store/hook seam;
-- token/style cleanup and localization-contract preflight.
+- retained store/hook/Slot seam preflight completed;
+- component `useSyncExternalStore` / manual subscription wiring removed;
+- whole-controller injection removed;
+- shared Drawer state moved to one retained structural Slot store;
+- product copy moved to the locale seam and presentation styling to DSH theme tokens/CSS Module.
 
 ### M7B1 — Authoritative Client model
 

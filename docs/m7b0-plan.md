@@ -1,6 +1,6 @@
 # M7B0 — Client contract cleanup
 
-**Status:** implementation in progress.
+**Status:** implementation complete on PR #25; awaiting exact-head closeout CI and final review.
 
 M7B0 is a presentation-contract cleanup slice. It keeps the M7A loader ABI, generated Remote mount, additive Slot ids/order, Drawer open/close behavior, and same-artifact compatibility while removing the transitional Client architecture debt recorded after M7A.
 
@@ -98,3 +98,35 @@ Locale registration/binding and Slot `locale:`/`t` seats are public across the r
 - Remote mount and teardown behavior stays unchanged;
 - exact same oldest-built `client.js` remains the retained compatibility artifact;
 - no 0.1.7 peer/support claim is added.
+
+
+## Implementation result
+
+M7B0 completed the planned presentation-contract cleanup without adding M7B1 business behavior:
+
+- the M7A interaction controller was deleted;
+- Trigger and Drawer share one package-owned structural Slot StoreHandle for the root presentation state;
+- components consume the renderer-provided `useStore` / `actions` seats and contain no subscription machinery;
+- whole-controller injection was removed;
+- product copy moved to one zh/en locale dictionary with a locale-following Slot label;
+- presentation styling moved to a tokenized CSS Module compiled into the existing Client factory with DSH-owned style tags;
+- the Client loader still has only React as a synchronous module-table external;
+- Host Remote, Typert descriptors, profile state, and mutation behavior are unchanged.
+
+The package-owned StoreHandle bridge is directly assignability-checked against the published primary Client contracts. Its `subscribe()` notification semantics are also executed by the retained same-artifact runtime matrix.
+
+## Evidence before closeout
+
+CI run #514 on implementation head `50d21289eb00a2c9916beda21f05f9763f865c41` completed successfully before this documentation closeout.
+
+Evidence includes:
+
+- Linux and Windows verify lanes on Node 22/24;
+- primary published Client declaration contracts on `0.1.5-rc.1`, `0.1.5-rc.2`, and `0.1.6-alpha.2`;
+- one oldest-built package/Client artifact;
+- that exact Client artifact executed against published SlotCore on `0.1.1-rc.2`, `0.1.2-rc.1`, `0.1.5-rc.1`, `0.1.5-rc.2`, and `0.1.6-alpha.2`;
+- the retained five-generation Remote matrix;
+- packed bundle/file/peer checks;
+- published DSH composition smoke on `0.1.2-rc.1`, `0.1.5-rc.1`, `0.1.5-rc.2`, and `0.1.6-alpha.2`.
+
+Because this closeout changes the PR head, the final-review gate still requires the new exact documentation head to be green before Ready/Merge.
