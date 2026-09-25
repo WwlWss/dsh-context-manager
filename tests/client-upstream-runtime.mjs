@@ -143,6 +143,8 @@ assert.equal(footer[0].options.label(), '上下文管理器')
 locale.setActive('en')
 
 const instance = footer[0].store.create()
+let notifications = 0
+const unsubscribeStore = instance.subscribe(() => { notifications += 1 })
 const useStore = selector => selector(instance.getSnapshot())
 const t = locale.bind('context-manager')
 
@@ -154,6 +156,9 @@ assert.equal(overlay[0].component({ useStore, actions: instance.actions, t }), n
 
 trigger.props.onClick()
 assert.equal(instance.getSnapshot().open, true)
+assert.equal(notifications, 1)
+instance.actions.open()
+assert.equal(notifications, 1)
 trigger = footer[0].component({ wide: true, useStore, actions: instance.actions, t })
 assert.equal(trigger.props['aria-expanded'], true)
 
@@ -169,6 +174,11 @@ assert.match(componentText(drawer), /上下文管理器/)
 assert.match(componentText(drawer), /关闭/)
 drawer.props.onClick()
 assert.equal(instance.getSnapshot().open, false)
+assert.equal(notifications, 2)
+unsubscribeStore()
+instance.actions.open()
+assert.equal(instance.getSnapshot().open, true)
+assert.equal(notifications, 2)
 
 await disposePlugin()
 assert.equal(core.entriesOfSlot('sidebar.footer.action').length, 0)
