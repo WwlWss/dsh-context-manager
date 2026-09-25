@@ -602,7 +602,7 @@ jobs:
         run: node ./tests/remote-upstream-runtime.mjs
 
   client-foundation-contract:
-    name: M7A retained Client SlotCore contract (${{ matrix.version }})
+    name: M7B0 retained Client presentation runtime (${{ matrix.version }})
     needs: remote-foundation-artifact
     strategy:
       fail-fast: false
