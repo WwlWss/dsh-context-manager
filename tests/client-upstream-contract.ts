@@ -1,3 +1,11 @@
+import {
+  CONTEXT_MANAGER_LOCALE,
+  CONTEXT_MANAGER_LOCALES,
+} from '../src/client/locales.js'
+import {
+  createContextManagerPresentationStore,
+  type ContextManagerPresentationState,
+} from '../src/client/presentation-store.js'
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
 import {
@@ -7,16 +15,6 @@ import {
   type PropsStore,
   type StoreHandle,
 } from '@deepseek-ai/dsh-client-ui-slots'
-
-interface PresentationState {
-  open: boolean
-}
-
-type PresentationActions = {
-  open(draft: PresentationState): void
-  close(draft: PresentationState): void
-  toggle(draft: PresentationState): void
-}
 
 type ContextManagerLocaleKey =
   | 'title'
@@ -36,14 +34,21 @@ type HasContextManagerLocale = Assert<
   'context-manager' extends keyof LocaleNamespaceMap ? true : false
 >
 
-declare const store: StoreHandle<PresentationState, PresentationActions>
+const candidateStore = createContextManagerPresentationStore()
+const store: StoreHandle<
+  ContextManagerPresentationState,
+  typeof candidateStore.spec.actions
+> = candidateStore
+
+const _englishTitle: string = CONTEXT_MANAGER_LOCALES.en.title
+const _chineseTitle: string = CONTEXT_MANAGER_LOCALES.zh.title
 
 type PresentationProps =
   & PropsStore<typeof store>
-  & PropsLocale<'context-manager'>
+  & PropsLocale<typeof CONTEXT_MANAGER_LOCALE>
 
 declare const props: PresentationProps
-const _open: boolean = props.useStore((state: PresentationState) => state.open)
+const _open: boolean = props.useStore((state: ContextManagerPresentationState) => state.open)
 props.actions.open()
 props.actions.close()
 props.actions.toggle()
@@ -56,14 +61,14 @@ const disposeFooter = core.register({
   id: 'context-manager',
   order: 100,
   store,
-  locale: 'context-manager',
+  locale: CONTEXT_MANAGER_LOCALE,
 }, (_props: PresentationProps) => null)
 
 const disposeOverlay = core.register({
   name: 'shell.overlay',
   id: 'context-manager-drawer',
   store,
-  locale: 'context-manager',
+  locale: CONTEXT_MANAGER_LOCALE,
 }, (_props: PresentationProps) => null)
 
 const _localeProof: HasContextManagerLocale = true
