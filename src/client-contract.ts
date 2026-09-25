@@ -19,12 +19,23 @@ export interface ContextManagerClientSlots {
   ): () => void
 }
 
+export interface ContextManagerClientLocale {
+  register(
+    namespace: string,
+    dictionaries: Readonly<Record<string, Readonly<Record<string, string>>>>,
+  ): () => void
+  bind(
+    namespace: string,
+  ): (key: string, params?: Readonly<Record<string, string | number>>) => string
+}
+
 export type ContextManagerClientContext = Context & {
   readonly remote: ContextManagerClientRemote
   readonly slots: ContextManagerClientSlots
+  readonly locale: ContextManagerClientLocale
 }
 
-export declare const inject: readonly ['remote', 'slots']
+export declare const inject: readonly ['remote', 'slots', 'locale']
 
 export declare function apply(
   ctx: ContextManagerClientContext,
