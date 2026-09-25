@@ -641,9 +641,41 @@ jobs:
       - name: Validate the exact Client artifact against retained production SlotCore
         run: node ./tests/client-upstream-runtime.mjs
 
+  client-presentation-contract:
+    name: M7B0 primary Client presentation contract (${{ matrix.version }})
+    strategy:
+      fail-fast: false
+      matrix:
+        version: [0.1.5-rc.1, 0.1.5-rc.2, 0.1.6-alpha.2]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22.20.0
+      - name: Enable pinned pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.7.0 --activate
+      - run: pnpm install --frozen-lockfile
+      - name: Install selected retained Client declaration surface
+        run: |
+          pnpm add --ignore-scripts --save-dev --save-exact \
+            @deepseek-ai/cordis@4.0.2 \
+            @deepseek-ai/dsh-client-ui-slots@${{ matrix.version }} \
+            @deepseek-ai/dsh-client-ui-sidebar@${{ matrix.version }} \
+            @deepseek-ai/dsh-client-ui-layout@${{ matrix.version }} \
+            @types/react@18.3.31
+      - name: Compile M7B0 public Client presentation contract
+        run: |
+          pnpm exec tsc --ignoreConfig --noEmit --strict --skipLibCheck \
+            --module NodeNext --moduleResolution NodeNext --target ES2024 \
+            tests/client-upstream-contract.ts
+
   package:
     name: verify packed bundle
-    needs: [verify, settings-modern, agent-presets-contract, session-preset-contract, prompt-library-contract, prompt-placement-contract, prompt-runtime-contract, prompt-runtime-agent-loop, skill-runtime-contract, skill-policy-runtime-contract, skill-policy-agent-loop, pinned-skill-runtime-contract, pinned-skill-agent-loop, remote-foundation-contract, client-foundation-contract]
+    needs: [verify, settings-modern, agent-presets-contract, session-preset-contract, prompt-library-contract, prompt-placement-contract, prompt-runtime-contract, prompt-runtime-agent-loop, skill-runtime-contract, skill-policy-runtime-contract, skill-policy-agent-loop, pinned-skill-runtime-contract, pinned-skill-agent-loop, remote-foundation-contract, client-foundation-contract, client-presentation-contract]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
