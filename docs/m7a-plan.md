@@ -1,6 +1,6 @@
 # M7A — Client Artifact / Loader ABI / Remote Mount / Slot Skeletons
 
-**Status: complete — merged in PR #23.** The loader/Remote/Slot foundation is retained. M7B0 owns the presentation-contract cleanup identified by the post-merge source review.
+**Status: complete — merged in PR #23.** The loader/Remote/Slot foundation is retained. The post-merge presentation-contract cleanup was completed by M7B0 on PR #25.
 
 M7A establishes the browser artifact and lifecycle boundary only. Profile state, Remote reads, CRUD, cursor polling, diagnostics, and rich editors remain M7B/M7C.
 
