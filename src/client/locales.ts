@@ -1,3 +1,8 @@
+import type {
+  LocaleDictOf,
+  TranslateNS,
+} from '@deepseek-ai/dsh-client-ui-slots'
+
 export const CONTEXT_MANAGER_LOCALE = 'context-manager'
 
 export type ContextManagerLocaleKey =
@@ -7,10 +12,13 @@ export type ContextManagerLocaleKey =
   | 'closeAria'
   | 'foundationMessage'
 
-export type ContextManagerTranslate = (
-  key: ContextManagerLocaleKey,
-  params?: Readonly<Record<string, string | number>>,
-) => string
+declare module '@deepseek-ai/dsh-client-ui-slots' {
+  interface LocaleNamespaceMap {
+    'context-manager': ContextManagerLocaleKey
+  }
+}
+
+export type ContextManagerTranslate = TranslateNS<typeof CONTEXT_MANAGER_LOCALE>
 
 export const CONTEXT_MANAGER_LOCALES = Object.freeze({
   zh: Object.freeze({
@@ -27,4 +35,4 @@ export const CONTEXT_MANAGER_LOCALES = Object.freeze({
     closeAria: 'Close Context Manager',
     foundationMessage: 'Web client foundation is active. Profile controls arrive in later milestones.',
   }),
-}) satisfies Readonly<Record<'zh' | 'en', Readonly<Record<ContextManagerLocaleKey, string>>>>
+}) satisfies Readonly<Record<'zh' | 'en', LocaleDictOf<typeof CONTEXT_MANAGER_LOCALE>>>
