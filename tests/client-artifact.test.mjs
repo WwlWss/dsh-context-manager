@@ -12,13 +12,10 @@ function fakeReact() {
     createElement(type, props, ...children) {
       return { type, props: { ...(props ?? {}), children } }
     },
-    useSyncExternalStore(_subscribe, getSnapshot) {
-      return getSnapshot()
-    },
   }
 }
 
-test('M7A client artifact is a single DSH loader factory with only retained baseline externals', async () => {
+test('M7B0 client artifact is a single DSH loader factory with only retained baseline externals', async () => {
   const source = await readFile(clientPath, 'utf8')
   assert.match(source, /window\.__ModuleLoader__\.load\(\{\s*id:\s*["']dsh-context-manager["']/)
   assert.doesNotMatch(source, /require\.async\s*\(/)
@@ -27,7 +24,7 @@ test('M7A client artifact is a single DSH loader factory with only retained base
   assert.deepEqual([...new Set(externalRequires)].sort(), ['react'])
 })
 
-test('M7A loader artifact mounts Remote before registering two additive slots and unwinds safely', async () => {
+test('M7B0 loader artifact mounts Remote and locale before registering two additive slots and unwinds safely', async () => {
   let registration
   const previousWindow = globalThis.window
   globalThis.window = {
@@ -53,7 +50,7 @@ test('M7A loader artifact mounts Remote before registering two additive slots an
     assert.equal(specifier, 'react')
     return fakeReact()
   })
-  assert.deepEqual(plugin.inject, ['remote', 'slots'])
+  assert.deepEqual(plugin.inject, ['remote', 'slots', 'locale'])
   assert.equal(typeof plugin.apply, 'function')
 
   const lifecycle = []
@@ -64,6 +61,25 @@ test('M7A loader artifact mounts Remote before registering two additive slots an
       assert.equal(contribution.package, 'dsh-context-manager')
       assert.equal(contribution.descriptors.length, 31)
       return async () => { lifecycle.push('remote:dispose') }
+    },
+  }
+  const locale = {
+    register(namespace, dictionaries) {
+      lifecycle.push('locale:register:' + namespace)
+      assert.equal(namespace, 'context-manager')
+      assert.equal(dictionaries.en.title, 'Context Manager')
+      assert.equal(dictionaries.zh.title, '上下文管理器')
+      return () => { lifecycle.push('locale:dispose:' + namespace) }
+    },
+    bind(namespace) {
+      assert.equal(namespace, 'context-manager')
+      return key => ({
+        title: 'Context Manager',
+        compactTitle: 'CM',
+        close: 'Close',
+        closeAria: 'Close Context Manager',
+        foundationMessage: 'Web client foundation is active. Profile controls arrive in later milestones.',
+      })[key] ?? key
     },
   }
   const slots = {
@@ -82,7 +98,7 @@ test('M7A loader artifact mounts Remote before registering two additive slots an
     },
   }
 
-  const dispose = await plugin.apply({ remote, slots })
+  const dispose = await plugin.apply({ remote, slots, locale })
   assert.deepEqual(entries.map(entry => entry.options.name), [
     'sidebar.footer.action',
     'shell.overlay',
@@ -90,28 +106,35 @@ test('M7A loader artifact mounts Remote before registering two additive slots an
   assert.equal(entries[0].options.id, 'context-manager')
   assert.equal(entries[1].options.id, 'context-manager-drawer')
 
-  const triggerFace = entries[0].options.inject()
-  const drawerFace = entries[1].options.inject()
-  assert.equal(triggerFace.controller, drawerFace.controller)
+  assert.equal(entries[0].options.inject, undefined)
+  assert.equal(entries[1].options.inject, undefined)
+  assert.equal(entries[0].options.store, entries[1].options.store)
+  assert.equal(entries[0].options.locale, 'context-manager')
+  assert.equal(entries[1].options.locale, 'context-manager')
 
-  const closedDrawer = entries[1].component(drawerFace)
+  const instance = entries[0].options.store.create()
+  const useStore = selector => selector(instance.getSnapshot())
+  const t = locale.bind('context-manager')
+
+  const closedDrawer = entries[1].component({ useStore, actions: instance.actions, t })
   assert.equal(closedDrawer, null)
 
-  const trigger = entries[0].component({ ...triggerFace, wide: true })
+  const trigger = entries[0].component({ wide: true, useStore, actions: instance.actions, t })
   assert.equal(trigger.type, 'button')
   assert.equal(trigger.props['aria-expanded'], false)
   trigger.props.onClick()
 
-  const openDrawer = entries[1].component(drawerFace)
+  const openDrawer = entries[1].component({ useStore, actions: instance.actions, t })
   assert.equal(openDrawer.type, 'div')
   assert.equal(openDrawer.props['data-context-manager-backdrop'], '')
 
   await dispose()
-  assert.deepEqual(lifecycle.slice(-5), [
+  assert.deepEqual(lifecycle.slice(-6), [
     'slot:inject-dispose:shell.overlay',
     'slot:register-dispose:shell.overlay',
     'slot:inject-dispose:sidebar.footer.action',
     'slot:register-dispose:sidebar.footer.action',
+    'locale:dispose:context-manager',
     'remote:dispose',
   ])
 })
