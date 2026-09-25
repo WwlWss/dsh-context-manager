@@ -3,6 +3,8 @@ import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
 import {
   SlotCore,
   type LocaleNamespaceMap,
+  type PropsLocale,
+  type PropsStore,
   type StoreHandle,
 } from '@deepseek-ai/dsh-client-ui-slots'
 
@@ -36,6 +38,17 @@ type HasContextManagerLocale = Assert<
 
 declare const store: StoreHandle<PresentationState, PresentationActions>
 
+type PresentationProps =
+  & PropsStore<typeof store>
+  & PropsLocale<'context-manager'>
+
+declare const props: PresentationProps
+const _open: boolean = props.useStore(state => state.open)
+props.actions.open()
+props.actions.close()
+props.actions.toggle()
+const _title: string = props.t('title')
+
 const core = new SlotCore()
 
 const disposeRoot = core.register({
@@ -52,7 +65,6 @@ const disposeFooter = core.register({
   order: 100,
   store,
   locale: 'context-manager',
-  inject: actions => ({ actions }),
 }, () => null)
 
 const disposeOverlay = core.register({
@@ -60,7 +72,6 @@ const disposeOverlay = core.register({
   id: 'context-manager-drawer',
   store,
   locale: 'context-manager',
-  inject: actions => ({ actions }),
 }, () => null)
 
 const _localeProof: HasContextManagerLocale = true
