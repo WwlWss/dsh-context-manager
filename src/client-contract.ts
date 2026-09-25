@@ -15,7 +15,7 @@ export interface ContextManagerClientSlots {
   inject(name: string, factory: () => () => void): () => void
   register(
     options: Readonly<Record<string, unknown>>,
-    component: (props: Record<string, unknown>) => unknown,
+    component: unknown,
   ): () => void
 }
 
