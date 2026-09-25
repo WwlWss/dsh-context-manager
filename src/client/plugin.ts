@@ -1,14 +1,13 @@
 import { createElement } from 'react'
+import type { PropsLocale, PropsStore } from '@deepseek-ai/dsh-client-ui-slots'
 
 import {
   CONTEXT_MANAGER_LOCALE,
   CONTEXT_MANAGER_LOCALES,
-  type ContextManagerTranslate,
 } from './locales.js'
 import {
   createContextManagerPresentationStore,
-  type ContextManagerPresentationActions,
-  type ContextManagerPresentationState,
+  type ContextManagerPresentationStoreHandle,
 } from './presentation-store.js'
 import styles from './plugin.module.css'
 
@@ -25,7 +24,7 @@ interface ClientSlotRegistry {
   inject(name: string, factory: () => () => void): () => void
   register(
     options: Readonly<Record<string, unknown>>,
-    component: (props: Record<string, unknown>) => unknown,
+    component: unknown,
   ): () => void
 }
 
@@ -43,25 +42,20 @@ export interface ContextManagerClientContext {
   readonly locale: ClientLocale
 }
 
-interface PresentationStoreProps {
-  readonly useStore: <S>(
-    selector: (state: ContextManagerPresentationState) => S,
-    equality?: (left: S, right: S) => boolean,
-  ) => S
-  readonly actions: ContextManagerPresentationActions
-}
+type PresentationStoreProps = PropsStore<ContextManagerPresentationStoreHandle>
+type PresentationLocaleProps = PropsLocale<typeof CONTEXT_MANAGER_LOCALE>
 
-interface TriggerProps extends PresentationStoreProps {
-  readonly wide?: boolean
-  readonly t: ContextManagerTranslate
-}
+type TriggerProps =
+  & PresentationStoreProps
+  & PresentationLocaleProps
+  & { readonly wide?: boolean }
 
-interface DrawerProps extends PresentationStoreProps {
-  readonly t: ContextManagerTranslate
-}
+type DrawerProps =
+  & PresentationStoreProps
+  & PresentationLocaleProps
 
-function ContextManagerTrigger(props: Record<string, unknown>): unknown {
-  const { wide, useStore, actions, t } = props as unknown as TriggerProps
+function ContextManagerTrigger(props: TriggerProps): unknown {
+  const { wide, useStore, actions, t } = props
   const open = useStore(state => state.open)
   return createElement('button', {
     type: 'button',
@@ -73,8 +67,8 @@ function ContextManagerTrigger(props: Record<string, unknown>): unknown {
   }, wide === true ? t('title') : t('compactTitle'))
 }
 
-function ContextManagerDrawer(props: Record<string, unknown>): unknown {
-  const { useStore, actions, t } = props as unknown as DrawerProps
+function ContextManagerDrawer(props: DrawerProps): unknown {
+  const { useStore, actions, t } = props
   const open = useStore(state => state.open)
   if (!open) return null
 
@@ -128,7 +122,7 @@ export function createContextManagerClientPlugin(contribution: ContextManagerRem
 
       try {
         disposeLocale = ctx.locale.register(CONTEXT_MANAGER_LOCALE, CONTEXT_MANAGER_LOCALES)
-        const t = ctx.locale.bind(CONTEXT_MANAGER_LOCALE) as ContextManagerTranslate
+        const t = ctx.locale.bind(CONTEXT_MANAGER_LOCALE)
         const presentationStore = createContextManagerPresentationStore()
 
         slotDisposers.push(ctx.slots.inject(
