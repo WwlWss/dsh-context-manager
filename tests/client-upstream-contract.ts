@@ -10,6 +10,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
 import {
   SlotCore,
+  type LocaleDictOf,
   type LocaleNamespaceMap,
   type PropsLocale,
   type PropsStore,
@@ -40,8 +41,10 @@ const store: StoreHandle<
   typeof candidateStore.spec.actions
 > = candidateStore
 
-const _englishTitle: string = CONTEXT_MANAGER_LOCALES.en.title
-const _chineseTitle: string = CONTEXT_MANAGER_LOCALES.zh.title
+const _englishDictionary: LocaleDictOf<typeof CONTEXT_MANAGER_LOCALE> = CONTEXT_MANAGER_LOCALES.en
+const _chineseDictionary: LocaleDictOf<typeof CONTEXT_MANAGER_LOCALE> = CONTEXT_MANAGER_LOCALES.zh
+const _englishTitle: string = _englishDictionary.title
+const _chineseTitle: string = _chineseDictionary.title
 
 type PresentationProps =
   & PropsStore<typeof store>
