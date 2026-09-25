@@ -43,7 +43,7 @@ type PresentationProps =
   & PropsLocale<'context-manager'>
 
 declare const props: PresentationProps
-const _open: boolean = props.useStore(state => state.open)
+const _open: boolean = props.useStore((state: PresentationState) => state.open)
 props.actions.open()
 props.actions.close()
 props.actions.toggle()
@@ -51,31 +51,22 @@ const _title: string = props.t('title')
 
 const core = new SlotCore()
 
-const disposeRoot = core.register({
-  name: 'root',
-  children: {
-    'sidebar.footer.action': { kind: 'list', scope: 'root' },
-    'shell.overlay': { kind: 'list', scope: 'root' },
-  },
-}, () => null)
-
 const disposeFooter = core.register({
   name: 'sidebar.footer.action',
   id: 'context-manager',
   order: 100,
   store,
   locale: 'context-manager',
-}, () => null)
+}, (_props: PresentationProps) => null)
 
 const disposeOverlay = core.register({
   name: 'shell.overlay',
   id: 'context-manager-drawer',
   store,
   locale: 'context-manager',
-}, () => null)
+}, (_props: PresentationProps) => null)
 
 const _localeProof: HasContextManagerLocale = true
 
 disposeOverlay()
 disposeFooter()
-disposeRoot()
