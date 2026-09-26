@@ -1,12 +1,13 @@
 import { createElement } from 'react'
-import type { LocaleRuntime } from '@deepseek-ai/dsh-client-locale/client'
 import type {
   PropsLocale,
   PropsRuntime,
   PropsStore,
+  SlotCore,
+  TranslateNS,
+  LocaleDictOf,
 } from '@deepseek-ai/dsh-client-ui-slots'
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
-import type { SlotRegistry } from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
 
 import {
@@ -30,8 +31,17 @@ interface ClientRemoteMount {
 
 export interface ContextManagerClientContext {
   readonly remote: ClientRemoteMount
-  readonly slots: Pick<SlotRegistry, 'inject' | 'register'>
-  readonly locale: Pick<LocaleRuntime, 'register' | 'bind'>
+  readonly slots: {
+    inject(name: string, factory: () => () => void): () => void
+    register: SlotCore['register']
+  }
+  readonly locale: {
+    register(
+      namespace: typeof CONTEXT_MANAGER_LOCALE,
+      dictionaries: Readonly<Record<'zh' | 'en', LocaleDictOf<typeof CONTEXT_MANAGER_LOCALE>>>,
+    ): () => void
+    bind(namespace: typeof CONTEXT_MANAGER_LOCALE): TranslateNS<typeof CONTEXT_MANAGER_LOCALE>
+  }
 }
 
 type PresentationStoreProps = PropsStore<ContextManagerPresentationStoreHandle>
