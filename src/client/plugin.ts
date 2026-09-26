@@ -1,5 +1,13 @@
 import { createElement } from 'react'
-import type { PropsLocale, PropsStore } from '@deepseek-ai/dsh-client-ui-slots'
+import type { LocaleRuntime } from '@deepseek-ai/dsh-client-locale/client'
+import type {
+  PropsLocale,
+  PropsRuntime,
+  PropsStore,
+} from '@deepseek-ai/dsh-client-ui-slots'
+import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
+import type { SlotRegistry } from '@deepseek-ai/dsh-client-ui-renderer/client'
+import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
 
 import {
   CONTEXT_MANAGER_LOCALE,
@@ -7,7 +15,6 @@ import {
 } from './locales.js'
 import {
   createContextManagerPresentationStore,
-  type ContextManagerPresentationState,
   type ContextManagerPresentationStoreHandle,
 } from './presentation-store.js'
 import styles from './plugin.module.css'
@@ -21,43 +28,28 @@ interface ClientRemoteMount {
   $mount(contribution: ContextManagerRemoteContribution): Promise<() => Promise<void>>
 }
 
-interface ClientSlotRegistry {
-  inject(name: string, factory: () => () => void): () => void
-  register(
-    options: Readonly<Record<string, unknown>>,
-    component: unknown,
-  ): () => void
-}
-
-interface ClientLocale {
-  register(
-    namespace: string,
-    dictionaries: Readonly<Record<string, Readonly<Record<string, string>>>>,
-  ): () => void
-  bind(namespace: string): (key: string, params?: Readonly<Record<string, string | number>>) => string
-}
-
 export interface ContextManagerClientContext {
   readonly remote: ClientRemoteMount
-  readonly slots: ClientSlotRegistry
-  readonly locale: ClientLocale
+  readonly slots: Pick<SlotRegistry, 'inject' | 'register'>
+  readonly locale: Pick<LocaleRuntime, 'register' | 'bind'>
 }
 
 type PresentationStoreProps = PropsStore<ContextManagerPresentationStoreHandle>
 type PresentationLocaleProps = PropsLocale<typeof CONTEXT_MANAGER_LOCALE>
 
 type TriggerProps =
+  & PropsRuntime<'sidebar.footer.action'>
   & PresentationStoreProps
   & PresentationLocaleProps
-  & { readonly wide?: boolean }
 
 type DrawerProps =
+  & PropsRuntime<'shell.overlay'>
   & PresentationStoreProps
   & PresentationLocaleProps
 
 function ContextManagerTrigger(props: TriggerProps): unknown {
   const { wide, useStore, actions, t } = props
-  const open = useStore((state: ContextManagerPresentationState) => state.open)
+  const open = useStore(state => state.open)
   return createElement('button', {
     type: 'button',
     className: styles.trigger,
@@ -65,12 +57,12 @@ function ContextManagerTrigger(props: TriggerProps): unknown {
     'aria-expanded': open,
     'data-context-manager-trigger': '',
     onClick: actions.toggle,
-  }, wide === true ? t('title') : t('compactTitle'))
+  }, wide ? t('title') : t('compactTitle'))
 }
 
 function ContextManagerDrawer(props: DrawerProps): unknown {
   const { useStore, actions, t } = props
-  const open = useStore((state: ContextManagerPresentationState) => state.open)
+  const open = useStore(state => state.open)
   if (!open) return null
 
   return createElement(
