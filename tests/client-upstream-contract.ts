@@ -10,10 +10,10 @@ import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
 import {
   SlotCore,
+  type ComposedProps,
   type LocaleDictOf,
   type LocaleNamespaceMap,
   type PropsLocale,
-  type PropsRuntime,
   type PropsStore,
   type StoreHandle,
 } from '@deepseek-ai/dsh-client-ui-slots'
@@ -51,8 +51,24 @@ type PresentationProps =
   & PropsStore<typeof store>
   & PropsLocale<typeof CONTEXT_MANAGER_LOCALE>
 
-type FooterProps = PropsRuntime<'sidebar.footer.action'> & PresentationProps
-type OverlayProps = PropsRuntime<'shell.overlay'> & PresentationProps
+type FooterProps = ComposedProps<
+  'sidebar.footer.action',
+  string,
+  never,
+  typeof store,
+  object,
+  never,
+  typeof CONTEXT_MANAGER_LOCALE
+>
+type OverlayProps = ComposedProps<
+  'shell.overlay',
+  string,
+  never,
+  typeof store,
+  object,
+  never,
+  typeof CONTEXT_MANAGER_LOCALE
+>
 
 declare const footerProps: FooterProps
 const _wide: boolean = footerProps.wide
