@@ -36,7 +36,7 @@ test('M7B0 loader artifact mounts Remote and locale before registering two addit
   }
 
   try {
-    await import(pathToFileURL(clientPath).href + '?m7a-loader-contract')
+    await import(pathToFileURL(clientPath).href + '?m7b0-loader-contract')
   } finally {
     if (previousWindow === undefined) delete globalThis.window
     else globalThis.window = previousWindow
