@@ -32,7 +32,7 @@
   border: 0;
   background: var(--dsw-alias-bg-layer-2);
   color: var(--dsw-alias-label-primary);
-  box-shadow: var(--dsw-elevation-prominent);
+  box-shadow: var(--dsw-elevation-prominent, var(--dsw-shadow-lv3));
 }
 
 .header {
