@@ -13,6 +13,7 @@ import {
   type LocaleDictOf,
   type LocaleNamespaceMap,
   type PropsLocale,
+  type PropsRuntime,
   type PropsStore,
   type StoreHandle,
 } from '@deepseek-ai/dsh-client-ui-slots'
@@ -50,12 +51,16 @@ type PresentationProps =
   & PropsStore<typeof store>
   & PropsLocale<typeof CONTEXT_MANAGER_LOCALE>
 
-declare const props: PresentationProps
-const _open: boolean = props.useStore((state: ContextManagerPresentationState) => state.open)
-props.actions.open()
-props.actions.close()
-props.actions.toggle()
-const _title: string = props.t('title')
+type FooterProps = PropsRuntime<'sidebar.footer.action'> & PresentationProps
+type OverlayProps = PropsRuntime<'shell.overlay'> & PresentationProps
+
+declare const footerProps: FooterProps
+const _wide: boolean = footerProps.wide
+const _open: boolean = footerProps.useStore((state: ContextManagerPresentationState) => state.open)
+footerProps.actions.open()
+footerProps.actions.close()
+footerProps.actions.toggle()
+const _title: string = footerProps.t('title')
 
 const core = new SlotCore()
 
@@ -65,14 +70,14 @@ const disposeFooter = core.register({
   order: 100,
   store,
   locale: CONTEXT_MANAGER_LOCALE,
-}, (_props: PresentationProps) => null)
+}, (_props: FooterProps) => null)
 
 const disposeOverlay = core.register({
   name: 'shell.overlay',
   id: 'context-manager-drawer',
   store,
   locale: CONTEXT_MANAGER_LOCALE,
-}, (_props: PresentationProps) => null)
+}, (_props: OverlayProps) => null)
 
 const _localeProof: HasContextManagerLocale = true
 
