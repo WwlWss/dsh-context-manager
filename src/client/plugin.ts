@@ -7,6 +7,7 @@ import {
 } from './locales.js'
 import {
   createContextManagerPresentationStore,
+  type ContextManagerPresentationState,
   type ContextManagerPresentationStoreHandle,
 } from './presentation-store.js'
 import styles from './plugin.module.css'
@@ -56,7 +57,7 @@ type DrawerProps =
 
 function ContextManagerTrigger(props: TriggerProps): unknown {
   const { wide, useStore, actions, t } = props
-  const open = useStore(state => state.open)
+  const open = useStore((state: ContextManagerPresentationState) => state.open)
   return createElement('button', {
     type: 'button',
     className: styles.trigger,
@@ -69,7 +70,7 @@ function ContextManagerTrigger(props: TriggerProps): unknown {
 
 function ContextManagerDrawer(props: DrawerProps): unknown {
   const { useStore, actions, t } = props
-  const open = useStore(state => state.open)
+  const open = useStore((state: ContextManagerPresentationState) => state.open)
   if (!open) return null
 
   return createElement(
