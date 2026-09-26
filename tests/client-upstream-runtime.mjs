@@ -101,7 +101,7 @@ const plugin = registration.factory((specifier) => {
 assert.deepEqual(plugin.inject, ['remote', 'slots', 'locale'])
 
 const core = new SlotCore()
-const disposeRoot = core.register({
+let disposeRoot = core.register({
   name: 'root',
   children: {
     'sidebar.footer.action': { kind: 'list', scope: 'root' },
@@ -179,6 +179,32 @@ unsubscribeStore()
 instance.actions.open()
 assert.equal(instance.getSnapshot().open, true)
 assert.equal(notifications, 2)
+
+// Declaration collapse/redeclare must tear down and restore both additive entries.
+disposeRoot()
+assert.equal(core.entriesOfSlot('sidebar.footer.action').length, 0)
+assert.equal(core.entriesOfSlot('shell.overlay').length, 0)
+
+disposeRoot = core.register({
+  name: 'root',
+  children: {
+    'sidebar.footer.action': { kind: 'list', scope: 'root' },
+    'shell.overlay': { kind: 'list', scope: 'root' },
+  },
+}, () => null)
+
+const restoredFooter = core.entriesOfSlot('sidebar.footer.action')
+const restoredOverlay = core.entriesOfSlot('shell.overlay')
+assert.equal(restoredFooter.length, 1)
+assert.equal(restoredOverlay.length, 1)
+assert.equal(restoredFooter[0].options.id, 'context-manager')
+assert.equal(restoredOverlay[0].options.id, 'context-manager-drawer')
+assert.equal(restoredFooter[0].store, restoredOverlay[0].store)
+
+// A newly resolved root instance starts from the store's declared initial state.
+const restoredInstance = restoredFooter[0].store.create()
+assert.notEqual(restoredInstance, instance)
+assert.equal(restoredInstance.getSnapshot().open, false)
 
 await disposePlugin()
 assert.equal(core.entriesOfSlot('sidebar.footer.action').length, 0)
