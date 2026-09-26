@@ -1,0 +1,48 @@
+.trigger,
+.close {
+  border: 0.5px solid var(--dsw-alias-border-l1);
+  border-radius: 8px;
+  background: var(--dsw-alias-bg-layer-1);
+  color: var(--dsw-alias-label-primary);
+  cursor: pointer;
+  padding: 8px 10px;
+}
+
+.trigger:hover,
+.close:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: var(--dsw-alias-bg-mask-1);
+  backdrop-filter: var(--dsw-mask-blur);
+}
+
+.drawer {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: min(620px, calc(100vw - 24px));
+  height: 100%;
+  box-sizing: border-box;
+  padding: 20px;
+  border: 0;
+  background: var(--dsw-alias-bg-layer-2);
+  color: var(--dsw-alias-label-primary);
+  box-shadow: var(--dsw-elevation-prominent, var(--dsw-shadow-lv3));
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.message {
+  margin: 20px 0 0;
+  color: var(--dsw-alias-label-secondary);
+}

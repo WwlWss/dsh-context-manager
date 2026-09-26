@@ -1,6 +1,16 @@
-import { createElement, useSyncExternalStore } from 'react'
+import { createElement } from 'react'
+import type { PropsLocale, PropsStore } from '@deepseek-ai/dsh-client-ui-slots'
 
-import { ContextManagerInteractionController } from './interaction.js'
+import {
+  CONTEXT_MANAGER_LOCALE,
+  CONTEXT_MANAGER_LOCALES,
+} from './locales.js'
+import {
+  createContextManagerPresentationStore,
+  type ContextManagerPresentationState,
+  type ContextManagerPresentationStoreHandle,
+} from './presentation-store.js'
+import styles from './plugin.module.css'
 
 export interface ContextManagerRemoteContribution {
   readonly package: string
@@ -15,104 +25,86 @@ interface ClientSlotRegistry {
   inject(name: string, factory: () => () => void): () => void
   register(
     options: Readonly<Record<string, unknown>>,
-    component: (props: Record<string, unknown>) => unknown,
+    component: unknown,
   ): () => void
+}
+
+interface ClientLocale {
+  register(
+    namespace: string,
+    dictionaries: Readonly<Record<string, Readonly<Record<string, string>>>>,
+  ): () => void
+  bind(namespace: string): (key: string, params?: Readonly<Record<string, string | number>>) => string
 }
 
 export interface ContextManagerClientContext {
   readonly remote: ClientRemoteMount
   readonly slots: ClientSlotRegistry
+  readonly locale: ClientLocale
 }
 
-interface ContextManagerInjected {
-  readonly controller: ContextManagerInteractionController
-}
+type PresentationStoreProps = PropsStore<ContextManagerPresentationStoreHandle>
+type PresentationLocaleProps = PropsLocale<typeof CONTEXT_MANAGER_LOCALE>
 
-const BUTTON_STYLE = Object.freeze({
-  border: '1px solid var(--dsw-alias-border-l1, #d0d0d0)',
-  borderRadius: '8px',
-  background: 'var(--dsw-alias-bg-layer-1, #fff)',
-  color: 'var(--dsw-alias-label-primary, #111)',
-  cursor: 'pointer',
-  padding: '8px 10px',
-})
+type TriggerProps =
+  & PresentationStoreProps
+  & PresentationLocaleProps
+  & { readonly wide?: boolean }
 
-const BACKDROP_STYLE = Object.freeze({
-  position: 'fixed',
-  inset: 0,
-  zIndex: 1000,
-  background: 'rgba(0, 0, 0, 0.28)',
-})
+type DrawerProps =
+  & PresentationStoreProps
+  & PresentationLocaleProps
 
-const DRAWER_STYLE = Object.freeze({
-  position: 'absolute',
-  top: 0,
-  right: 0,
-  width: 'min(620px, calc(100vw - 24px))',
-  height: '100%',
-  boxSizing: 'border-box',
-  background: 'var(--dsw-alias-bg-base, #fff)',
-  color: 'var(--dsw-alias-label-primary, #111)',
-  borderLeft: '1px solid var(--dsw-alias-border-l1, #d0d0d0)',
-  padding: '20px',
-  boxShadow: '-12px 0 32px rgba(0, 0, 0, 0.18)',
-})
-
-function ContextManagerTrigger(props: Record<string, unknown>): unknown {
-  const { controller } = props as unknown as ContextManagerInjected
-  const wide = props.wide === true
-  const snapshot = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot)
-
+function ContextManagerTrigger(props: TriggerProps): unknown {
+  const { wide, useStore, actions, t } = props
+  const open = useStore((state: ContextManagerPresentationState) => state.open)
   return createElement('button', {
     type: 'button',
-    style: BUTTON_STYLE,
-    'aria-label': 'Context Manager',
-    'aria-expanded': snapshot.open,
+    className: styles.trigger,
+    'aria-label': t('title'),
+    'aria-expanded': open,
     'data-context-manager-trigger': '',
-    onClick: () => { controller.toggle() },
-  }, wide ? 'Context Manager' : 'CM')
+    onClick: actions.toggle,
+  }, wide === true ? t('title') : t('compactTitle'))
 }
 
-function ContextManagerDrawer(props: Record<string, unknown>): unknown {
-  const { controller } = props as unknown as ContextManagerInjected
-  const snapshot = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot)
-  if (!snapshot.open) return null
+function ContextManagerDrawer(props: DrawerProps): unknown {
+  const { useStore, actions, t } = props
+  const open = useStore((state: ContextManagerPresentationState) => state.open)
+  if (!open) return null
 
   return createElement(
     'div',
     {
-      style: BACKDROP_STYLE,
+      className: styles.backdrop,
       'data-context-manager-backdrop': '',
-      onClick: () => { controller.close() },
+      onClick: actions.close,
     },
     createElement(
       'aside',
       {
         role: 'dialog',
         'aria-modal': true,
-        'aria-label': 'Context Manager',
-        style: DRAWER_STYLE,
+        'aria-label': t('title'),
+        className: styles.drawer,
         'data-context-manager-drawer': '',
         onClick: (event: { stopPropagation(): void }) => { event.stopPropagation() },
       },
-      createElement('div', {
-        style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' },
-      },
-      createElement('strong', null, 'Context Manager'),
-      createElement('button', {
-        type: 'button',
-        style: BUTTON_STYLE,
-        'aria-label': 'Close Context Manager',
-        onClick: () => { controller.close() },
-      }, 'Close')),
-      createElement('p', {
-        style: { margin: '20px 0 0', color: 'var(--dsw-alias-label-secondary, #666)' },
-      }, 'Web client foundation is active. Profile controls arrive in M7B/M7C.'),
+      createElement('div', { className: styles.header },
+        createElement('strong', null, t('title')),
+        createElement('button', {
+          type: 'button',
+          className: styles.close,
+          'aria-label': t('closeAria'),
+          onClick: actions.close,
+        }, t('close')),
+      ),
+      createElement('p', { className: styles.message }, t('foundationMessage')),
     ),
   )
 }
 
-export const inject = Object.freeze(['remote', 'slots'])
+export const inject = Object.freeze(['remote', 'slots', 'locale'])
 
 export function createContextManagerClientPlugin(contribution: ContextManagerRemoteContribution): {
   readonly inject: readonly string[]
@@ -126,19 +118,23 @@ export function createContextManagerClientPlugin(contribution: ContextManagerRem
     inject,
     async apply(ctx) {
       const disposeRemote = await ctx.remote.$mount(contribution)
-      const controller = new ContextManagerInteractionController()
-      const face = (): ContextManagerInjected => ({ controller })
+      let disposeLocale: (() => void) | undefined
       const slotDisposers: Array<() => void> = []
 
       try {
+        disposeLocale = ctx.locale.register(CONTEXT_MANAGER_LOCALE, CONTEXT_MANAGER_LOCALES)
+        const t = ctx.locale.bind(CONTEXT_MANAGER_LOCALE)
+        const presentationStore = createContextManagerPresentationStore()
+
         slotDisposers.push(ctx.slots.inject(
           'sidebar.footer.action',
           () => ctx.slots.register({
             name: 'sidebar.footer.action',
             id: 'context-manager',
             order: 100,
-            label: 'Context Manager',
-            inject: face,
+            label: () => t('title'),
+            store: presentationStore,
+            locale: CONTEXT_MANAGER_LOCALE,
           }, ContextManagerTrigger),
         ))
         slotDisposers.push(ctx.slots.inject(
@@ -146,17 +142,20 @@ export function createContextManagerClientPlugin(contribution: ContextManagerRem
           () => ctx.slots.register({
             name: 'shell.overlay',
             id: 'context-manager-drawer',
-            inject: face,
+            store: presentationStore,
+            locale: CONTEXT_MANAGER_LOCALE,
           }, ContextManagerDrawer),
         ))
       } catch (error) {
         for (const dispose of slotDisposers.reverse()) dispose()
+        disposeLocale?.()
         await disposeRemote()
         throw error
       }
 
       return async () => {
         for (const dispose of slotDisposers.reverse()) dispose()
+        disposeLocale?.()
         await disposeRemote()
       }
     },

@@ -376,7 +376,7 @@ Compatibility rules:
 - display-only transforms remain separate from model-visible history transforms;
 - user-enabled HTML/JavaScript helpers must run in an isolated browser runtime with an explicit capability bridge.
 
-M7A established the loader/Remote/Slot artifact foundation but intentionally leaves a transitional presentation-contract debt: the current skeleton uses manual external-store subscription and controller injection. M7B0 owns removal of that debt before M7B1 adds authoritative Remote business state.
+M7A established the loader/Remote/Slot artifact foundation. M7B0 has removed its transitional presentation-contract debt: components no longer contain manual external-store subscriptions, no whole controller/service object is injected, shared Drawer state uses the retained Slot-store contract, product copy uses the locale seam, and presentation styling uses retained DSH theme tokens.
 
 A cross-generation Client package visible in upstream source is not enough. Before production imports it, verify that the minimum retained published line actually exports and loads it. If not, isolate the real generation difference behind a narrow compatibility seam rather than silently raising the minimum version.
 
@@ -471,6 +471,14 @@ The M7A browser bundle is built with `tsconfig.client.json` and emitted as one D
 
 This matrix is intentionally named a SlotCore contract rather than a full Client-runtime E2E. DSH's published cross-generation Client test helper is not a usable package-level runtime seam, while the production `SlotRegistry` wrapper's caller-`ctx.effect` ownership was source-audited separately across the retained lines. The plugin follows the same `ctx.slots.inject(... => ctx.slots.register(...))` pattern used by shipped DSH Client packages.
 
-M7A's loader/Remote/Slot compatibility result remains valid, but its presentation skeleton is not the final Client architecture. Source review across the retained Client rules found two transitional issues to remove in M7B0: business-component `useSyncExternalStore` wiring and whole-controller injection. M7B0 must preserve the proven M7A artifact/lifecycle behavior while moving presentation reactivity onto a retained public store/hook seam.
+M7A's loader/Remote/Slot compatibility result remains valid. M7B0 preserves that artifact/lifecycle boundary while moving presentation reactivity onto the retained public Slot-store/hook contract.
+
+### M7B0 Client presentation compatibility
+
+M7B0 preflight confirmed that the Slot-facing StoreHandle structure used by Context Manager is stable across the retained Client lines even though the implementation package moved from `dsh-client-runtime` on 0.1.1 to the standalone `dsh-client-store` on 0.1.2+. Context Manager therefore owns only a narrow structural `{ open }` presentation handle; DSH renderer remains the owner of hook synthesis and store-instance lifecycle.
+
+Primary published declaration contracts run on `0.1.5-rc.1`, `0.1.5-rc.2`, and `0.1.6-alpha.2` and prove the actual package-owned handle is assignable to the published StoreHandle, that components receive the `useStore` / `actions` seats, and that the zh/en dictionaries satisfy the typed locale namespace.
+
+The retained runtime matrix builds one oldest-generation `lib/client.js` and executes those exact bytes against published production SlotCore on all five retained generations. It verifies one shared store handle for Trigger/Drawer, store subscription semantics, locale registration and locale-following label behavior, additive Slot ids/order, Remote mount, and teardown. Packed package checks and published DSH composition smoke remain green on the existing supported lines.
 
 The separately published DSH `0.1.7-rc.1` line is not included in the matrix above yet. Its intake must first run the relevant published Client/Remote/package preflight and same-artifact compatibility lanes; only a passing intake may update peer tuples and supported-version language.

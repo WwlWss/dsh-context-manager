@@ -489,24 +489,23 @@ Goal: turn the shipped M7A browser artifact into a contract-correct, authoritati
 
 M7A established the published `./client` artifact, retained loader ABI, generated Remote mount lifecycle, and additive `sidebar.footer.action` + `shell.overlay` skeleton. The same oldest-built artifact is exercised against retained production `SlotCore` generations.
 
-M7A is intentionally recorded with transitional debt rather than retroactively called final architecture: its current presentation layer uses package-owned `useSyncExternalStore` wiring and injects a controller object into components. Retained DSH Client rules prohibit business-component subscription machinery and require shared presentation state to use the framework store/hook channels. M7B0 removes that debt before new business behavior is layered on top.
+M7A is intentionally recorded with transitional debt rather than retroactively called final architecture: it originally used package-owned `useSyncExternalStore` wiring and controller injection. M7B0 has now removed that debt while preserving the proven loader/Remote/Slot artifact boundary.
 
 See [m7a-plan.md](m7a-plan.md).
 
-### M7B0 — Client contract cleanup
+### M7B0 — Client contract cleanup — complete
 
-Before adding substantial Remote state:
+Completed before adding substantial Remote state:
 
-- preflight the retained Client store/hook/Slot seams, including the minimum retained generation;
-- remove component-level `useSyncExternalStore` / manual subscription wiring;
-- stop injecting the whole interaction controller/service object into presentation entries;
-- move shared Drawer/view state to the retained declared-store or hook seam proven by preflight;
-- keep business state React-free and presentation state view-only;
-- align production styling with retained theme/token rules;
-- establish the localization seam that is actually public across the retained range, or record the exact minimum-line limitation rather than importing a newer-only package;
-- preserve M7A loader, Remote mount, additive Slot, unload/HMR, and same-artifact compatibility behavior.
+- retained Client store/hook/Slot seams were preflighted across the supported matrix;
+- component-level `useSyncExternalStore` / manual subscription wiring and whole-controller injection were removed;
+- shared Drawer/view state now uses one narrow structural Slot StoreHandle whose public shape is stable across the retained lines;
+- business state remains absent from this slice and presentation state remains view-only;
+- production styling now uses a CSS Module and retained DSH theme tokens;
+- product-visible copy now uses the retained Client locale seam;
+- M7A loader, Remote mount, additive Slot, teardown/HMR ownership, and same-artifact compatibility behavior were preserved.
 
-The exact cross-generation store implementation choice belongs in the M7B0 plan after preflight; the roadmap does not hard-code a package that may not exist on the minimum line.
+The structural bridge deliberately avoids a runtime dependency on the newer standalone store implementation package while still matching the published Slot-facing contract.
 
 ### M7B1 — Authoritative Client model
 
