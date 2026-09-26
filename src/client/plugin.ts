@@ -1,4 +1,4 @@
-import { createElement, type ReactNode } from 'react'
+import { createElement } from 'react'
 import type { LocaleRuntime } from '@deepseek-ai/dsh-client-locale/client'
 import type {
   ComposedProps,
@@ -55,7 +55,7 @@ type DrawerProps = ComposedProps<
   typeof CONTEXT_MANAGER_LOCALE
 >
 
-function ContextManagerTrigger(props: TriggerProps): ReactNode {
+function ContextManagerTrigger(props: TriggerProps) {
   const { wide, useStore, actions, t } = props
   const open = useStore(state => state.open)
   return createElement('button', {
@@ -68,7 +68,7 @@ function ContextManagerTrigger(props: TriggerProps): ReactNode {
   }, wide ? t('title') : t('compactTitle'))
 }
 
-function ContextManagerDrawer(props: DrawerProps): ReactNode {
+function ContextManagerDrawer(props: DrawerProps) {
   const { useStore, actions, t } = props
   const open = useStore(state => state.open)
   if (!open) return null
