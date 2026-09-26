@@ -12,16 +12,14 @@ It does **not** call `protocol()`, `changes()`, `profiles()`, `presets()`, or an
 
 ## Retained compatibility target
 
-Primary Client target:
+Client minimum and primary published contract target:
 
-- `0.1.5-rc.1`
-- `0.1.5-rc.2`
-- `0.1.6-alpha.2`
+- `0.1.2-rc.1` — minimum Client generation for the DSH-owned `dsh-client-store` engine;
+- `0.1.5-rc.1`;
+- `0.1.5-rc.2`;
+- `0.1.6-alpha.2`.
 
-Retained regression where the same narrow public contract remains cheap to preserve:
-
-- `0.1.1-rc.2`
-- `0.1.2-rc.1`
+`0.1.1-rc.2` remains a supported **Host** regression line. M7 additionally keeps a same-artifact `SlotCore` ABI regression against 0.1.1, but that regression does not lower the M7 Client minimum below 0.1.2.
 
 DSH `0.1.7-rc.1` is source observation only and is not an implementation or support target for this slice.
 
@@ -37,9 +35,9 @@ Across the retained lines, Slot stores use the same structural handle:
 - `subscribe()`;
 - `clearPersisted()`.
 
-The implementation package moved from `dsh-client-runtime` on 0.1.1 to `dsh-client-store` on 0.1.2+, but the Slot-facing structural contract stayed stable. M7B0 therefore uses a package-owned **narrow structural StoreHandle bridge** for the single `{ open }` presentation fact rather than version detection or a hard runtime dependency on a newer store package.
+The implementation package moved from `dsh-client-runtime` on 0.1.1 to the standalone `dsh-client-store` on 0.1.2+. M7B0 therefore sets the Client minimum to `0.1.2-rc.1` and uses the published `defineStore` implementation directly. Context Manager owns only the `{ open }` store specification and its actions; it does not implement a snapshot/store engine.
 
-This bridge is not a second Client store framework: it has no React hooks, persistence, selector engine, middleware, scope registry, or business state. DSH renderer owns hook synthesis and instance lifecycle.
+DSH continues to own store creation semantics, subscriptions, hook synthesis, and renderer instance lifecycle. The 0.1.1 line remains a Host compatibility target and a narrow same-artifact SlotCore regression only.
 
 Locale registration/binding and Slot `locale:`/`t` seats are public across the retained lines.
 
@@ -105,7 +103,7 @@ Locale registration/binding and Slot `locale:`/`t` seats are public across the r
 M7B0 completed the planned presentation-contract cleanup without adding M7B1 business behavior:
 
 - the M7A interaction controller was deleted;
-- Trigger and Drawer share one package-owned structural Slot StoreHandle for the root presentation state;
+- Trigger and Drawer share one DSH `defineStore` StoreHandle for the root presentation state;
 - components consume the renderer-provided `useStore` / `actions` seats and contain no subscription machinery;
 - whole-controller injection was removed;
 - product copy moved to one zh/en locale dictionary with a locale-following Slot label;
@@ -113,20 +111,20 @@ M7B0 completed the planned presentation-contract cleanup without adding M7B1 bus
 - the Client loader still has only React as a synchronous module-table external;
 - Host Remote, Typert descriptors, profile state, and mutation behavior are unchanged.
 
-The package-owned StoreHandle bridge is directly assignability-checked against the published primary Client contracts. Its `subscribe()` notification semantics are also executed by the retained same-artifact runtime matrix.
+The production Trigger/Drawer props and `register` calls are compiled through upstream-derived `PropsRuntime<...>`, `PropsStore`, `PropsLocale`, and `SlotCore['register']` contracts. The primary matrix installs the real `dsh-client-store`, `dsh-client-locale`, layout, sidebar, and Slot packages for every supported Client generation.
 
-## Evidence before closeout
+## Evidence and closeout gate
 
-CI run #514 on implementation head `50d21289eb00a2c9916beda21f05f9763f865c41` completed successfully before this documentation closeout.
+The source-level review baseline was CI #519 on `0acc111138571227a1f13381f53d5f4f75477030`. That green run established the pre-fix baseline but did not cover the P2/P3 architecture gaps addressed by this cleanup.
 
-Evidence includes:
+The corrected closeout evidence is intentionally **not pinned to a historical run number in this document**. The authoritative gate is the GitHub Actions run attached to the final PR exact head after these source, lockfile, lifecycle-test, CI-matrix, and documentation changes. Ready/Merge requires that exact-head run to be green.
+
+The final matrix includes:
 
 - Linux and Windows verify lanes on Node 22/24;
-- primary published Client declaration contracts on `0.1.5-rc.1`, `0.1.5-rc.2`, and `0.1.6-alpha.2`;
-- one oldest-built package/Client artifact;
-- that exact Client artifact executed against published SlotCore on `0.1.1-rc.2`, `0.1.2-rc.1`, `0.1.5-rc.1`, `0.1.5-rc.2`, and `0.1.6-alpha.2`;
+- primary published Client declaration contracts on `0.1.2-rc.1`, `0.1.5-rc.1`, `0.1.5-rc.2`, and `0.1.6-alpha.2`;
+- real published `dsh-client-store` and `dsh-client-locale` packages in the primary Client contract lane;
+- one built Client artifact exercised against published SlotCore on `0.1.1-rc.2`, `0.1.2-rc.1`, `0.1.5-rc.1`, `0.1.5-rc.2`, and `0.1.6-alpha.2`;
+- declaration collapse/redeclare lifecycle coverage;
 - the retained five-generation Remote matrix;
-- packed bundle/file/peer checks;
-- published DSH composition smoke on `0.1.2-rc.1`, `0.1.5-rc.1`, `0.1.5-rc.2`, and `0.1.6-alpha.2`.
-
-Because this closeout changes the PR head, the final-review gate still requires the new exact documentation head to be green before Ready/Merge.
+- packed bundle/file/peer checks and published DSH composition smoke.
