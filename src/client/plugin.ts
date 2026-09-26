@@ -1,9 +1,7 @@
-import { createElement } from 'react'
+import { createElement, type ReactNode } from 'react'
 import type { LocaleRuntime } from '@deepseek-ai/dsh-client-locale/client'
 import type {
-  PropsLocale,
-  PropsRuntime,
-  PropsStore,
+  ComposedProps,
   SlotCore,
 } from '@deepseek-ai/dsh-client-ui-slots'
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
@@ -37,20 +35,27 @@ export interface ContextManagerClientContext {
   readonly locale: Pick<LocaleRuntime, 'register' | 'bind'>
 }
 
-type PresentationStoreProps = PropsStore<ContextManagerPresentationStoreHandle>
-type PresentationLocaleProps = PropsLocale<typeof CONTEXT_MANAGER_LOCALE>
+type TriggerProps = ComposedProps<
+  'sidebar.footer.action',
+  string,
+  never,
+  ContextManagerPresentationStoreHandle,
+  object,
+  never,
+  typeof CONTEXT_MANAGER_LOCALE
+>
 
-type TriggerProps =
-  & PropsRuntime<'sidebar.footer.action'>
-  & PresentationStoreProps
-  & PresentationLocaleProps
+type DrawerProps = ComposedProps<
+  'shell.overlay',
+  string,
+  never,
+  ContextManagerPresentationStoreHandle,
+  object,
+  never,
+  typeof CONTEXT_MANAGER_LOCALE
+>
 
-type DrawerProps =
-  & PropsRuntime<'shell.overlay'>
-  & PresentationStoreProps
-  & PresentationLocaleProps
-
-function ContextManagerTrigger(props: TriggerProps): unknown {
+function ContextManagerTrigger(props: TriggerProps): ReactNode {
   const { wide, useStore, actions, t } = props
   const open = useStore(state => state.open)
   return createElement('button', {
@@ -63,7 +68,7 @@ function ContextManagerTrigger(props: TriggerProps): unknown {
   }, wide ? t('title') : t('compactTitle'))
 }
 
-function ContextManagerDrawer(props: DrawerProps): unknown {
+function ContextManagerDrawer(props: DrawerProps): ReactNode {
   const { useStore, actions, t } = props
   const open = useStore(state => state.open)
   if (!open) return null
