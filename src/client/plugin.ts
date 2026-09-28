@@ -1,8 +1,8 @@
 import { createElement } from 'react'
 import type { LocaleRuntime } from '@deepseek-ai/dsh-client-locale/client'
+import type { SlotRegistry } from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type {
   ComposedProps,
-  SlotCore,
 } from '@deepseek-ai/dsh-client-ui-slots'
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
@@ -28,10 +28,7 @@ interface ClientRemoteMount {
 
 export interface ContextManagerClientContext {
   readonly remote: ClientRemoteMount
-  readonly slots: {
-    inject(name: string, factory: () => () => void): () => void
-    register: SlotCore['register']
-  }
+  readonly slots: Pick<SlotRegistry, 'inject' | 'register'>
   readonly locale: Pick<LocaleRuntime, 'register' | 'bind'>
 }
 
