@@ -2,45 +2,13 @@ import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import path from 'node:path'
 
-import { SlotCore } from '@deepseek-ai/dsh-client-ui-slots'
+import { Context } from '@deepseek-ai/cordis'
+import { SlotRegistry } from '@deepseek-ai/dsh-client-ui-renderer/client'
 
 function fakeReact() {
   return {
     createElement(type, props, ...children) {
       return { type, props: { ...(props ?? {}), children } }
-    },
-  }
-}
-
-function createSlotsFace(core) {
-  return {
-    inject(name, factory) {
-      let active
-      let activeEpoch = -1
-      const reconcile = () => {
-        const spec = core.specDynamic(name)
-        const epoch = core.declarationEpoch(name)
-        if (active !== undefined && activeEpoch === epoch) return
-        const previous = active
-        active = undefined
-        activeEpoch = -1
-        previous?.()
-        if (spec === undefined) return
-        active = factory()
-        activeEpoch = epoch
-      }
-      const unsubscribe = core.subscribeDeclaration(name, reconcile)
-      reconcile()
-      return () => {
-        unsubscribe()
-        const previous = active
-        active = undefined
-        activeEpoch = -1
-        previous?.()
-      }
-    },
-    register(options, component) {
-      return core.register(options, component)
     },
   }
 }
@@ -100,8 +68,16 @@ const plugin = registration.factory((specifier) => {
 })
 assert.deepEqual(plugin.inject, ['remote', 'slots', 'locale'])
 
-const core = new SlotCore()
-let disposeRoot = core.register({
+const ctx = new Context()
+const slots = new SlotRegistry(ctx)
+let rendererHost
+slots.install({
+  renderRoot(host) {
+    rendererHost = host
+    return null
+  },
+})
+let disposeRoot = slots.register({
   name: 'root',
   children: {
     'sidebar.footer.action': { kind: 'list', scope: 'root' },
@@ -118,14 +94,14 @@ const remote = {
   },
 }
 const locale = createLocale()
-const disposePlugin = await plugin.apply({ remote, slots: createSlotsFace(core), locale })
+const disposePlugin = await plugin.apply({ remote, slots, locale })
 
 assert.equal(mountedContribution?.package, 'dsh-context-manager')
 assert.equal(mountedContribution?.descriptors?.length, 31)
 assert.equal(locale.has('context-manager'), true)
 
-const footer = core.entriesOfSlot('sidebar.footer.action')
-const overlay = core.entriesOfSlot('shell.overlay')
+const footer = slots.entriesOfSlot('sidebar.footer.action')
+const overlay = slots.entriesOfSlot('shell.overlay')
 assert.equal(footer.length, 1)
 assert.equal(overlay.length, 1)
 assert.equal(footer[0].options.id, 'context-manager')
@@ -142,7 +118,11 @@ locale.setActive('zh')
 assert.equal(footer[0].options.label(), '上下文管理器')
 locale.setActive('en')
 
-const instance = footer[0].store.create()
+slots.renderSlot('root', {})
+assert.ok(rendererHost)
+const instance = rendererHost.storeOf(footer[0])
+assert.ok(instance)
+assert.equal(rendererHost.storeOf(overlay[0]), instance)
 let notifications = 0
 const unsubscribeStore = instance.subscribe(() => { notifications += 1 })
 const useStore = selector => selector(instance.getSnapshot())
@@ -182,10 +162,10 @@ assert.equal(notifications, 2)
 
 // Declaration collapse/redeclare must tear down and restore both additive entries.
 disposeRoot()
-assert.equal(core.entriesOfSlot('sidebar.footer.action').length, 0)
-assert.equal(core.entriesOfSlot('shell.overlay').length, 0)
+assert.equal(slots.entriesOfSlot('sidebar.footer.action').length, 0)
+assert.equal(slots.entriesOfSlot('shell.overlay').length, 0)
 
-disposeRoot = core.register({
+disposeRoot = slots.register({
   name: 'root',
   children: {
     'sidebar.footer.action': { kind: 'list', scope: 'root' },
@@ -193,22 +173,25 @@ disposeRoot = core.register({
   },
 }, () => null)
 
-const restoredFooter = core.entriesOfSlot('sidebar.footer.action')
-const restoredOverlay = core.entriesOfSlot('shell.overlay')
+const restoredFooter = slots.entriesOfSlot('sidebar.footer.action')
+const restoredOverlay = slots.entriesOfSlot('shell.overlay')
 assert.equal(restoredFooter.length, 1)
 assert.equal(restoredOverlay.length, 1)
 assert.equal(restoredFooter[0].options.id, 'context-manager')
 assert.equal(restoredOverlay[0].options.id, 'context-manager-drawer')
 assert.equal(restoredFooter[0].store, restoredOverlay[0].store)
 
-// A newly resolved root instance starts from the store's declared initial state.
-const restoredInstance = restoredFooter[0].store.create()
+// The real SlotRegistry drops the last-held root instance on collapse and
+// resolves a fresh framework-owned instance after the declaration is restored.
+const restoredInstance = rendererHost.storeOf(restoredFooter[0])
+assert.ok(restoredInstance)
 assert.notEqual(restoredInstance, instance)
+assert.equal(rendererHost.storeOf(restoredOverlay[0]), restoredInstance)
 assert.equal(restoredInstance.getSnapshot().open, false)
 
 await disposePlugin()
-assert.equal(core.entriesOfSlot('sidebar.footer.action').length, 0)
-assert.equal(core.entriesOfSlot('shell.overlay').length, 0)
+assert.equal(slots.entriesOfSlot('sidebar.footer.action').length, 0)
+assert.equal(slots.entriesOfSlot('shell.overlay').length, 0)
 assert.equal(locale.has('context-manager'), false)
 assert.equal(remoteDisposed, true)
 disposeRoot()
