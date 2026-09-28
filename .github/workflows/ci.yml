@@ -602,7 +602,7 @@ jobs:
         run: node ./tests/remote-upstream-runtime.mjs
 
   client-foundation-contract:
-    name: M7B0 retained Client SlotCore artifact contract (${{ matrix.version }})
+    name: M7B0 retained Client SlotRegistry artifact contract (${{ matrix.version }})
     needs: remote-foundation-artifact
     strategy:
       fail-fast: false
@@ -637,8 +637,9 @@ jobs:
           pnpm add --ignore-scripts --save-dev --save-exact \
             @deepseek-ai/cordis@${{ matrix.cordis }} \
             @deepseek-ai/dsh-invariants@${{ matrix.version }} \
-            @deepseek-ai/dsh-client-ui-slots@${{ matrix.version }}
-      - name: Validate the exact Client artifact against retained production SlotCore contract
+            @deepseek-ai/dsh-client-ui-slots@${{ matrix.version }} \
+            @deepseek-ai/dsh-client-ui-renderer@${{ matrix.version }}
+      - name: Validate the exact Client artifact against retained production SlotRegistry contract
         run: node ./tests/client-upstream-runtime.mjs
 
   client-presentation-contract:
@@ -666,6 +667,7 @@ jobs:
             @deepseek-ai/dsh-client-store@${{ matrix.version }} \
             @deepseek-ai/dsh-client-locale@${{ matrix.version }} \
             @deepseek-ai/dsh-client-ui-slots@${{ matrix.version }} \
+            @deepseek-ai/dsh-client-ui-renderer@${{ matrix.version }} \
             @deepseek-ai/dsh-client-ui-sidebar@${{ matrix.version }} \
             @deepseek-ai/dsh-client-ui-layout@${{ matrix.version }} \
             @types/react@18.3.31 \
