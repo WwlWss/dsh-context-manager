@@ -1,6 +1,6 @@
 # M7B0 — Client contract cleanup
 
-**Status:** implementation complete on PR #25; awaiting exact-head closeout CI and final review.
+**Status:** implementation complete on PR #25; focused closeout fixes landed and the final exact-head CI is the remaining merge gate.
 
 M7B0 is a presentation-contract cleanup slice. It keeps the M7A loader ABI, generated Remote mount, additive Slot ids/order, Drawer open/close behavior, and same-artifact compatibility while removing the transitional Client architecture debt recorded after M7A.
 
@@ -111,7 +111,7 @@ M7B0 completed the planned presentation-contract cleanup without adding M7B1 bus
 - the Client loader still has only React as a synchronous module-table external;
 - Host Remote, Typert descriptors, profile state, and mutation behavior are unchanged.
 
-The production Trigger/Drawer props and `register` calls are compiled through upstream-derived `PropsRuntime<...>`, `PropsStore`, `PropsLocale`, and `SlotCore['register']` contracts. The primary matrix installs the real `dsh-client-store`, `dsh-client-locale`, layout, sidebar, and Slot packages for every supported Client generation.
+The production Trigger/Drawer props are compiled through upstream `ComposedProps<...>` (including owner/runtime, Store, and Locale shares), while the production `slots` face is derived from `Pick<SlotRegistry, 'inject' | 'register'>`. The primary matrix installs the real `dsh-client-store`, `dsh-client-locale`, layout, sidebar, and Slot packages for every supported Client generation.
 
 ## Evidence and closeout gate
 
@@ -125,6 +125,6 @@ The final matrix includes:
 - primary published Client declaration contracts on `0.1.2-rc.1`, `0.1.5-rc.1`, `0.1.5-rc.2`, and `0.1.6-alpha.2`;
 - real published `dsh-client-store` and `dsh-client-locale` packages in the primary Client contract lane;
 - one built Client artifact exercised against published SlotCore on `0.1.1-rc.2`, `0.1.2-rc.1`, `0.1.5-rc.1`, `0.1.5-rc.2`, and `0.1.6-alpha.2`;
-- declaration collapse/redeclare lifecycle coverage;
+- declaration collapse/redeclare coverage through the real published `SlotRegistry`, including shared root-instance caching, last-holder release, and fresh instance resolution after redeclare;
 - the retained five-generation Remote matrix;
 - packed bundle/file/peer checks and published DSH composition smoke.
