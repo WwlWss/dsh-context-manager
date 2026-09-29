@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 import { Context } from '@deepseek-ai/cordis'
 import { SlotCore } from '@deepseek-ai/dsh-client-ui-slots'
-import { apply as applyRenderer } from '@deepseek-ai/dsh-client-ui-renderer/client'
 
 function fakeReact() {
   return {
@@ -12,6 +12,34 @@ function fakeReact() {
       return { type, props: { ...(props ?? {}), children } }
     },
   }
+}
+
+async function loadPublishedClientArtifact(specifier) {
+  const artifactUrl = import.meta.resolve(specifier)
+  const artifactSource = await readFile(fileURLToPath(artifactUrl), 'utf8')
+  let artifactRegistration
+  const artifactWindow = {
+    __ModuleLoader__: {
+      load(value) { artifactRegistration = value },
+    },
+  }
+  new Function('window', artifactSource)(artifactWindow)
+  assert.ok(artifactRegistration, `${specifier} must register through __ModuleLoader__`)
+
+  const requested = new Set()
+  for (const match of artifactSource.matchAll(/\brequire\((['"])([^'"]+)\1\)/g)) {
+    requested.add(match[2])
+  }
+  const modules = new Map()
+  for (const requestedSpecifier of requested) {
+    modules.set(requestedSpecifier, await import(requestedSpecifier))
+  }
+  return artifactRegistration.factory((requestedSpecifier) => {
+    if (!modules.has(requestedSpecifier)) {
+      throw new Error(`published client artifact requested unexpected module ${JSON.stringify(requestedSpecifier)}`)
+    }
+    return modules.get(requestedSpecifier)
+  })
 }
 
 function createLegacySlotsFace(core) {
@@ -113,8 +141,11 @@ if (generation === 'legacy-core') {
   slots = createLegacySlotsFace(core)
 } else {
   const ctx = new Context()
-  applyRenderer(ctx)
+  const rendererClient = await loadPublishedClientArtifact('@deepseek-ai/dsh-client-ui-renderer/client')
+  assert.equal(typeof rendererClient.apply, 'function')
+  rendererClient.apply(ctx)
   slots = ctx.slots
+  assert.ok(slots)
 }
 let disposeRoot = slots.register({
   name: 'root',
