@@ -29,7 +29,7 @@ importers:
         version: 0.1.2-rc.1(@deepseek-ai/cordis@4.0.1)
       '@deepseek-ai/dsh-client-ui-renderer':
         specifier: 0.1.2-rc.1
-        version: 0.1.2-rc.1(@deepseek-ai/cordis@4.0.1)(@types/react@18.3.31)(react@18.3.1)
+        version: 0.1.2-rc.1(@deepseek-ai/cordis@4.0.2)(react@18.3.1)
       '@deepseek-ai/dsh-client-ui-sidebar':
         specifier: 0.1.2-rc.1
         version: 0.1.2-rc.1(@deepseek-ai/cordis@4.0.1)
@@ -669,6 +669,23 @@ packages:
     peerDependencies:
       '@deepseek-ai/cordis': ^4.0.2
 
+  '@deepseek-ai/cordis@4.0.2':
+    resolution: {integrity: sha512-asOnXP1TzFSFQlHb1iegDZp0z/8WD1c7YNrwJR/Tx2bzNuMXfcekE/I67Iv6SQXeLB4csxqCngzQKANP7gdw0g==}
+    hasBin: true
+    peerDependencies:
+      '@deepseek-ai/cordis-plugin-include': ^1.0.7
+      '@deepseek-ai/cordis-plugin-loader': ^1.0.3
+    peerDependenciesMeta:
+      '@deepseek-ai/cordis-plugin-include':
+        optional: true
+      '@deepseek-ai/cordis-plugin-loader':
+        optional: true
+
+  '@deepseek-ai/dsh-client-ui-renderer@0.1.2-rc.1':
+    resolution: {integrity: sha512-mG4aNL7dL57i6I6FLol3AWWp3g2C+EV3jYt2MZHzbfMcS0gQnEd/BSGH3T5DfNCQcOEIGqu0TQ0B3bxnJatmTA==}
+    peerDependencies:
+      '@deepseek-ai/cordis': ^4.0.2
+
 snapshots:
   detect-libc@2.1.2: {}
 
@@ -1138,3 +1155,15 @@ snapshots:
     dependencies:
       '@deepseek-ai/cordis': 4.0.1
       clsx: 2.1.1
+
+  '@deepseek-ai/cordis@4.0.2':
+    dependencies:
+      '@deepseek-ai/cosmokit': 1.8.3
+      '@standard-schema/spec': 1.1.0
+
+  '@deepseek-ai/dsh-client-ui-renderer@0.1.2-rc.1(@deepseek-ai/cordis@4.0.2)(react@18.3.1)':
+    dependencies:
+      '@deepseek-ai/cordis': 4.0.2
+      use-sync-external-store: 1.2.0(react@18.3.1)
+    transitivePeerDependencies:
+      - react
