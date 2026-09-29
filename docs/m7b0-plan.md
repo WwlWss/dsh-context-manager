@@ -124,7 +124,7 @@ The final matrix includes:
 - Linux and Windows verify lanes on Node 22/24;
 - primary published Client declaration contracts on `0.1.2-rc.1`, `0.1.5-rc.1`, `0.1.5-rc.2`, and `0.1.6-alpha.2`;
 - real published `dsh-client-store` and `dsh-client-locale` packages in the primary Client contract lane;
-- one built Client artifact exercised against published SlotCore on `0.1.1-rc.2`, `0.1.2-rc.1`, `0.1.5-rc.1`, `0.1.5-rc.2`, and `0.1.6-alpha.2`;
-- declaration collapse/redeclare coverage through the real published `SlotRegistry`, including shared root-instance caching, last-holder release, and fresh instance resolution after redeclare;
+- one built Client artifact exercised against the retained Slot contract on all five generations: `0.1.1-rc.2` as a legacy SlotCore ABI regression, and `0.1.2-rc.1` / `0.1.5-rc.1` / `0.1.5-rc.2` / `0.1.6-alpha.2` through the published renderer-created `SlotRegistry` runtime;
+- declaration collapse/redeclare coverage through the real published renderer-created `SlotRegistry` on the supported Client generations (0.1.2+), including shared root-instance caching, last-holder release, and fresh instance resolution after redeclare; 0.1.1 remains ABI-only evidence;
 - the retained five-generation Remote matrix;
 - packed bundle/file/peer checks and published DSH composition smoke.
