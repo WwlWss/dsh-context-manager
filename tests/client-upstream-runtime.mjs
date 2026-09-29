@@ -3,12 +3,49 @@ import { readFile } from 'node:fs/promises'
 import path from 'node:path'
 
 import { Context } from '@deepseek-ai/cordis'
-import { SlotRegistry } from '@deepseek-ai/dsh-client-ui-renderer/client'
+import { SlotCore } from '@deepseek-ai/dsh-client-ui-slots'
+import { apply as applyRenderer } from '@deepseek-ai/dsh-client-ui-renderer/client'
 
 function fakeReact() {
   return {
     createElement(type, props, ...children) {
       return { type, props: { ...(props ?? {}), children } }
+    },
+  }
+}
+
+function createLegacySlotsFace(core) {
+  return {
+    inject(name, factory) {
+      let active
+      let activeEpoch = -1
+      const reconcile = () => {
+        const spec = core.specDynamic(name)
+        const epoch = core.declarationEpoch(name)
+        if (active !== undefined && activeEpoch === epoch) return
+        const previous = active
+        active = undefined
+        activeEpoch = -1
+        previous?.()
+        if (spec === undefined) return
+        active = factory()
+        activeEpoch = epoch
+      }
+      const unsubscribe = core.subscribeDeclaration(name, reconcile)
+      reconcile()
+      return () => {
+        unsubscribe()
+        const previous = active
+        active = undefined
+        activeEpoch = -1
+        previous?.()
+      }
+    },
+    register(options, component) {
+      return core.register(options, component)
+    },
+    entriesOfSlot(name) {
+      return core.entriesOfSlot(name)
     },
   }
 }
@@ -68,15 +105,17 @@ const plugin = registration.factory((specifier) => {
 })
 assert.deepEqual(plugin.inject, ['remote', 'slots', 'locale'])
 
-const ctx = new Context()
-const slots = new SlotRegistry(ctx)
+const generation = process.env.DSH_M7_CLIENT_GENERATION ?? 'registry'
+let slots
 let rendererHost
-slots.install({
-  renderRoot(host) {
-    rendererHost = host
-    return null
-  },
-})
+if (generation === 'legacy-core') {
+  const core = new SlotCore()
+  slots = createLegacySlotsFace(core)
+} else {
+  const ctx = new Context()
+  applyRenderer(ctx)
+  slots = ctx.slots
+}
 let disposeRoot = slots.register({
   name: 'root',
   children: {
@@ -118,11 +157,17 @@ locale.setActive('zh')
 assert.equal(footer[0].options.label(), '上下文管理器')
 locale.setActive('en')
 
-slots.renderSlot('root', {})
-assert.ok(rendererHost)
-const instance = rendererHost.storeOf(footer[0])
-assert.ok(instance)
-assert.equal(rendererHost.storeOf(overlay[0]), instance)
+let instance
+if (generation === 'legacy-core') {
+  instance = footer[0].store.create()
+} else {
+  const renderedRoot = slots.renderSlot('root', {})
+  rendererHost = renderedRoot?.props?.value
+  assert.ok(rendererHost)
+  instance = rendererHost.storeOf(footer[0])
+  assert.ok(instance)
+  assert.equal(rendererHost.storeOf(overlay[0]), instance)
+}
 let notifications = 0
 const unsubscribeStore = instance.subscribe(() => { notifications += 1 })
 const useStore = selector => selector(instance.getSnapshot())
@@ -181,13 +226,23 @@ assert.equal(restoredFooter[0].options.id, 'context-manager')
 assert.equal(restoredOverlay[0].options.id, 'context-manager-drawer')
 assert.equal(restoredFooter[0].store, restoredOverlay[0].store)
 
-// The real SlotRegistry drops the last-held root instance on collapse and
-// resolves a fresh framework-owned instance after the declaration is restored.
-const restoredInstance = rendererHost.storeOf(restoredFooter[0])
-assert.ok(restoredInstance)
-assert.notEqual(restoredInstance, instance)
-assert.equal(rendererHost.storeOf(restoredOverlay[0]), restoredInstance)
-assert.equal(restoredInstance.getSnapshot().open, false)
+if (generation === 'legacy-core') {
+  // 0.1.1 is retained as a SlotCore ABI regression only; it is below the M7 Client minimum.
+  const restoredInstance = restoredFooter[0].store.create()
+  assert.notEqual(restoredInstance, instance)
+  assert.equal(restoredInstance.getSnapshot().open, false)
+} else {
+  // The published renderer-created SlotRegistry drops the last-held root instance on
+  // collapse and resolves a fresh framework-owned instance after redeclare.
+  const renderedRoot = slots.renderSlot('root', {})
+  const restoredHost = renderedRoot?.props?.value
+  assert.ok(restoredHost)
+  const restoredInstance = restoredHost.storeOf(restoredFooter[0])
+  assert.ok(restoredInstance)
+  assert.notEqual(restoredInstance, instance)
+  assert.equal(restoredHost.storeOf(restoredOverlay[0]), restoredInstance)
+  assert.equal(restoredInstance.getSnapshot().open, false)
+}
 
 await disposePlugin()
 assert.equal(slots.entriesOfSlot('sidebar.footer.action').length, 0)
