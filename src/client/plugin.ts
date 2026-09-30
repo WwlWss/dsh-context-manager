@@ -1,12 +1,14 @@
 import { createElement } from 'react'
-import type { LocaleRuntime } from '@deepseek-ai/dsh-client-locale/client'
-import type { SlotRegistry } from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type {
   ComposedProps,
 } from '@deepseek-ai/dsh-client-ui-slots'
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
 
+import type {
+  ContextManagerClientContext,
+  ContextManagerRemoteContribution,
+} from './context.js'
 import {
   CONTEXT_MANAGER_LOCALE,
   CONTEXT_MANAGER_LOCALES,
@@ -16,21 +18,6 @@ import {
   type ContextManagerPresentationStoreHandle,
 } from './presentation-store.js'
 import styles from './plugin.module.css'
-
-export interface ContextManagerRemoteContribution {
-  readonly package: string
-  readonly descriptors: readonly unknown[]
-}
-
-interface ClientRemoteMount {
-  $mount(contribution: ContextManagerRemoteContribution): Promise<() => Promise<void>>
-}
-
-export interface ContextManagerClientContext {
-  readonly remote: ClientRemoteMount
-  readonly slots: Pick<SlotRegistry, 'inject' | 'register'>
-  readonly locale: Pick<LocaleRuntime, 'register' | 'bind'>
-}
 
 type TriggerProps = ComposedProps<
   'sidebar.footer.action',

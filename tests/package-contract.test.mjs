@@ -46,6 +46,22 @@ test('package manifest points at real build, types, and bundle artifacts', async
     ],
   })
   assert.equal(packageJson.dependencies?.zod, '^4.4.3')
+  assert.equal(
+    packageJson.peerDependencies?.['@deepseek-ai/dsh-client-locale'],
+    '^0.1.2-rc.1 || ^0.1.5-rc.1 || ^0.1.6-alpha.2',
+  )
+  assert.equal(
+    packageJson.peerDependencies?.['@deepseek-ai/dsh-client-ui-renderer'],
+    '^0.1.2-rc.1 || ^0.1.5-rc.1 || ^0.1.6-alpha.2',
+  )
+  assert.deepEqual(
+    packageJson.peerDependenciesMeta?.['@deepseek-ai/dsh-client-locale'],
+    { optional: true },
+  )
+  assert.deepEqual(
+    packageJson.peerDependenciesMeta?.['@deepseek-ai/dsh-client-ui-renderer'],
+    { optional: true },
+  )
 
   await access(fromRoot(packageJson.main))
   await access(fromRoot(packageJson.types))
@@ -289,4 +305,32 @@ test('M7B0 client build is pinned to the browser tsconfig', async () => {
   const config = await readFile(fromRoot('./tsdown.client.config.ts'), 'utf8')
   assert.match(config, /tsconfig:\s*['"]tsconfig\.client\.json['"]/)
   assert.doesNotMatch(config, /tsconfig:\s*['"]tsconfig\.json['"]/)
+})
+
+test('public Client declaration derives its framework faces from the shared upstream-owned context', async () => {
+  const contractPath = fromRoot('./lib/client-contract.d.ts')
+  const contract = await readFile(contractPath, 'utf8')
+  const declarationParts = [contract]
+
+  for (const match of contract.matchAll(/from\s+['"](\.\/[^'"]+\.js)['"]/g)) {
+    const declarationPath = path.resolve(path.dirname(contractPath), match[1].replace(/\.js$/, '.d.ts'))
+    try {
+      declarationParts.push(await readFile(declarationPath, 'utf8'))
+    } catch {
+      // External or inlined declaration dependencies are validated by the
+      // retained compile matrix; only local emitted chunks are expanded here.
+    }
+  }
+
+  const emittedDeclaration = declarationParts.join('\n')
+  assert.match(emittedDeclaration, /@deepseek-ai\/dsh-client-ui-renderer\/client/)
+  assert.match(emittedDeclaration, /@deepseek-ai\/dsh-client-locale\/client/)
+  assert.match(emittedDeclaration, /SlotRegistry/)
+  assert.match(emittedDeclaration, /interface ContextManagerClientSlots extends Pick<SlotRegistry, ['"]inject['"] \| ['"]register['"]>/)
+  assert.match(emittedDeclaration, /LocaleRuntime/)
+  assert.match(emittedDeclaration, /interface ContextManagerClientLocale extends Pick<LocaleRuntime, ['"]register['"] \| ['"]bind['"]>/)
+  assert.match(emittedDeclaration, /interface ContextManagerClientRemoteContribution\s*\{/)
+  assert.match(emittedDeclaration, /interface ContextManagerRemoteContribution\s+extends ContextManagerClientRemoteContribution/)
+  assert.doesNotMatch(emittedDeclaration, /type ContextManagerClientRemoteContribution\s*=/)
+
 })

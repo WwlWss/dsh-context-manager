@@ -1,3 +1,13 @@
+import type { LocaleRuntime } from '@deepseek-ai/dsh-client-locale/client'
+import type { SlotRegistry } from '@deepseek-ai/dsh-client-ui-renderer/client'
+import type {
+  ContextManagerClientContext,
+  ContextManagerClientLocale,
+  ContextManagerClientRemote,
+  ContextManagerClientRemoteContribution,
+  ContextManagerClientSlots,
+  ContextManagerRemoteContribution,
+} from '../src/client/context.js'
 import {
   CONTEXT_MANAGER_LOCALE,
   CONTEXT_MANAGER_LOCALES,
@@ -32,6 +42,29 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
 }
 
 type Assert<T extends true> = T
+type Equal<A, B> =
+  (<T>() => T extends A ? 1 : 2) extends
+  (<T>() => T extends B ? 1 : 2)
+    ? true
+    : false
+type ClientSlotsAliasIsUpstream = Assert<
+  Equal<ContextManagerClientSlots, Pick<SlotRegistry, 'inject' | 'register'>>
+>
+type ClientLocaleAliasIsUpstream = Assert<
+  Equal<ContextManagerClientLocale, Pick<LocaleRuntime, 'register' | 'bind'>>
+>
+type ClientSlotsAreUpstream = Assert<
+  Equal<ContextManagerClientContext['slots'], ContextManagerClientSlots>
+>
+type ClientLocaleIsUpstream = Assert<
+  Equal<ContextManagerClientContext['locale'], ContextManagerClientLocale>
+>
+type RemoteContributionExtendsLegacy = Assert<
+  ContextManagerRemoteContribution extends ContextManagerClientRemoteContribution ? true : false
+>
+type RemoteMountUsesLegacyContribution = Assert<
+  Parameters<ContextManagerClientRemote['$mount']>[0] extends ContextManagerClientRemoteContribution ? true : false
+>
 type HasContextManagerLocale = Assert<
   'context-manager' extends keyof LocaleNamespaceMap ? true : false
 >
@@ -96,6 +129,12 @@ const disposeOverlay = core.register({
 }, (_props: OverlayProps) => null)
 
 const _localeProof: HasContextManagerLocale = true
+const _clientSlotsAliasProof: ClientSlotsAliasIsUpstream = true
+const _clientLocaleAliasProof: ClientLocaleAliasIsUpstream = true
+const _clientSlotsProof: ClientSlotsAreUpstream = true
+const _clientLocaleProof: ClientLocaleIsUpstream = true
+const _remoteContributionProof: RemoteContributionExtendsLegacy = true
+const _remoteMountProof: RemoteMountUsesLegacyContribution = true
 
 disposeOverlay()
 disposeFooter()

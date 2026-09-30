@@ -642,7 +642,7 @@ jobs:
         run: node ./tests/client-upstream-runtime.mjs
 
   client-presentation-contract:
-    name: M7B0 primary Client presentation contract (${{ matrix.version }})
+    name: M7 Client public/presentation contract (${{ matrix.version }})
     strategy:
       fail-fast: false
       matrix:
@@ -671,11 +671,11 @@ jobs:
             @deepseek-ai/dsh-client-ui-layout@${{ matrix.version }} \
             @types/react@18.3.31 \
             react@18.3.1
-      - name: Compile M7B0 public Client presentation contract
+      - name: Compile M7 Client public/presentation contract
         run: |
           pnpm exec tsc --ignoreConfig --noEmit --strict --skipLibCheck \
             --module NodeNext --moduleResolution NodeNext --target ES2024 \
-            src/client/css-modules.d.ts src/client/plugin.ts tests/client-upstream-contract.ts
+            src/client/css-modules.d.ts src/client/context.ts src/client-contract.ts src/client/plugin.ts tests/client-upstream-contract.ts
 
   package:
     name: verify packed bundle
@@ -722,6 +722,42 @@ jobs:
             cd "$smoke_dir"
             printf '%s\n' '{"name":"dsh-context-manager-peer-smoke","private":true}' > package.json
             pnpm add --strict-peer-dependencies @deepseek-ai/cordis@4.0.2 "@deepseek-ai/dsh-settings@$settings_version" "@deepseek-ai/dsh-scope@$settings_version" "@deepseek-ai/dsh-skill@$settings_version" "@deepseek-ai/dsh-typert-protocol@$settings_version" @deepseek-ai/schemastery@3.18.2 "$tarball"
+          done
+      - name: Compile packed Client declaration as a clean consumer
+        run: |
+          tarball=$(find "$GITHUB_WORKSPACE/.artifacts" -maxdepth 1 -name '*.tgz' -print -quit)
+          test -n "$tarball"
+          for client_version in 0.1.2-rc.1 0.1.5-rc.1 0.1.5-rc.2 0.1.6-alpha.2; do
+            consumer_dir="$GITHUB_WORKSPACE/.client-consumer-$client_version"
+            rm -rf "$consumer_dir"
+            mkdir -p "$consumer_dir"
+            cd "$consumer_dir"
+            printf '%s\n' '{"name":"dsh-context-manager-client-consumer","private":true,"type":"module"}' > package.json
+            pnpm add --strict-peer-dependencies --save-dev \
+              typescript@6.0.3 \
+              @deepseek-ai/cordis@4.0.2 \
+              "@deepseek-ai/dsh-client-locale@$client_version" \
+              "@deepseek-ai/dsh-client-ui-renderer@$client_version" \
+              "$tarball"
+            cat > consumer.ts <<'EOF'
+          import type {
+            ContextManagerClientContext,
+            ContextManagerClientLocale,
+            ContextManagerClientRemoteContribution,
+            ContextManagerClientSlots,
+          } from 'dsh-context-manager/client'
+
+          declare const context: ContextManagerClientContext
+          const slots: ContextManagerClientSlots = context.slots
+          const locale: ContextManagerClientLocale = context.locale
+          declare const contribution: ContextManagerClientRemoteContribution
+
+          void slots
+          void locale
+          void contribution
+          EOF
+            pnpm exec tsc --ignoreConfig --noEmit --strict --skipLibCheck \
+              --module NodeNext --moduleResolution NodeNext --target ES2024 consumer.ts
           done
 
   dsh-smoke:
