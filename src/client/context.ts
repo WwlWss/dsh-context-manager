@@ -1,0 +1,34 @@
+import type { Context } from '@deepseek-ai/cordis'
+import type { LocaleRuntime } from '@deepseek-ai/dsh-client-locale/client'
+import type { SlotRegistry } from '@deepseek-ai/dsh-client-ui-renderer/client'
+
+export interface ContextManagerRemoteContribution {
+  readonly package: string
+  readonly descriptors: readonly unknown[]
+}
+
+/**
+ * Backward-compatible public name retained from the original M7A declaration.
+ *
+ * New Client code should use ContextManagerRemoteContribution directly.
+ */
+export type ContextManagerClientRemoteContribution = ContextManagerRemoteContribution
+
+export interface ContextManagerClientRemote {
+  $mount(
+    contribution: ContextManagerRemoteContribution,
+  ): Promise<() => Promise<void>>
+}
+
+/**
+ * Single source of truth for the browser Client context consumed by production
+ * and exported through ./client declarations.
+ *
+ * Framework-owned Slot and Locale faces are derived from their published
+ * upstream owners instead of being restated structurally in this package.
+ */
+export type ContextManagerClientContext = Context & {
+  readonly remote: ContextManagerClientRemote
+  readonly slots: Pick<SlotRegistry, 'inject' | 'register'>
+  readonly locale: Pick<LocaleRuntime, 'register' | 'bind'>
+}
