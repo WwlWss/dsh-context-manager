@@ -13,8 +13,8 @@ const hostPackages = new Set([
   '@deepseek-ai/dsh-scope',
   '@deepseek-ai/dsh-skill',
   '@deepseek-ai/dsh-typert-protocol',
-  '@deepseek-ai/dsh-client-locale',
-  '@deepseek-ai/dsh-client-ui-renderer',
+  '@deepseek-ai/dsh-client-locale/client',
+  '@deepseek-ai/dsh-client-ui-renderer/client',
   '@deepseek-ai/schemastery',
   'zod',
 ])
