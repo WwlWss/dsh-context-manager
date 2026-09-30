@@ -329,5 +329,8 @@ test('public Client declaration derives its framework faces from the shared upst
   assert.match(emittedDeclaration, /interface ContextManagerClientSlots extends Pick<SlotRegistry, ['"]inject['"] \| ['"]register['"]>/)
   assert.match(emittedDeclaration, /LocaleRuntime/)
   assert.match(emittedDeclaration, /interface ContextManagerClientLocale extends Pick<LocaleRuntime, ['"]register['"] \| ['"]bind['"]>/)
+  assert.match(emittedDeclaration, /interface ContextManagerClientRemoteContribution\s*\{/)
+  assert.match(emittedDeclaration, /interface ContextManagerRemoteContribution\s+extends ContextManagerClientRemoteContribution/)
+  assert.doesNotMatch(emittedDeclaration, /type ContextManagerClientRemoteContribution\s*=/)
 
 })
