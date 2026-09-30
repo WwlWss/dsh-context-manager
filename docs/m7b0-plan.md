@@ -1,6 +1,6 @@
 # M7B0 — Client contract cleanup
 
-**Status:** implementation complete on PR #25; focused closeout fixes landed and the final exact-head CI is the remaining merge gate.
+**Status:** implementation and focused closeout complete on PR #25; exact-head CI #552 is green on `0b702424f7a88acfcd7ea6f8fe07040b1e484c5b`; ready for final review / Ready for Review.
 
 M7B0 is a presentation-contract cleanup slice. It keeps the M7A loader ABI, generated Remote mount, additive Slot ids/order, Drawer open/close behavior, and same-artifact compatibility while removing the transitional Client architecture debt recorded after M7A.
 
@@ -111,7 +111,7 @@ M7B0 completed the planned presentation-contract cleanup without adding M7B1 bus
 - the Client loader still has only React as a synchronous module-table external;
 - Host Remote, Typert descriptors, profile state, and mutation behavior are unchanged.
 
-The production Trigger/Drawer props are compiled through upstream `ComposedProps<...>` (including owner/runtime, Store, and Locale shares), while the production `slots` face is derived from `Pick<SlotRegistry, 'inject' | 'register'>`. The primary matrix installs the real `dsh-client-store`, `dsh-client-locale`, layout, sidebar, and Slot packages for every supported Client generation.
+The production Trigger/Drawer props are compiled through upstream `ComposedProps<...>` (including owner/runtime, Store, and Locale shares), while the production `slots` face is derived from `Pick<SlotRegistry, 'inject' | 'register'>`. The primary matrix installs the real `dsh-client-store`, `dsh-client-locale`, `dsh-client-ui-renderer`, layout, sidebar, and Slot packages for every supported Client generation.
 
 ## Evidence and closeout gate
 
