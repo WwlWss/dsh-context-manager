@@ -307,6 +307,8 @@ test('public Client declaration derives its framework faces from the shared upst
   }
 
   const emittedDeclaration = declarationParts.join('\n')
+  assert.match(emittedDeclaration, /@deepseek-ai\/dsh-client-ui-renderer\/client/)
+  assert.match(emittedDeclaration, /@deepseek-ai\/dsh-client-locale\/client/)
   assert.match(emittedDeclaration, /SlotRegistry/)
   assert.match(emittedDeclaration, /type ContextManagerClientSlots = Pick<SlotRegistry, ['"]inject['"] \| ['"]register['"]>/)
   assert.match(emittedDeclaration, /LocaleRuntime/)
