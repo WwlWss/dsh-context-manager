@@ -2,21 +2,27 @@ import type { Context } from '@deepseek-ai/cordis'
 import type { LocaleRuntime } from '@deepseek-ai/dsh-client-locale/client'
 import type { SlotRegistry } from '@deepseek-ai/dsh-client-ui-renderer/client'
 
-export interface ContextManagerRemoteContribution {
+/**
+ * Original M7A public contribution contract.
+ *
+ * Keep this as an interface so existing consumers retain declaration-merging
+ * compatibility.
+ */
+export interface ContextManagerClientRemoteContribution {
   readonly package: string
   readonly descriptors: readonly unknown[]
 }
 
 /**
- * Backward-compatible public name retained from the original M7A declaration.
- *
- * New Client code should use ContextManagerRemoteContribution directly.
+ * Preferred M7B1-facing name. It extends the legacy public interface so any
+ * consumer augmentation of that interface is also visible to production code.
  */
-export type ContextManagerClientRemoteContribution = ContextManagerRemoteContribution
+export interface ContextManagerRemoteContribution
+  extends ContextManagerClientRemoteContribution {}
 
 export interface ContextManagerClientRemote {
   $mount(
-    contribution: ContextManagerRemoteContribution,
+    contribution: ContextManagerClientRemoteContribution,
   ): Promise<() => Promise<void>>
 }
 
