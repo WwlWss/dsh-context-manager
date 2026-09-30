@@ -3,7 +3,10 @@ import type { SlotRegistry } from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type {
   ContextManagerClientContext,
   ContextManagerClientLocale,
+  ContextManagerClientRemote,
+  ContextManagerClientRemoteContribution,
   ContextManagerClientSlots,
+  ContextManagerRemoteContribution,
 } from '../src/client/context.js'
 import {
   CONTEXT_MANAGER_LOCALE,
@@ -55,6 +58,12 @@ type ClientSlotsAreUpstream = Assert<
 >
 type ClientLocaleIsUpstream = Assert<
   Equal<ContextManagerClientContext['locale'], ContextManagerClientLocale>
+>
+type RemoteContributionExtendsLegacy = Assert<
+  ContextManagerRemoteContribution extends ContextManagerClientRemoteContribution ? true : false
+>
+type RemoteMountUsesLegacyContribution = Assert<
+  Parameters<ContextManagerClientRemote['$mount']>[0] extends ContextManagerClientRemoteContribution ? true : false
 >
 type HasContextManagerLocale = Assert<
   'context-manager' extends keyof LocaleNamespaceMap ? true : false
@@ -124,6 +133,8 @@ const _clientSlotsAliasProof: ClientSlotsAliasIsUpstream = true
 const _clientLocaleAliasProof: ClientLocaleAliasIsUpstream = true
 const _clientSlotsProof: ClientSlotsAreUpstream = true
 const _clientLocaleProof: ClientLocaleIsUpstream = true
+const _remoteContributionProof: RemoteContributionExtendsLegacy = true
+const _remoteMountProof: RemoteMountUsesLegacyContribution = true
 
 disposeOverlay()
 disposeFooter()
