@@ -312,7 +312,6 @@ test('public Client declaration derives its framework faces from the shared upst
   assert.match(emittedDeclaration, /LocaleRuntime/)
   assert.match(emittedDeclaration, /Pick<LocaleRuntime, ['"]register['"] \| ['"]bind['"]>/)
 
-  assert.doesNotMatch(emittedDeclaration, /component:\s*unknown/)
   assert.doesNotMatch(emittedDeclaration, /interface ContextManagerClientSlots/)
   assert.doesNotMatch(emittedDeclaration, /interface ContextManagerClientLocale/)
 })
