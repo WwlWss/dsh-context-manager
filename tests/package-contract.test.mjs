@@ -39,6 +39,7 @@ test('package manifest points at real build, types, and bundle artifacts', async
     platform: 'web',
     inject: [
       '@deepseek-ai/dsh-api-remotes',
+      '@deepseek-ai/dsh-client-locale',
       '@deepseek-ai/dsh-client-ui-renderer',
       '@deepseek-ai/dsh-client-ui-layout',
       '@deepseek-ai/dsh-client-ui-sidebar',
@@ -284,7 +285,7 @@ test('generated M6C Remote contribution exposes exactly the strict business surf
 
 
 
-test('M7A client build is pinned to the browser tsconfig', async () => {
+test('M7B0 client build is pinned to the browser tsconfig', async () => {
   const config = await readFile(fromRoot('./tsdown.client.config.ts'), 'utf8')
   assert.match(config, /tsconfig:\s*['"]tsconfig\.client\.json['"]/)
   assert.doesNotMatch(config, /tsconfig:\s*['"]tsconfig\.json['"]/)

@@ -6,7 +6,7 @@ DeepSeek Harness evolves quickly. Context Manager separates **installable/tested
 
 | Track | DSH reference | How it is used |
 | --- | --- | --- |
-| Legacy regression | `dsh-v0.1.1-rc.2` | The committed development dependency set. The full type/build/Domain suite exercises the legacy module-level `installSettingsSection(...)` generation. Focused published-package lanes exercise M3A/M3B/M3C, M4C1 placement, M4C2 Agent/SystemPrompt, and the M5A Skill/Scope contract. A real 0.1.1 AgentLoop recording-adapter E2E proves Context Manager system/runtime-context contributions reach the legacy model request path. |
+| Legacy regression | `dsh-v0.1.1-rc.2` | The retained Host development/regression baseline. The full type/build/Domain suite exercises the legacy module-level `installSettingsSection(...)` generation. Focused published-package lanes exercise M3A/M3B/M3C, M4C1 placement, M4C2 Agent/SystemPrompt, and the M5A Skill/Scope contract. A real 0.1.1 AgentLoop recording-adapter E2E proves Context Manager system/runtime-context contributions reach the legacy model request path. |
 | Prior modern regression | `dsh-v0.1.2-rc.1` | Dedicated ephemeral CI keeps the first modern Settings generation and native Session `agentPreset` projection under regression. The full Settings suite, AgentPreset M3A/M3C checks, M3B runtime, M4C1 placement, M4C2 Agent/SystemPrompt smoke, M5A Skill/Scope contract, and bundle composition smoke run here. |
 | 0.1.5 published regression | `dsh-v0.1.5-rc.1` | Retained because it remains an important published/default-install line. CI reruns modern Settings, AgentPreset M3A/M3C checks, M3B Session runtime, M4C1 placement, M4C2 Agent/SystemPrompt smoke, M5A Skill/Scope contract, and full bundle composition smoke against it. |
 | Current stable regression | `dsh-v0.1.5-rc.2` | Install-tested published line retained as the stable regression anchor. CI runs modern Settings, M3A/M3C, M3B projection/runtime, M4A Storage, M4C1 placement, M4C2 Agent/SystemPrompt smoke, the M5A Skill/Scope contract, strict packed-package peer installation, and full DSH bundle composition. |
@@ -17,7 +17,7 @@ Support claims must name what was actually tested. A GitHub source tree and an i
 
 DSH `0.1.7-rc.1` is a **published compatibility-intake candidate**, not an install-tested supported line in this repository yet. Do not add its prerelease tuple to peer ranges or describe it as supported until the dedicated intake slice passes the affected package, same-artifact Remote/Client, install, and composition evidence.
 
-The modern published lines used by CI ship `@deepseek-ai/cordis@4.0.2` and `@deepseek-ai/schemastery@3.18.2`; compatibility lanes use those public package generations while the ordinary development lockfile remains on the legacy generation. Keeping the frozen legacy lock means both Settings API shapes and both M3B Session-read branches remain visible instead of silently raising the minimum baseline.
+The modern published lines used by CI ship `@deepseek-ai/cordis@4.0.2` and `@deepseek-ai/schemastery@3.18.2`. Host-facing development dependencies remain on the retained 0.1.1 generation where possible, while the M7 browser toolchain is intentionally pinned to the first standalone Client-store generation, `0.1.2-rc.1`. This is a split minimum: it does not raise the Host compatibility floor.
 
 ## Settings compatibility rule
 
@@ -376,7 +376,7 @@ Compatibility rules:
 - display-only transforms remain separate from model-visible history transforms;
 - user-enabled HTML/JavaScript helpers must run in an isolated browser runtime with an explicit capability bridge.
 
-M7A established the loader/Remote/Slot artifact foundation but intentionally leaves a transitional presentation-contract debt: the current skeleton uses manual external-store subscription and controller injection. M7B0 owns removal of that debt before M7B1 adds authoritative Remote business state.
+M7A established the loader/Remote/Slot artifact foundation. M7B0 has removed its transitional presentation-contract debt: components no longer contain manual external-store subscriptions, no whole controller/service object is injected, shared Drawer state uses the retained Slot-store contract, product copy uses the locale seam, and presentation styling uses retained DSH theme tokens.
 
 A cross-generation Client package visible in upstream source is not enough. Before production imports it, verify that the minimum retained published line actually exports and loads it. If not, isolate the real generation difference behind a narrow compatibility seam rather than silently raising the minimum version.
 
@@ -471,6 +471,18 @@ The M7A browser bundle is built with `tsconfig.client.json` and emitted as one D
 
 This matrix is intentionally named a SlotCore contract rather than a full Client-runtime E2E. DSH's published cross-generation Client test helper is not a usable package-level runtime seam, while the production `SlotRegistry` wrapper's caller-`ctx.effect` ownership was source-audited separately across the retained lines. The plugin follows the same `ctx.slots.inject(... => ctx.slots.register(...))` pattern used by shipped DSH Client packages.
 
-M7A's loader/Remote/Slot compatibility result remains valid, but its presentation skeleton is not the final Client architecture. Source review across the retained Client rules found two transitional issues to remove in M7B0: business-component `useSyncExternalStore` wiring and whole-controller injection. M7B0 must preserve the proven M7A artifact/lifecycle behavior while moving presentation reactivity onto a retained public store/hook seam.
+M7A's loader/Remote/Slot compatibility result remains valid. M7B0 preserves that artifact/lifecycle boundary while moving presentation reactivity onto the retained public Slot-store/hook contract.
+
+### M7B0 Client presentation compatibility
+
+M7B0 sets the **Client minimum to `0.1.2-rc.1`** because that is the first retained generation with the standalone published `@deepseek-ai/dsh-client-store` engine used by production. Context Manager uses DSH `defineStore` directly and owns only the `{ open }` specification/actions; it does not reimplement snapshot publication or subscription semantics. The `0.1.1-rc.2` line remains a supported Host generation and a narrow same-artifact SlotCore ABI regression, not a claim that the M7 Client toolchain supports 0.1.1.
+
+Primary published declaration contracts run on `0.1.2-rc.1`, `0.1.5-rc.1`, `0.1.5-rc.2`, and `0.1.6-alpha.2`. They install the real store, locale, Slot, layout, and sidebar packages and compile the production registrations themselves. Trigger/Drawer props come from upstream `ComposedProps<...>`, and the production Slot service face is `Pick<SlotRegistry, 'inject' | 'register'>`; this keeps both owner-share changes such as the required sidebar `wide: boolean` and Slot injection/registration contract changes visible to the compiler.
+
+The retained runtime matrix builds one Client artifact and executes those exact bytes against published production SlotCore on all five retained generations. It verifies the shared StoreHandle, locale registration and locale-following labels, additive Slot ids/order, Remote mount/teardown, and declaration collapse/redeclare registration recovery.
+
+Production still derives its Slot service face from the real renderer-owned `SlotRegistry`, and the primary declaration matrix compiles that production code against the published renderer packages on `0.1.2-rc.1`, `0.1.5-rc.1`, `0.1.5-rc.2`, and `0.1.6-alpha.2`. The Registry's root-store refcount/cache lifecycle is source-audited in those upstream lines: the last holder release drops the handle record, and a later resolution creates a fresh instance. This repository intentionally does not duplicate DSH's Client module loader or its broad `dsh-client-test-runtime` dependency graph merely to restate that framework-owned behavior.
+
+Packed package checks and published DSH composition smoke remain part of the closeout gate.
 
 The separately published DSH `0.1.7-rc.1` line is not included in the matrix above yet. Its intake must first run the relevant published Client/Remote/package preflight and same-artifact compatibility lanes; only a passing intake may update peer tuples and supported-version language.
