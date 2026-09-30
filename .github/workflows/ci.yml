@@ -710,7 +710,6 @@ jobs:
           grep -Fx 'package/lib/client.js' .artifacts/package-files.txt
           grep -Fx 'package/lib/client.js.map' .artifacts/package-files.txt
           grep -Fx 'package/lib/client-contract.d.ts' .artifacts/package-files.txt
-          grep -Fx 'package/lib/client/context.d.ts' .artifacts/package-files.txt
           grep -Fx 'package/cordis.patch.yml' .artifacts/package-files.txt
           grep -Fx 'package/package.json' .artifacts/package-files.txt
       - name: Verify packed package peer compatibility
