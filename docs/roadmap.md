@@ -497,17 +497,21 @@ See [m7a-plan.md](m7a-plan.md).
 
 Completed before adding substantial Remote state:
 
-- retained Client store/hook/Slot seams were preflighted across the supported matrix;
+- the M7 Client minimum is `0.1.2-rc.1`; Host compatibility retains `0.1.1-rc.2` independently;
 - component-level `useSyncExternalStore` / manual subscription wiring and whole-controller injection were removed;
-- shared Drawer/view state now uses one narrow structural Slot StoreHandle whose public shape is stable across the retained lines;
+- shared Drawer/view state uses DSH-owned `defineStore` from `@deepseek-ai/dsh-client-store`;
+- production Slot registration and component props derive from the published `SlotRegistry` / `ComposedProps` contracts instead of hand-written shares;
+- production locale registration/binding derives from the published `LocaleRuntime` contract;
 - business state remains absent from this slice and presentation state remains view-only;
-- production styling now uses a CSS Module and retained DSH theme tokens;
-- product-visible copy now uses the retained Client locale seam;
+- production styling uses a CSS Module and retained DSH theme tokens;
+- product-visible copy uses the retained Client locale seam;
 - M7A loader, Remote mount, additive Slot, teardown/HMR ownership, and same-artifact compatibility behavior were preserved.
 
-The structural bridge deliberately avoids a runtime dependency on the newer standalone store implementation package while still matching the published Slot-facing contract.
+The retained five-generation runtime matrix remains deliberately narrow SlotCore ABI evidence. The supported 0.1.2+ Client generations compile production against the real Store, Locale, Slot, renderer, layout, and sidebar declaration surfaces.
 
 ### M7B1 — Authoritative Client model
+
+Begin with a post-merge contract-normalization slice: the public `./client` declaration and production Client source must consume one shared type-only Context contract so M7A-era structural Slot/Locale declarations cannot drift from the upstream-derived production contract.
 
 Add a React-free Client model over the strict Host Remote:
 
