@@ -1,3 +1,6 @@
+import type { LocaleRuntime } from '@deepseek-ai/dsh-client-locale/client'
+import type { SlotRegistry } from '@deepseek-ai/dsh-client-ui-renderer/client'
+import type { ContextManagerClientContext } from '../src/client/context.js'
 import {
   CONTEXT_MANAGER_LOCALE,
   CONTEXT_MANAGER_LOCALES,
@@ -32,6 +35,17 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
 }
 
 type Assert<T extends true> = T
+type Equal<A, B> =
+  (<T>() => T extends A ? 1 : 2) extends
+  (<T>() => T extends B ? 1 : 2)
+    ? true
+    : false
+type ClientSlotsAreUpstream = Assert<
+  Equal<ContextManagerClientContext['slots'], Pick<SlotRegistry, 'inject' | 'register'>>
+>
+type ClientLocaleIsUpstream = Assert<
+  Equal<ContextManagerClientContext['locale'], Pick<LocaleRuntime, 'register' | 'bind'>>
+>
 type HasContextManagerLocale = Assert<
   'context-manager' extends keyof LocaleNamespaceMap ? true : false
 >
@@ -96,6 +110,8 @@ const disposeOverlay = core.register({
 }, (_props: OverlayProps) => null)
 
 const _localeProof: HasContextManagerLocale = true
+const _clientSlotsProof: ClientSlotsAreUpstream = true
+const _clientLocaleProof: ClientLocaleIsUpstream = true
 
 disposeOverlay()
 disposeFooter()
