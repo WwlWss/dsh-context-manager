@@ -58,6 +58,7 @@ test('package manifest points at real build, types, and bundle artifacts', async
   await access(fromRoot(packageJson.exports['./types'].types))
   await access(fromRoot(packageJson.exports['./types'].default))
   await access(fromRoot(packageJson.exports['./client'].types))
+  await access(fromRoot('./lib/client/context.d.ts'))
   await access(fromRoot(packageJson.exports['./client'].default))
   await access(fromRoot('./lib/client.js.map'))
 })
@@ -289,4 +290,19 @@ test('M7B0 client build is pinned to the browser tsconfig', async () => {
   const config = await readFile(fromRoot('./tsdown.client.config.ts'), 'utf8')
   assert.match(config, /tsconfig:\s*['"]tsconfig\.client\.json['"]/)
   assert.doesNotMatch(config, /tsconfig:\s*['"]tsconfig\.json['"]/)
+})
+
+test('public Client declaration derives its framework faces from the shared upstream-owned context', async () => {
+  const contract = await readFile(fromRoot('./lib/client-contract.d.ts'), 'utf8')
+  const context = await readFile(fromRoot('./lib/client/context.d.ts'), 'utf8')
+
+  assert.match(contract, /from ['"]\.\/client\/context\.js['"]/)
+  assert.match(context, /SlotRegistry/)
+  assert.match(context, /Pick<SlotRegistry, ['"]inject['"] \| ['"]register['"]>/)
+  assert.match(context, /LocaleRuntime/)
+  assert.match(context, /Pick<LocaleRuntime, ['"]register['"] \| ['"]bind['"]>/)
+
+  assert.doesNotMatch(contract, /component:\s*unknown/)
+  assert.doesNotMatch(contract, /interface ContextManagerClientSlots/)
+  assert.doesNotMatch(contract, /interface ContextManagerClientLocale/)
 })
