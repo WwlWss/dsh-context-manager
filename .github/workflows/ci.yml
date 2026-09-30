@@ -675,7 +675,7 @@ jobs:
         run: |
           pnpm exec tsc --ignoreConfig --noEmit --strict --skipLibCheck \
             --module NodeNext --moduleResolution NodeNext --target ES2024 \
-            src/client/css-modules.d.ts src/client/plugin.ts tests/client-upstream-contract.ts
+            src/client/css-modules.d.ts src/client/context.ts src/client-contract.ts src/client/plugin.ts tests/client-upstream-contract.ts
 
   package:
     name: verify packed bundle
