@@ -310,10 +310,8 @@ test('public Client declaration derives its framework faces from the shared upst
   assert.match(emittedDeclaration, /@deepseek-ai\/dsh-client-ui-renderer\/client/)
   assert.match(emittedDeclaration, /@deepseek-ai\/dsh-client-locale\/client/)
   assert.match(emittedDeclaration, /SlotRegistry/)
-  assert.match(emittedDeclaration, /type ContextManagerClientSlots = Pick<SlotRegistry, ['"]inject['"] \| ['"]register['"]>/)
+  assert.match(emittedDeclaration, /interface ContextManagerClientSlots extends Pick<SlotRegistry, ['"]inject['"] \| ['"]register['"]>/)
   assert.match(emittedDeclaration, /LocaleRuntime/)
-  assert.match(emittedDeclaration, /type ContextManagerClientLocale = Pick<LocaleRuntime, ['"]register['"] \| ['"]bind['"]>/)
+  assert.match(emittedDeclaration, /interface ContextManagerClientLocale extends Pick<LocaleRuntime, ['"]register['"] \| ['"]bind['"]>/)
 
-  assert.doesNotMatch(emittedDeclaration, /interface ContextManagerClientSlots/)
-  assert.doesNotMatch(emittedDeclaration, /interface ContextManagerClientLocale/)
 })
