@@ -308,9 +308,9 @@ test('public Client declaration derives its framework faces from the shared upst
 
   const emittedDeclaration = declarationParts.join('\n')
   assert.match(emittedDeclaration, /SlotRegistry/)
-  assert.match(emittedDeclaration, /Pick<SlotRegistry, ['"]inject['"] \| ['"]register['"]>/)
+  assert.match(emittedDeclaration, /type ContextManagerClientSlots = Pick<SlotRegistry, ['"]inject['"] \| ['"]register['"]>/)
   assert.match(emittedDeclaration, /LocaleRuntime/)
-  assert.match(emittedDeclaration, /Pick<LocaleRuntime, ['"]register['"] \| ['"]bind['"]>/)
+  assert.match(emittedDeclaration, /type ContextManagerClientLocale = Pick<LocaleRuntime, ['"]register['"] \| ['"]bind['"]>/)
 
   assert.doesNotMatch(emittedDeclaration, /interface ContextManagerClientSlots/)
   assert.doesNotMatch(emittedDeclaration, /interface ContextManagerClientLocale/)
