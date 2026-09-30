@@ -21,6 +21,13 @@ export interface ContextManagerClientRemote {
 }
 
 /**
+ * Backward-compatible M7A public names, now derived from their framework
+ * owners instead of restating those owners member-by-member.
+ */
+export type ContextManagerClientSlots = Pick<SlotRegistry, 'inject' | 'register'>
+export type ContextManagerClientLocale = Pick<LocaleRuntime, 'register' | 'bind'>
+
+/**
  * Single source of truth for the browser Client context consumed by production
  * and exported through ./client declarations.
  *
@@ -29,6 +36,6 @@ export interface ContextManagerClientRemote {
  */
 export type ContextManagerClientContext = Omit<Context, 'remote' | 'slots' | 'locale'> & {
   readonly remote: ContextManagerClientRemote
-  readonly slots: Pick<SlotRegistry, 'inject' | 'register'>
-  readonly locale: Pick<LocaleRuntime, 'register' | 'bind'>
+  readonly slots: ContextManagerClientSlots
+  readonly locale: ContextManagerClientLocale
 }
