@@ -27,7 +27,7 @@ export interface ContextManagerClientRemote {
  * Framework-owned Slot and Locale faces are derived from their published
  * upstream owners instead of being restated structurally in this package.
  */
-export type ContextManagerClientContext = Context & {
+export type ContextManagerClientContext = Omit<Context, 'remote' | 'slots' | 'locale'> & {
   readonly remote: ContextManagerClientRemote
   readonly slots: Pick<SlotRegistry, 'inject' | 'register'>
   readonly locale: Pick<LocaleRuntime, 'register' | 'bind'>
