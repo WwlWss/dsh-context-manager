@@ -1,7 +1,9 @@
 export type {
   ContextManagerClientContext,
+  ContextManagerClientLocale,
   ContextManagerClientRemote,
   ContextManagerClientRemoteContribution,
+  ContextManagerClientSlots,
   ContextManagerRemoteContribution,
 } from './client/context.js'
 
