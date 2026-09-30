@@ -516,9 +516,10 @@ Begin with a post-merge contract-normalization slice: the public `./client` decl
 Add a React-free Client model over the strict Host Remote:
 
 - run `protocol()` compatibility guard before adopting data;
-- hydrate with `changes -> authoritative reads -> changes`;
-- track `instanceId` and invalidate all assumptions when it changes;
-- pull profiles, preset/runtime diagnostics, and other M6 surfaces without duplicating Host authority;
+- hydrate the unkeyed authoritative baseline with `changes -> authoritative reads -> changes`;
+- baseline hydration covers `profiles()`, `presets()`, and `promptPlacement()` after the protocol guard; PromptResource metadata may remain a separately invalidated/lazy surface;
+- keep Session/Agent diagnostics keyed and lazy (`sessionPreset(sessionId)`, `inspectPromptRuntime(agentId)`, `inspectSkillRuntime(agentId)`, `inspectPinnedSkillRuntime(agentId)`); do not discover identities by scanning Client internals;
+- track `instanceId` and invalidate all assumptions, including keyed diagnostic caches, when it changes;
 - keep stable observable/model identity where the retained framework seam requires it;
 - expose loading/error state and derived plain callbacks/data through the supported inject/hook boundary;
 - poll/reconnect through change hints rather than treating cursors as revisions.
