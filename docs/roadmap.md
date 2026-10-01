@@ -511,28 +511,23 @@ The retained five-generation runtime matrix remains deliberately narrow SlotCore
 
 ### M7B1 — Authoritative Client model
 
-Begin with a post-merge contract-normalization slice: the public `./client` declaration and production Client source must consume one shared type-only Context contract so M7A-era structural Slot/Locale declarations cannot drift from the upstream-derived production contract.
+B1-1 is complete in merged PR #27: the Client now owns a React-free authoritative baseline model for profiles, presets, and prompt-placement capability with protocol/Host-authority guards, cursor-stable reconciliation, freshness invalidation, and persistence revision access.
 
-Add a React-free Client model over the strict Host Remote:
+Remaining Client-model slices are explicit:
 
-- run `protocol()` compatibility guard before adopting data;
-- hydrate the unkeyed authoritative baseline with `changes -> authoritative reads -> changes`;
-- baseline hydration covers `profiles()`, `presets()`, and `promptPlacement()` after the protocol guard; PromptResource metadata may remain a separately invalidated/lazy surface;
-- keep Session/Agent diagnostics keyed and lazy (`sessionPreset(sessionId)`, `inspectPromptRuntime(agentId)`, `inspectSkillRuntime(agentId)`, `inspectPinnedSkillRuntime(agentId)`); do not discover identities by scanning Client internals;
-- track `instanceId` and invalidate all assumptions, including keyed diagnostic caches, when it changes;
-- keep stable observable/model identity where the retained framework seam requires it;
-- expose loading/error state and derived plain callbacks/data through the supported inject/hook boundary;
-- poll/reconnect through change hints rather than treating cursors as revisions.
+- **B1-2** — bridge the stable business model and mutation callbacks through the retained Slot/renderer hook boundary;
+- **B1-3** — add separately invalidated/lazy PromptResource state plus keyed Session/Agent diagnostics and their revision ownership;
+- polling/focus/reconnect refresh remains a later lifecycle slice and must keep change cursors as invalidation hints only.
 
 ### M7B2 — Mutation controller
 
-Add explicit browser mutations on top of the authoritative Client model:
+M7B2 is intentionally split by revision domain.
 
-- maintain Settings/resource revision chains separately from change cursors;
-- never silently retry stale writes;
-- surface conflicts, unavailable/read-only capabilities, and stable Remote error codes;
-- after a successful mutation, rehydrate authoritative state rather than locally fabricating the expected result;
-- keep operation state isolated enough that one failed mutation does not poison unrelated read surfaces.
+**M7B2-A — Profile Mutation Controller Foundation** is the next implementation slice. It adds explicit profile mutations over the B1-1 authoritative model, uses only the fresh Settings persistence revision, keeps one single-flight profile mutation lane, preserves the two-layer Typert/business result boundary, never retries stale/uncertain writes, and rehydrates authoritative baseline state after confirmed writes, conflicts, or transport-uncertain outcomes.
+
+**M7B2-B — PromptResource mutation controller** is deferred until B1-3 owns the exact revision associated with the resource snapshot/draft being edited. It must not fetch a new revision at save time and silently rebase a stale draft.
+
+Native preset copy/remove authoring remains with M8C rather than being pulled forward merely to cover every Host mutation endpoint.
 
 ### M7C — Profile Drawer
 
