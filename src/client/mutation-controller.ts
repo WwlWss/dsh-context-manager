@@ -252,16 +252,29 @@ export function createContextManagerProfileMutationController(
 
     const afterPublicationLifecycle = lifecycleResult()
     if (afterPublicationLifecycle !== undefined) {
-      activeOperationId = undefined
+      settle(operationEpoch, id, kind, afterPublicationLifecycle)
       return afterPublicationLifecycle
     }
+
+    if (deps.getProtocolStatus() !== 'compatible') {
+      const result: ContextManagerClientProfileMutationResult = {
+        status: 'rejected',
+        refresh: 'not-requested',
+        error: {
+          kind: 'precondition',
+          code: 'protocol-unavailable',
+          message: 'A compatible Host protocol is required before mutation',
+        },
+      }
+      settle(operationEpoch, id, kind, result)
+      return result
+    }
+
     if (
-      deps.getProtocolStatus() !== 'compatible'
-      || deps.getProfileRevision() !== expectedRevision
+      deps.getProfileRevision() !== expectedRevision
       || deps.getRemote() !== remote
     ) {
-      activeOperationId = undefined
-      return {
+      const result: ContextManagerClientProfileMutationResult = {
         status: 'rejected',
         refresh: 'not-requested',
         error: {
@@ -270,6 +283,8 @@ export function createContextManagerProfileMutationController(
           message: 'Profile authority changed before the mutation started',
         },
       }
+      settle(operationEpoch, id, kind, result)
+      return result
     }
 
     const outcome = await invokeMutation(() => call(remote, expectedRevision))
