@@ -24,6 +24,10 @@ export type ContextManagerClientReadError =
       readonly kind: 'unstable-snapshot'
       readonly attempts: number
     }
+  | {
+      readonly kind: 'unstable-authority'
+      readonly attempts: number
+    }
 
 export interface ContextManagerClientSurface<T> {
   readonly status: 'idle' | 'loading' | 'ready' | 'error'

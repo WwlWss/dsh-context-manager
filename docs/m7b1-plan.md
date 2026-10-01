@@ -54,6 +54,8 @@ The child attaches the already-created stable model to `ctx.remote.contextManage
 
 The child is disposed before the Remote contribution is withdrawn. Detach invalidates in-flight work but does not create a replacement model/store identity.
 
+Once the Remote mount succeeds, model creation and child-fiber setup stay inside the same rollback boundary as Locale/Slot setup. A synchronous child-fiber creation failure or asynchronous startup failure must therefore dispose any child/model state that exists and withdraw the mounted contribution before propagating the error.
+
 ## Remote transport
 
 Generated unary Client methods return Typert `RemoteResult<T>`, not raw Host DTOs.
@@ -106,18 +108,22 @@ Transient refresh failure may retain previous data as stale. A Host `instanceId`
 
 ## Stable hydration
 
-For each requested surface set, bounded to three stabilization attempts:
+A reconcile reserves per-surface epochs immediately so a newer refresh of the same surface supersedes older completions, but it does not mark a surface `loading` until the protocol guard and current Host authority have been established.
 
-1. guard `protocol()`;
+Protocol compatibility and cursor stabilization are separate loops:
+
+1. guard `protocol()` for the reconcile's current authority epoch;
 2. read `before = changes()`;
-3. reset all authority if `before.instanceId` differs from the adopted instance;
-4. read requested authoritative surfaces in parallel;
-5. read `after = changes()`;
-6. if the instance changed during the bracket, clear the batch and restart from the protocol guard;
-7. adopt only reads whose relevant cursor is stable across the bracket;
-8. retry only cursor-unstable surfaces;
-9. surface read failures remain isolated and are not automatically retried;
-10. persistent cursor churn becomes an `unstable-snapshot` error after three attempts.
+3. if `before.instanceId` is the first observed Host lifetime or differs from the adopted one, perform a compare-and-swap authority transition that clears every authoritative cache and the old protocol verdict, then restart from `protocol()`;
+4. only a reconcile whose captured authority epoch is still current may perform that transition; a stale reconcile exits instead of rebasing itself onto the newer authority;
+5. once the same `instanceId` survives the protocol -> `changes()` boundary, adopt the change hint, mark only still-current requested surfaces `loading`, and read those authoritative surfaces in parallel;
+6. re-check attachment and authority before issuing the closing `changes()`;
+7. if the Host lifetime changes during the bracket, clear the batch and restart from the protocol guard;
+8. adopt only reads whose relevant cursor is stable across the bracket;
+9. retry only cursor-unstable surfaces, for at most three cursor-stabilization attempts;
+10. bound repeated Host-lifetime replacement separately; three consecutive authority restarts become an `unstable-authority` read error rather than an unbounded reconcile loop.
+
+A superseded negative protocol result is retried a bounded number of times before the stale reconcile yields to the newer protocol owner. A positive result may be used as that reconcile's local guard, while global protocol publication remains token-fenced. Protocol failure occurs before surfaces enter `loading`; the reserved surface epochs are then failed directly, retaining any previous data as stale.
 
 Cursor mapping:
 
@@ -144,6 +150,8 @@ A surface completion may publish only when:
 - its surface epoch is current.
 
 A newer refresh of one surface must not cancel unrelated in-flight surfaces. Global `sync` stays `syncing` until the last overlapping reconcile settles, and an older or stale-authority reconcile cannot overwrite the protocol/sync result of a newer authoritative run.
+
+Host identity changes use compare-and-swap semantics: only the reconcile that still owns its captured authority epoch may create the next epoch. A completion from an older authority must exit; it must never assign itself the newer epoch and continue. Protocol verdicts are Host-lifetime facts, so every authority transition clears the old verdict and requires a new guard before business reads.
 
 The latest adopted `changes` snapshot for one `instanceId` must never move backward in `generation`.
 

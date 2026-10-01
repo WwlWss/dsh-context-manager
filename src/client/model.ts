@@ -20,7 +20,9 @@ import type {
 } from './model-types.js'
 import type { ContextManagerClientReadRemote } from './remote-port.js'
 
+const MAX_PROTOCOL_ATTEMPTS = 3
 const MAX_STABILIZATION_ATTEMPTS = 3
+const MAX_AUTHORITY_RESTARTS = 3
 
 export const CONTEXT_MANAGER_BASELINE_SURFACES = Object.freeze([
   'profiles',
@@ -39,6 +41,28 @@ type ReadOutcome<T> =
   | { readonly ok: false; readonly error: ContextManagerClientReadError }
 
 type SurfaceEpochs = Record<ContextManagerClientBaselineSurface, number>
+
+type AuthorityTransition =
+  | { readonly status: 'same' }
+  | {
+      readonly status: 'changed'
+      readonly authority: number
+    }
+  | { readonly status: 'superseded' }
+
+type ProtocolGuardOutcome =
+  | { readonly status: 'compatible' }
+  | {
+      readonly status: 'error'
+      readonly error: ContextManagerClientReadError
+    }
+  | {
+      readonly status: 'incompatible'
+      readonly actual: number
+    }
+  | {
+      readonly status: 'attachment-stale' | 'authority-stale' | 'superseded'
+    }
 
 export interface ContextManagerClientModel {
   readonly state: SnapshotStore<ContextManagerClientSnapshot>
@@ -193,12 +217,21 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
     !disposed && remote !== undefined && attachmentEpoch === epoch
   )
 
+  const isAuthorityCurrent = (
+    attachment: number,
+    authority: number,
+  ): boolean => (
+    isAttachmentCurrent(attachment) && authorityEpoch === authority
+  )
+
   const isSurfaceCurrent = (
     attachment: number,
+    authority: number,
     surface: ContextManagerClientBaselineSurface,
     epoch: number,
   ): boolean => (
-    isAttachmentCurrent(attachment) && surfaceEpochs[surface] === epoch
+    isAuthorityCurrent(attachment, authority)
+    && surfaceEpochs[surface] === epoch
   )
 
   const resetRunBookkeeping = (): void => {
@@ -252,10 +285,13 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
     })
   }
 
-  const beginProtocolCheck = (attachment: number): number => {
+  const beginProtocolCheck = (
+    attachment: number,
+    authority: number,
+  ): number => {
     protocolCheckEpoch += 1
     const token = protocolCheckEpoch
-    if (isAttachmentCurrent(attachment)) {
+    if (isAuthorityCurrent(attachment, authority)) {
       const current = state.getSnapshot()
       state.set({
         ...current,
@@ -311,72 +347,109 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
       ...current,
       instanceId,
       changes: undefined,
+      protocol: { status: 'unchecked' },
       profiles: idleSurface(),
       presets: idleSurface(),
       promptPlacement: idleSurface(),
     })
   }
 
-  const resetForInstance = (instanceId: string): boolean => {
+  const transitionAuthority = (
+    attachment: number,
+    expectedAuthority: number,
+    instanceId: string,
+  ): AuthorityTransition => {
+    if (!isAuthorityCurrent(attachment, expectedAuthority)) {
+      return { status: 'superseded' }
+    }
+
     const current = state.getSnapshot()
-    if (current.instanceId === instanceId) return false
+    if (current.instanceId === instanceId) {
+      return { status: 'same' }
+    }
+
     clearAuthority(instanceId)
-    return true
+    return {
+      status: 'changed',
+      authority: authorityEpoch,
+    }
   }
 
-  const adoptChanges = (next: ContextManagerRemoteChangeSnapshot): void => {
+  const adoptChanges = (
+    attachment: number,
+    authority: number,
+    next: ContextManagerRemoteChangeSnapshot,
+  ): boolean => {
+    if (!isAuthorityCurrent(attachment, authority)) return false
+
     const current = state.getSnapshot()
-    if (current.instanceId !== undefined && current.instanceId !== next.instanceId) return
+    if (current.instanceId !== next.instanceId) return false
     if (
       current.changes !== undefined
       && current.changes.instanceId === next.instanceId
       && current.changes.generation > next.generation
     ) {
-      return
+      return false
     }
+
     state.set({
       ...current,
-      instanceId: next.instanceId,
       changes: next,
     })
+    return true
   }
 
-  const markRequestedLoading = (
+  const reserveRequestedSurfaces = (
     scopes: readonly ContextManagerClientBaselineSurface[],
   ): Partial<SurfaceEpochs> => {
     const tokens: Partial<SurfaceEpochs> = {}
-    let next = state.getSnapshot()
-
     for (const surface of scopes) {
       surfaceEpochs[surface] += 1
       tokens[surface] = surfaceEpochs[surface]
+    }
+    return tokens
+  }
+
+  const markScopesLoading = (
+    attachment: number,
+    authority: number,
+    scopes: readonly ContextManagerClientBaselineSurface[],
+    tokens: Partial<SurfaceEpochs>,
+  ): void => {
+    let next = state.getSnapshot()
+    let changed = false
+
+    for (const surface of scopes) {
+      const token = tokens[surface]
+      if (
+        token === undefined
+        || !isSurfaceCurrent(attachment, authority, surface, token)
+      ) continue
+
       next = {
         ...next,
         [surface]: loadingSurface(next[surface] as never),
       }
+      changed = true
     }
 
-    state.set(next)
-    return tokens
-  }
-
-  const retokenizeAfterReset = (
-    scopes: readonly ContextManagerClientBaselineSurface[],
-    tokens: Partial<SurfaceEpochs>,
-  ): void => {
-    const nextTokens = markRequestedLoading(scopes)
-    for (const surface of scopes) tokens[surface] = nextTokens[surface]
+    if (changed) state.set(next)
   }
 
   const failScopes = (
     attachment: number,
+    authority: number,
     scopes: readonly ContextManagerClientBaselineSurface[],
     tokens: Partial<SurfaceEpochs>,
     error: ContextManagerClientReadError,
   ): void => {
     for (const surface of scopes) {
       const token = tokens[surface]
-      if (token === undefined || !isSurfaceCurrent(attachment, surface, token)) continue
+      if (
+        token === undefined
+        || !isSurfaceCurrent(attachment, authority, surface, token)
+      ) continue
+
       const current = state.getSnapshot()[surface] as ContextManagerClientSurface<BaselineSurfaceMap[typeof surface]>
       replaceSurface(surface, failedSurface(current, error) as never)
     }
@@ -396,6 +469,62 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
     }
   }
 
+  const guardProtocol = async (
+    currentRemote: ContextManagerClientReadRemote,
+    attachment: number,
+    authority: number,
+  ): Promise<ProtocolGuardOutcome> => {
+    for (let attempt = 1; attempt <= MAX_PROTOCOL_ATTEMPTS; attempt += 1) {
+      if (!isAttachmentCurrent(attachment)) {
+        return { status: 'attachment-stale' }
+      }
+      if (authority !== authorityEpoch) {
+        return { status: 'authority-stale' }
+      }
+
+      const token = beginProtocolCheck(attachment, authority)
+      const protocol = await invokeRead(() => currentRemote.protocol())
+
+      if (!isAttachmentCurrent(attachment)) {
+        return { status: 'attachment-stale' }
+      }
+      if (authority !== authorityEpoch) {
+        return { status: 'authority-stale' }
+      }
+
+      const tokenIsCurrent = protocolCheckEpoch === token
+      if (!protocol.ok) {
+        if (!tokenIsCurrent) continue
+
+        publishProtocol(attachment, authority, token, {
+          status: 'error',
+          error: protocol.error,
+        })
+        return {
+          status: 'error',
+          error: protocol.error,
+        }
+      }
+
+      if (protocol.value.apiVersion !== CONTEXT_MANAGER_REMOTE_API_VERSION) {
+        if (!tokenIsCurrent) continue
+
+        return {
+          status: 'incompatible',
+          actual: protocol.value.apiVersion,
+        }
+      }
+
+      publishProtocol(attachment, authority, token, {
+        status: 'compatible',
+        apiVersion: protocol.value.apiVersion,
+      })
+      return { status: 'compatible' }
+    }
+
+    return { status: 'superseded' }
+  }
+
   const reconcile = async (
     requestedScopes: readonly ContextManagerClientBaselineSurface[],
   ): Promise<ContextManagerClientReconcileResult> => {
@@ -408,38 +537,68 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
     let authority = authorityEpoch
     const currentRemote = remote
     const run = beginReconcileRun(attachment)
-    const tokens = markRequestedLoading(attempted)
-    let pending = [...attempted]
+    let tokens = reserveRequestedSurfaces(attempted)
+    let authorityRestarts = 0
 
-    for (let attempt = 1; attempt <= MAX_STABILIZATION_ATTEMPTS; attempt += 1) {
+    const detachedResult = (): ContextManagerClientReconcileResult => (
+      disposed
+        ? { status: 'disposed', attempted }
+        : { status: 'detached', attempted }
+    )
+
+    const completeStaleAuthority = (): ContextManagerClientReconcileResult => {
+      completeReconcileRun(attachment, authority, run)
+      return { status: 'completed', attempted }
+    }
+
+    const acceptAuthorityTransition = (
+      transition: AuthorityTransition,
+    ): 'same' | 'changed' | 'superseded' => {
+      if (transition.status !== 'changed') return transition.status
+
+      authority = transition.authority
+      authorityRestarts += 1
+      tokens = reserveRequestedSurfaces(attempted)
+      return 'changed'
+    }
+
+    const failUnstableAuthority = (): ContextManagerClientReconcileResult => {
+      const unstable: ContextManagerClientReadError = {
+        kind: 'unstable-authority',
+        attempts: MAX_AUTHORITY_RESTARTS,
+      }
+      failScopes(attachment, authority, attempted, tokens, unstable)
+      completeReconcileRun(attachment, authority, run, unstable)
+      return { status: 'completed', attempted }
+    }
+
+    authorityLoop:
+    while (true) {
       if (!isAttachmentCurrent(attachment)) {
         completeReconcileRun(attachment, authority, run)
-        return disposed
-          ? { status: 'disposed', attempted }
-          : { status: 'detached', attempted }
+        return detachedResult()
+      }
+      if (authority !== authorityEpoch) {
+        return completeStaleAuthority()
       }
 
-      const protocolToken = beginProtocolCheck(attachment)
-      const protocol = await invokeRead(() => currentRemote.protocol())
-      if (!isAttachmentCurrent(attachment)) {
-        completeReconcileRun(attachment, authority, run)
-        return disposed
-          ? { status: 'disposed', attempted }
-          : { status: 'detached', attempted }
-      }
+      const protocol = await guardProtocol(currentRemote, attachment, authority)
+      switch (protocol.status) {
+        case 'attachment-stale':
+          completeReconcileRun(attachment, authority, run)
+          return detachedResult()
+        case 'authority-stale':
+        case 'superseded':
+          return completeStaleAuthority()
+        case 'error':
+          failScopes(attachment, authority, attempted, tokens, protocol.error)
+          completeReconcileRun(attachment, authority, run, protocol.error)
+          return { status: 'completed', attempted }
+        case 'incompatible': {
+          if (!isAuthorityCurrent(attachment, authority)) {
+            return completeStaleAuthority()
+          }
 
-      if (!protocol.ok) {
-        publishProtocol(attachment, authority, protocolToken, {
-          status: 'error',
-          error: protocol.error,
-        })
-        failScopes(attachment, pending, tokens, protocol.error)
-        completeReconcileRun(attachment, authority, run, protocol.error)
-        return { status: 'completed', attempted }
-      }
-
-      if (protocol.value.apiVersion !== CONTEXT_MANAGER_REMOTE_API_VERSION) {
-        if (protocolCheckEpoch === protocolToken && authority === authorityEpoch) {
           clearAuthority()
           authority = authorityEpoch
           if (isAttachmentCurrent(attachment)) {
@@ -449,121 +608,144 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
               protocol: {
                 status: 'incompatible',
                 expected: CONTEXT_MANAGER_REMOTE_API_VERSION,
-                actual: protocol.value.apiVersion,
+                actual: protocol.actual,
               },
             })
           }
+          completeReconcileRun(attachment, authority, run)
+          return { status: 'incompatible', attempted }
         }
-        completeReconcileRun(attachment, authority, run)
-        return { status: 'incompatible', attempted }
+        case 'compatible':
+          break
       }
 
-      publishProtocol(attachment, authority, protocolToken, {
-        status: 'compatible',
-        apiVersion: protocol.value.apiVersion,
-      })
+      let pending = [...attempted]
 
-      const before = await invokeRead(() => currentRemote.changes())
-      if (!isAttachmentCurrent(attachment)) {
-        completeReconcileRun(attachment, authority, run)
-        return disposed
-          ? { status: 'disposed', attempted }
-          : { status: 'detached', attempted }
-      }
-      if (!before.ok) {
-        failScopes(attachment, pending, tokens, before.error)
-        completeReconcileRun(attachment, authority, run, before.error)
-        return { status: 'completed', attempted }
-      }
-
-      if (
-        state.getSnapshot().instanceId !== undefined
-        && state.getSnapshot().instanceId !== before.value.instanceId
-      ) {
-        if (resetForInstance(before.value.instanceId)) {
-          authority = authorityEpoch
+      for (let attempt = 1; attempt <= MAX_STABILIZATION_ATTEMPTS; attempt += 1) {
+        const before = await invokeRead(() => currentRemote.changes())
+        if (!isAttachmentCurrent(attachment)) {
+          completeReconcileRun(attachment, authority, run)
+          return detachedResult()
         }
-        retokenizeAfterReset(attempted, tokens)
-        pending = [...attempted]
-      } else if (state.getSnapshot().instanceId === undefined) {
-        const current = state.getSnapshot()
-        state.set({
-          ...current,
-          instanceId: before.value.instanceId,
-        })
-      }
-      adoptChanges(before.value)
-
-      const reads = new Map<
-        ContextManagerClientBaselineSurface,
-        ReadOutcome<BaselineSurfaceMap[ContextManagerClientBaselineSurface]>
-      >()
-      await Promise.all(pending.map(async surface => {
-        reads.set(surface, await readSurface(currentRemote, surface))
-      }))
-
-      const after = await invokeRead(() => currentRemote.changes())
-      if (!isAttachmentCurrent(attachment)) {
-        completeReconcileRun(attachment, authority, run)
-        return disposed
-          ? { status: 'disposed', attempted }
-          : { status: 'detached', attempted }
-      }
-      if (!after.ok) {
-        failScopes(attachment, pending, tokens, after.error)
-        completeReconcileRun(attachment, authority, run, after.error)
-        return { status: 'completed', attempted }
-      }
-
-      if (before.value.instanceId !== after.value.instanceId) {
-        if (resetForInstance(after.value.instanceId)) {
-          authority = authorityEpoch
+        if (authority !== authorityEpoch) {
+          return completeStaleAuthority()
         }
-        retokenizeAfterReset(attempted, tokens)
-        pending = [...attempted]
-        adoptChanges(after.value)
-        continue
-      }
-
-      adoptChanges(after.value)
-
-      const retry: ContextManagerClientBaselineSurface[] = []
-      for (const surface of pending) {
-        const token = tokens[surface]
-        if (token === undefined || !isSurfaceCurrent(attachment, surface, token)) continue
-
-        const read = reads.get(surface)
-        if (read === undefined) continue
-
-        if (!read.ok) {
-          const current = state.getSnapshot()[surface] as ContextManagerClientSurface<BaselineSurfaceMap[typeof surface]>
-          replaceSurface(surface, failedSurface(current, read.error) as never)
-          continue
+        if (!before.ok) {
+          failScopes(attachment, authority, pending, tokens, before.error)
+          completeReconcileRun(attachment, authority, run, before.error)
+          return { status: 'completed', attempted }
         }
 
-        if (cursorOf(surface, before.value) !== cursorOf(surface, after.value)) {
-          retry.push(surface)
-          continue
+        const beforeTransition = acceptAuthorityTransition(
+          transitionAuthority(
+            attachment,
+            authority,
+            before.value.instanceId,
+          ),
+        )
+        if (beforeTransition === 'superseded') {
+          return completeStaleAuthority()
+        }
+        if (beforeTransition === 'changed') {
+          if (authorityRestarts >= MAX_AUTHORITY_RESTARTS) {
+            return failUnstableAuthority()
+          }
+          continue authorityLoop
         }
 
-        replaceSurface(surface, readySurface(read.value) as never)
+        adoptChanges(attachment, authority, before.value)
+        markScopesLoading(attachment, authority, pending, tokens)
+
+        const reads = new Map<
+          ContextManagerClientBaselineSurface,
+          ReadOutcome<BaselineSurfaceMap[ContextManagerClientBaselineSurface]>
+        >()
+        await Promise.all(pending.map(async surface => {
+          reads.set(surface, await readSurface(currentRemote, surface))
+        }))
+
+        if (!isAttachmentCurrent(attachment)) {
+          completeReconcileRun(attachment, authority, run)
+          return detachedResult()
+        }
+        if (authority !== authorityEpoch) {
+          return completeStaleAuthority()
+        }
+
+        const after = await invokeRead(() => currentRemote.changes())
+        if (!isAttachmentCurrent(attachment)) {
+          completeReconcileRun(attachment, authority, run)
+          return detachedResult()
+        }
+        if (authority !== authorityEpoch) {
+          return completeStaleAuthority()
+        }
+        if (!after.ok) {
+          failScopes(attachment, authority, pending, tokens, after.error)
+          completeReconcileRun(attachment, authority, run, after.error)
+          return { status: 'completed', attempted }
+        }
+
+        const afterTransition = acceptAuthorityTransition(
+          transitionAuthority(
+            attachment,
+            authority,
+            after.value.instanceId,
+          ),
+        )
+        if (afterTransition === 'superseded') {
+          return completeStaleAuthority()
+        }
+        if (afterTransition === 'changed') {
+          if (authorityRestarts >= MAX_AUTHORITY_RESTARTS) {
+            return failUnstableAuthority()
+          }
+          continue authorityLoop
+        }
+
+        adoptChanges(attachment, authority, after.value)
+
+        const retry: ContextManagerClientBaselineSurface[] = []
+        for (const surface of pending) {
+          const token = tokens[surface]
+          if (
+            token === undefined
+            || !isSurfaceCurrent(attachment, authority, surface, token)
+          ) continue
+
+          const read = reads.get(surface)
+          if (read === undefined) continue
+
+          if (!read.ok) {
+            const current = state.getSnapshot()[surface] as ContextManagerClientSurface<BaselineSurfaceMap[typeof surface]>
+            replaceSurface(surface, failedSurface(current, read.error) as never)
+            continue
+          }
+
+          if (cursorOf(surface, before.value) !== cursorOf(surface, after.value)) {
+            retry.push(surface)
+            continue
+          }
+
+          replaceSurface(surface, readySurface(read.value) as never)
+        }
+
+        pending = retry
+        if (pending.length === 0) {
+          completeReconcileRun(attachment, authority, run)
+          return { status: 'completed', attempted }
+        }
       }
 
-      pending = retry
-      if (pending.length === 0) {
-        completeReconcileRun(attachment, authority, run)
-        return { status: 'completed', attempted }
+      const unstable: ContextManagerClientReadError = {
+        kind: 'unstable-snapshot',
+        attempts: MAX_STABILIZATION_ATTEMPTS,
       }
+      failScopes(attachment, authority, pending, tokens, unstable)
+
+      completeReconcileRun(attachment, authority, run, unstable)
+      return { status: 'completed', attempted }
     }
-
-    const unstable: ContextManagerClientReadError = {
-      kind: 'unstable-snapshot',
-      attempts: MAX_STABILIZATION_ATTEMPTS,
-    }
-    failScopes(attachment, pending, tokens, unstable)
-
-    completeReconcileRun(attachment, authority, run, unstable)
-    return { status: 'completed', attempted }
   }
 
   const attach = (nextRemote: ContextManagerClientReadRemote): (() => void) => {
