@@ -906,6 +906,30 @@ test('sync stays syncing until the last overlapping reconcile settles', async ()
   model.dispose()
 })
 
+test('a synchronous loading subscriber can detach before any stale attachment surface RPC starts', async () => {
+  const { model, remote, detach } = await attachAndReady()
+  const baseProfileCalls = remote.calls.profiles
+
+  let unsubscribe = () => {}
+  unsubscribe = model.state.subscribe(() => {
+    const snapshot = model.state.getSnapshot()
+    if (snapshot.profiles.status !== 'loading') return
+    unsubscribe()
+    detach()
+  })
+
+  const result = await model.reconcile(['profiles'])
+  const snapshot = model.state.getSnapshot()
+
+  assert.equal(result.status, 'detached')
+  assert.equal(remote.calls.profiles, baseProfileCalls)
+  assert.equal(snapshot.attachment, 'detached')
+  assert.notEqual(snapshot.profiles.status, 'loading')
+
+  unsubscribe()
+  model.dispose()
+})
+
 test('detach invalidates an in-flight batch and leaves no data-less surface stuck loading', async () => {
   const model = createContextManagerClientModel()
   const remote = new ScriptedRemote()

@@ -727,7 +727,27 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
 
         markScopesLoading(attachment, authority, pending, tokens)
 
-        const activePending = pending
+        // SnapshotStore publishes synchronously by default. A loading-state
+        // subscriber may detach, dispose, replace the attachment, or otherwise
+        // invalidate this run before control returns here. Re-check all
+        // lifecycle/publication guards before starting any Remote surface RPC.
+        if (!isAttachmentCurrent(attachment)) {
+          completeReconcileRun(attachment, authority, run)
+          return detachedResult()
+        }
+        if (authority !== authorityEpoch) {
+          return completeSupersededRun()
+        }
+
+        const activePending = pending.filter(surface => {
+          const token = tokens[surface]
+          return token !== undefined
+            && isSurfaceCurrent(attachment, authority, surface, token)
+        })
+        if (activePending.length === 0) {
+          return completeSupersededRun()
+        }
+
         const reads = new Map<
           ContextManagerClientBaselineSurface,
           ReadOutcome<BaselineSurfaceMap[ContextManagerClientBaselineSurface]>
