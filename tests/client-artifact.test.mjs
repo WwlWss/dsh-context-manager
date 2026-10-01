@@ -65,6 +65,7 @@ function contextManagerRemoteFace() {
 function pluginCapableContext(base) {
   const ctx = { ...base }
   ctx.plugin = (definition) => {
+    assert.deepEqual(definition.inject, ['remote', 'remote.contextManager'])
     let disposer
     const startup = Promise.resolve().then(async () => {
       disposer = await definition.apply(ctx)
@@ -128,6 +129,7 @@ test('M7B0 loader artifact mounts Remote and locale before registering two addit
   const lifecycle = []
   const entries = []
   const remote = {
+    contextManager: contextManagerRemoteFace(),
     async $mount(contribution) {
       lifecycle.push('remote:mount')
       assert.equal(contribution.package, 'dsh-context-manager')
