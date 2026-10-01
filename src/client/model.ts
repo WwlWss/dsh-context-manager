@@ -442,11 +442,17 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
         if (protocolCheckEpoch === protocolToken && authority === authorityEpoch) {
           clearAuthority()
           authority = authorityEpoch
-          publishProtocol(attachment, authority, protocolToken, {
-            status: 'incompatible',
-            expected: CONTEXT_MANAGER_REMOTE_API_VERSION,
-            actual: protocol.value.apiVersion,
-          })
+          if (isAttachmentCurrent(attachment)) {
+            const current = state.getSnapshot()
+            state.set({
+              ...current,
+              protocol: {
+                status: 'incompatible',
+                expected: CONTEXT_MANAGER_REMOTE_API_VERSION,
+                actual: protocol.value.apiVersion,
+              },
+            })
+          }
         }
         completeReconcileRun(attachment, authority, run)
         return { status: 'incompatible', attempted }
