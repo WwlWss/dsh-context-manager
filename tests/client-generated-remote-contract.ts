@@ -1,7 +1,10 @@
 import type { TypertRemoteNamespaceMap } from '@deepseek-ai/dsh-typert-protocol'
 import type {} from '../lib/typert.remote-client.js'
 
-import type { ContextManagerClientReadRemote } from '../src/client/remote-port.js'
+import type {
+  ContextManagerClientBusinessRemote,
+  ContextManagerClientReadRemote,
+} from '../src/client/remote-port.js'
 
 type Assert<T extends true> = T
 
@@ -13,3 +16,10 @@ type GeneratedRemoteSatisfiesReadPort = Assert<
 
 const _generatedRemoteSatisfiesReadPort: GeneratedRemoteSatisfiesReadPort = true
 void _generatedRemoteSatisfiesReadPort
+
+type GeneratedRemoteSatisfiesBusinessPort = Assert<
+  GeneratedContextManagerRemote extends ContextManagerClientBusinessRemote ? true : false
+>
+
+const _generatedRemoteSatisfiesBusinessPort: GeneratedRemoteSatisfiesBusinessPort = true
+void _generatedRemoteSatisfiesBusinessPort

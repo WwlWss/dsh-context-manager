@@ -6,18 +6,25 @@ import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 import {
   CONTEXT_MANAGER_REMOTE_API_VERSION,
   type ContextManagerRemoteChangeSnapshot,
+  type ContextManagerRemoteErrorCode,
   type ContextManagerRemotePresetSnapshot,
   type ContextManagerRemoteProfilesSnapshot,
+  type ContextManagerRemoteProfileInput,
+  type ContextManagerRemotePromptBinding,
+  type ContextManagerRemotePromptPlacement,
   type ContextManagerRemotePromptPlacementCapability,
   type ContextManagerRemoteProtocol,
+  type ContextManagerRemoteResult,
+  type ContextManagerRemoteSkillMode,
 } from '../src/remote/types.js'
 import {
   CONTEXT_MANAGER_BASELINE_SURFACES,
   createContextManagerClientModel,
 } from '../src/client/model.js'
-import type { ContextManagerClientReadRemote } from '../src/client/remote-port.js'
+import type { ContextManagerClientBusinessRemote } from '../src/client/remote-port.js'
 
 type Step<T> = () => Promise<RemoteResult<T>>
+type ProfileMutationStep = Step<ContextManagerRemoteResult<ContextManagerRemoteProfilesSnapshot>>
 
 function ok<T>(value: T): RemoteResult<T> {
   return { ok: true, value }
@@ -34,6 +41,30 @@ function fail<T>(code = 'test-remote-failure', message = 'test remote failure'):
       isDSHRemoteError: true,
     },
   } as unknown as RemoteResult<T>
+}
+
+function businessOk<T>(value: T): ContextManagerRemoteResult<T> {
+  return { ok: true, value }
+}
+
+function businessFail<T>(
+  code: ContextManagerRemoteErrorCode,
+  message = 'test business failure',
+  revision?: { readonly expected: number; readonly actual: number },
+): ContextManagerRemoteResult<T> {
+  return {
+    ok: false,
+    error: {
+      code,
+      message,
+      ...(revision === undefined
+        ? {}
+        : {
+            expectedRevision: revision.expected,
+            actualRevision: revision.actual,
+          }),
+    },
+  }
 }
 
 function changes(
@@ -102,20 +133,28 @@ function deferred<T>() {
   return { promise, resolve }
 }
 
-class ScriptedRemote implements ContextManagerClientReadRemote {
+class ScriptedRemote implements ContextManagerClientBusinessRemote {
   readonly calls = {
     protocol: 0,
     changes: 0,
     profiles: 0,
     presets: 0,
     promptPlacement: 0,
+    profileMutation: 0,
   }
+
+  readonly profileMutationCalls: Array<{
+    readonly kind: string
+    readonly args: readonly unknown[]
+    readonly expectedRevision: number
+  }> = []
 
   readonly protocolSteps: Array<Step<ContextManagerRemoteProtocol>> = []
   readonly changesSteps: Array<Step<ContextManagerRemoteChangeSnapshot>> = []
   readonly profilesSteps: Array<Step<ContextManagerRemoteProfilesSnapshot>> = []
   readonly presetsSteps: Array<Step<ContextManagerRemotePresetSnapshot>> = []
   readonly placementSteps: Array<Step<ContextManagerRemotePromptPlacementCapability>> = []
+  readonly profileMutationSteps: ProfileMutationStep[] = []
 
   defaultProtocol: ContextManagerRemoteProtocol = {
     apiVersion: CONTEXT_MANAGER_REMOTE_API_VERSION,
@@ -156,6 +195,125 @@ class ScriptedRemote implements ContextManagerClientReadRemote {
   promptPlacement(): Promise<RemoteResult<ContextManagerRemotePromptPlacementCapability>> {
     this.calls.promptPlacement += 1
     return this.take(this.placementSteps, this.defaultPlacement)
+  }
+
+  private mutate(
+    kind: string,
+    args: readonly unknown[],
+    expectedRevision: number,
+  ): Promise<RemoteResult<ContextManagerRemoteResult<ContextManagerRemoteProfilesSnapshot>>> {
+    this.calls.profileMutation += 1
+    this.profileMutationCalls.push({ kind, args, expectedRevision })
+    return this.take(
+      this.profileMutationSteps,
+      businessOk(profiles(expectedRevision + 1)),
+    )
+  }
+
+  createProfile(id: string, input: ContextManagerRemoteProfileInput, expectedRevision: number) {
+    return this.mutate('create-profile', [id, input], expectedRevision)
+  }
+
+  deleteProfile(id: string, expectedRevision: number) {
+    return this.mutate('delete-profile', [id], expectedRevision)
+  }
+
+  setDefaultProfile(id: string | null, expectedRevision: number) {
+    return this.mutate('set-default-profile', [id], expectedRevision)
+  }
+
+  setProfileName(profileId: string, name: string, expectedRevision: number) {
+    return this.mutate('set-profile-name', [profileId, name], expectedRevision)
+  }
+
+  setProfileDescription(
+    profileId: string,
+    description: string | null,
+    expectedRevision: number,
+  ) {
+    return this.mutate('set-profile-description', [profileId, description], expectedRevision)
+  }
+
+  setProfileBasePreset(profileId: string, basePreset: string, expectedRevision: number) {
+    return this.mutate('set-profile-base-preset', [profileId, basePreset], expectedRevision)
+  }
+
+  setSkillMode(
+    profileId: string,
+    skillName: string,
+    mode: ContextManagerRemoteSkillMode,
+    expectedRevision: number,
+  ) {
+    return this.mutate('set-skill-mode', [profileId, skillName, mode], expectedRevision)
+  }
+
+  removeSkillBinding(profileId: string, skillName: string, expectedRevision: number) {
+    return this.mutate('remove-skill-binding', [profileId, skillName], expectedRevision)
+  }
+
+  addPromptBinding(
+    profileId: string,
+    bindingId: string,
+    input: ContextManagerRemotePromptBinding,
+    expectedRevision: number,
+  ) {
+    return this.mutate('add-prompt-binding', [profileId, bindingId, input], expectedRevision)
+  }
+
+  setPromptBindingResourceId(
+    profileId: string,
+    bindingId: string,
+    resourceId: string,
+    expectedRevision: number,
+  ) {
+    return this.mutate(
+      'set-prompt-binding-resource-id',
+      [profileId, bindingId, resourceId],
+      expectedRevision,
+    )
+  }
+
+  setPromptBindingEnabled(
+    profileId: string,
+    bindingId: string,
+    enabled: boolean,
+    expectedRevision: number,
+  ) {
+    return this.mutate(
+      'set-prompt-binding-enabled',
+      [profileId, bindingId, enabled],
+      expectedRevision,
+    )
+  }
+
+  setPromptBindingPlacement(
+    profileId: string,
+    bindingId: string,
+    placement: ContextManagerRemotePromptPlacement,
+    expectedRevision: number,
+  ) {
+    return this.mutate(
+      'set-prompt-binding-placement',
+      [profileId, bindingId, placement],
+      expectedRevision,
+    )
+  }
+
+  setPromptBindingOrder(
+    profileId: string,
+    bindingId: string,
+    order: number,
+    expectedRevision: number,
+  ) {
+    return this.mutate(
+      'set-prompt-binding-order',
+      [profileId, bindingId, order],
+      expectedRevision,
+    )
+  }
+
+  removePromptBinding(profileId: string, bindingId: string, expectedRevision: number) {
+    return this.mutate('remove-prompt-binding', [profileId, bindingId], expectedRevision)
   }
 }
 
@@ -980,6 +1138,224 @@ test('persistent cursor churn is bounded and reported as unstable', async () => 
   assert.equal(remote.calls.profiles, 4)
 
   detach()
+  model.dispose()
+})
+
+
+test('profile mutation uses persistence revision and rehydrates instead of adopting mutation payload', async () => {
+  const { model, remote, detach } = await attachAndReady()
+  const profileGate = deferred<RemoteResult<ContextManagerRemoteProfilesSnapshot>>()
+
+  remote.profileMutationSteps.push(async () => ok(businessOk(profiles(99))))
+  remote.changesSteps.push(
+    async () => ok(changes('host-a', 2, 2, 2, 2)),
+    async () => ok(changes('host-a', 2, 2, 2, 2)),
+  )
+  remote.profilesSteps.push(async () => profileGate.promise)
+
+  const mutation = model.mutations.setProfileName('main', 'Renamed')
+  await waitFor(() => remote.calls.profiles >= 2, 'post-mutation profile read to start')
+
+  assert.equal(remote.profileMutationCalls[0]?.expectedRevision, 7)
+  assert.equal(model.getProfileRevision(), undefined)
+  assert.notEqual(model.state.getSnapshot().profiles.data?.persistence.revision, 99)
+
+  profileGate.resolve(ok(profiles(8)))
+  assert.deepEqual(await mutation, { status: 'applied', refresh: 'fresh' })
+  assert.equal(model.getProfileRevision(), 8)
+  assert.equal(remote.calls.profileMutation, 1)
+
+  detach()
+  model.dispose()
+})
+
+test('profile mutation refuses to write without a fresh persistence revision', async () => {
+  const { model, remote, detach } = await attachAndReady()
+
+  remote.changesSteps.push(
+    async () => ok(changes('host-a', 2, 2, 2, 1)),
+    async () => ok(changes('host-a', 2, 2, 2, 1)),
+  )
+  remote.presetsSteps.push(async () => ok(presets('newer')))
+  await model.reconcile(['presets'])
+
+  assert.equal(model.getProfileRevision(), undefined)
+  const before = remote.calls.profileMutation
+  const result = await model.mutations.setProfileName('main', 'Should not write')
+
+  assert.equal(result.status, 'rejected')
+  assert.equal(
+    result.status === 'rejected' && result.error.kind === 'precondition'
+      ? result.error.code
+      : undefined,
+    'profile-revision-unavailable',
+  )
+  assert.equal(remote.calls.profileMutation, before)
+
+  detach()
+  model.dispose()
+})
+
+test('profile mutations are single-flight and do not silently queue or rebase', async () => {
+  const { model, remote, detach } = await attachAndReady()
+  const gate = deferred<
+    RemoteResult<ContextManagerRemoteResult<ContextManagerRemoteProfilesSnapshot>>
+  >()
+
+  remote.profileMutationSteps.push(async () => gate.promise)
+  remote.changesSteps.push(
+    async () => ok(changes('host-a', 2, 2, 2, 2)),
+    async () => ok(changes('host-a', 2, 2, 2, 2)),
+  )
+  remote.profilesSteps.push(async () => ok(profiles(8)))
+
+  const first = model.mutations.setProfileName('main', 'First')
+  await waitFor(() => remote.calls.profileMutation === 1, 'first mutation to start')
+
+  const second = await model.mutations.setProfileDescription('main', 'Second')
+  assert.equal(second.status, 'rejected')
+  assert.equal(
+    second.status === 'rejected' && second.error.kind === 'precondition'
+      ? second.error.code
+      : undefined,
+    'busy',
+  )
+  assert.equal(remote.calls.profileMutation, 1)
+
+  gate.resolve(ok(businessOk(profiles(8))))
+  assert.deepEqual(await first, { status: 'applied', refresh: 'fresh' })
+  assert.equal(remote.calls.profileMutation, 1)
+
+  detach()
+  model.dispose()
+})
+
+test('profile conflict is never retried and preserves conflict revisions while refreshing reads', async () => {
+  const { model, remote, detach } = await attachAndReady()
+
+  remote.profileMutationSteps.push(async () => ok(businessFail(
+    'profile-conflict',
+    'conflict',
+    { expected: 7, actual: 8 },
+  )))
+  remote.changesSteps.push(
+    async () => ok(changes('host-a', 2, 2, 2, 2)),
+    async () => ok(changes('host-a', 2, 2, 2, 2)),
+  )
+  remote.profilesSteps.push(async () => ok(profiles(8)))
+
+  const result = await model.mutations.setProfileName('main', 'Conflicting')
+
+  assert.equal(result.status, 'rejected')
+  assert.equal(
+    result.status === 'rejected' && result.error.kind === 'business'
+      ? result.error.code
+      : undefined,
+    'profile-conflict',
+  )
+  assert.equal(
+    result.status === 'rejected' && result.error.kind === 'business'
+      ? result.error.expectedRevision
+      : undefined,
+    7,
+  )
+  assert.equal(
+    result.status === 'rejected' && result.error.kind === 'business'
+      ? result.error.actualRevision
+      : undefined,
+    8,
+  )
+  assert.equal(result.status === 'rejected' ? result.refresh : undefined, 'fresh')
+  assert.equal(remote.calls.profileMutation, 1)
+  assert.equal(model.getProfileRevision(), 8)
+
+  detach()
+  model.dispose()
+})
+
+test('known business refusal stays isolated from authoritative read surfaces', async () => {
+  const { model, remote, detach } = await attachAndReady()
+  remote.profileMutationSteps.push(async () => ok(businessFail('persistence-read-only')))
+
+  const result = await model.mutations.setProfileName('main', 'Denied')
+  const snapshot = model.state.getSnapshot()
+
+  assert.equal(result.status, 'rejected')
+  assert.equal(
+    result.status === 'rejected' && result.error.kind === 'business'
+      ? result.error.code
+      : undefined,
+    'persistence-read-only',
+  )
+  assert.equal(result.status === 'rejected' ? result.refresh : undefined, 'not-requested')
+  assert.equal(snapshot.profiles.status, 'ready')
+  assert.equal(snapshot.profiles.stale, false)
+  assert.equal(model.getProfileRevision(), 7)
+
+  detach()
+  model.dispose()
+})
+
+test('transport failure is outcome-unknown, safety-refreshes, and never retries the write', async () => {
+  const { model, remote, detach } = await attachAndReady()
+
+  remote.profileMutationSteps.push(async () => fail('gateway-lost', 'gateway lost'))
+  remote.changesSteps.push(
+    async () => ok(changes('host-a', 2, 2, 2, 2)),
+    async () => ok(changes('host-a', 2, 2, 2, 2)),
+  )
+  remote.profilesSteps.push(async () => ok(profiles(8)))
+
+  const result = await model.mutations.setProfileName('main', 'Uncertain')
+
+  assert.equal(result.status, 'unknown')
+  assert.equal(
+    result.status === 'unknown' && result.error.kind === 'remote'
+      ? result.error.code
+      : undefined,
+    'gateway-lost',
+  )
+  assert.equal(result.status === 'unknown' ? result.refresh : undefined, 'fresh')
+  assert.equal(remote.calls.profileMutation, 1)
+  assert.equal(model.getProfileRevision(), 8)
+
+  detach()
+  model.dispose()
+})
+
+test('confirmed mutation success remains applied when rehydration degrades', async () => {
+  const { model, remote, detach } = await attachAndReady()
+
+  remote.profileMutationSteps.push(async () => ok(businessOk(profiles(8))))
+  remote.changesSteps.push(async () => fail('rehydration-failed'))
+
+  const result = await model.mutations.setProfileName('main', 'Applied')
+
+  assert.deepEqual(result, { status: 'applied', refresh: 'degraded' })
+  assert.equal(remote.calls.profileMutation, 1)
+
+  detach()
+  model.dispose()
+})
+
+test('detach resets mutation state and a late confirmed completion cannot republish old operation state', async () => {
+  const { model, remote, detach } = await attachAndReady()
+  const gate = deferred<
+    RemoteResult<ContextManagerRemoteResult<ContextManagerRemoteProfilesSnapshot>>
+  >()
+  remote.profileMutationSteps.push(async () => gate.promise)
+
+  const mutation = model.mutations.setProfileName('main', 'Late')
+  await waitFor(() => remote.calls.profileMutation === 1, 'mutation to start')
+  assert.equal(model.mutations.state.getSnapshot().profile.status, 'running')
+
+  detach()
+  assert.equal(model.mutations.state.getSnapshot().profile.status, 'idle')
+
+  gate.resolve(ok(businessOk(profiles(8))))
+  assert.deepEqual(await mutation, { status: 'applied', refresh: 'degraded' })
+  assert.equal(model.mutations.state.getSnapshot().profile.status, 'idle')
+
   model.dispose()
 })
 
