@@ -364,6 +364,69 @@ test('a late older refresh cannot overwrite a newer refresh of the same surface'
   model.dispose()
 })
 
+test('a late older protocol failure cannot overwrite a newer successful reconcile', async () => {
+  const { model, remote, detach } = await attachAndReady()
+
+  const gate = deferred<RemoteResult<ContextManagerRemoteProtocol>>()
+  remote.protocolSteps.push(
+    async () => gate.promise,
+    async () => ok({ apiVersion: CONTEXT_MANAGER_REMOTE_API_VERSION }),
+  )
+  remote.profilesSteps.push(async () => ok(profiles(22)))
+
+  const first = model.reconcile(['presets'])
+  await waitFor(
+    () => remote.calls.protocol >= 2,
+    'older reconcile protocol check to start',
+  )
+
+  const second = model.reconcile(['profiles'])
+  await second
+
+  assert.equal(model.getProfileRevision(), 22)
+  assert.equal(model.state.getSnapshot().protocol.status, 'compatible')
+  assert.equal(model.state.getSnapshot().sync.status, 'syncing')
+
+  gate.resolve(fail('old-protocol-failure'))
+  await first
+
+  const snapshot = model.state.getSnapshot()
+  assert.equal(snapshot.protocol.status, 'compatible')
+  assert.equal(snapshot.sync.status, 'idle')
+  assert.equal(model.getProfileRevision(), 22)
+
+  detach()
+  model.dispose()
+})
+
+test('sync stays syncing until the last overlapping reconcile settles', async () => {
+  const { model, remote, detach } = await attachAndReady()
+
+  const gate = deferred<RemoteResult<ContextManagerRemotePresetSnapshot>>()
+  remote.presetsSteps.push(async () => gate.promise)
+  remote.profilesSteps.push(async () => ok(profiles(33)))
+
+  const slow = model.reconcile(['presets'])
+  await waitFor(
+    () => remote.calls.presets >= 2,
+    'slow preset read to start',
+  )
+
+  const fast = model.reconcile(['profiles'])
+  await fast
+
+  assert.equal(model.getProfileRevision(), 33)
+  assert.equal(model.state.getSnapshot().sync.status, 'syncing')
+
+  gate.resolve(ok(presets('settled')))
+  await slow
+
+  assert.equal(model.state.getSnapshot().sync.status, 'idle')
+
+  detach()
+  model.dispose()
+})
+
 test('detach invalidates an in-flight batch and leaves no data-less surface stuck loading', async () => {
   const model = createContextManagerClientModel()
   const remote = new ScriptedRemote()
