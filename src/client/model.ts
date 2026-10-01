@@ -152,6 +152,25 @@ function readySurface<T>(data: T): ContextManagerClientSurface<T> {
   }
 }
 
+function detachedSurface<T>(
+  current: ContextManagerClientSurface<T>,
+): ContextManagerClientSurface<T> {
+  if (current.data === undefined) return idleSurface()
+  if (current.status === 'error' && current.error !== undefined) {
+    return {
+      status: 'error',
+      stale: true,
+      data: current.data,
+      error: current.error,
+    }
+  }
+  return {
+    status: 'ready',
+    stale: true,
+    data: current.data,
+  }
+}
+
 export function createContextManagerClientModel(): ContextManagerClientModel {
   const state = createSnapshotStore<ContextManagerClientSnapshot>(initialSnapshot())
 
@@ -198,7 +217,7 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
     const current = state.getSnapshot()
     state.set({
       ...current,
-      ...(instanceId === undefined ? {} : { instanceId }),
+      instanceId,
       changes: undefined,
       profiles: idleSurface(),
       presets: idleSurface(),
@@ -499,15 +518,9 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
         attachment: 'attached',
         protocol: { status: 'unchecked' },
         sync: { status: 'idle' },
-        profiles: current.profiles.data === undefined
-          ? current.profiles
-          : { ...current.profiles, stale: true },
-        presets: current.presets.data === undefined
-          ? current.presets
-          : { ...current.presets, stale: true },
-        promptPlacement: current.promptPlacement.data === undefined
-          ? current.promptPlacement
-          : { ...current.promptPlacement, stale: true },
+        profiles: detachedSurface(current.profiles),
+        presets: detachedSurface(current.presets),
+        promptPlacement: detachedSurface(current.promptPlacement),
       })
     }
 
@@ -524,15 +537,9 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
         attachment: 'detached',
         protocol: { status: 'unchecked' },
         sync: { status: 'idle' },
-        profiles: current.profiles.data === undefined
-          ? current.profiles
-          : { ...current.profiles, stale: true },
-        presets: current.presets.data === undefined
-          ? current.presets
-          : { ...current.presets, stale: true },
-        promptPlacement: current.promptPlacement.data === undefined
-          ? current.promptPlacement
-          : { ...current.promptPlacement, stale: true },
+        profiles: detachedSurface(current.profiles),
+        presets: detachedSurface(current.presets),
+        promptPlacement: detachedSurface(current.promptPlacement),
       })
     }
   }
