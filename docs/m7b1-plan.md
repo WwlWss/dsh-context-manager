@@ -1,6 +1,6 @@
 # M7B1 — Authoritative Client Model
 
-**Status:** B1-0 contract normalization is merged. This document freezes the B1-1 implementation contract only.
+**Status:** B1-1 is complete in merged PR #27. B1-2 presentation/hook bridging and B1-3 PromptResource/keyed lazy Client surfaces remain pending.
 
 ## Goal
 
