@@ -41,6 +41,7 @@ type ReadOutcome<T> =
   | { readonly ok: false; readonly error: ContextManagerClientReadError }
 
 type SurfaceEpochs = Record<ContextManagerClientBaselineSurface, number>
+type SurfaceRuns = Record<ContextManagerClientBaselineSurface, number>
 
 type AuthorityTransition =
   | { readonly status: 'same' }
@@ -176,6 +177,16 @@ function readySurface<T>(data: T): ContextManagerClientSurface<T> {
   }
 }
 
+function markSurfaceStale<T>(
+  current: ContextManagerClientSurface<T>,
+): ContextManagerClientSurface<T> {
+  if (current.stale || current.data === undefined) return current
+  return {
+    ...current,
+    stale: true,
+  }
+}
+
 function detachedSurface<T>(
   current: ContextManagerClientSurface<T>,
 ): ContextManagerClientSurface<T> {
@@ -202,6 +213,11 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
   let disposed = false
   let attachmentEpoch = 0
   const surfaceEpochs: SurfaceEpochs = {
+    profiles: 0,
+    presets: 0,
+    promptPlacement: 0,
+  }
+  const surfaceOwnerRuns: SurfaceRuns = {
     profiles: 0,
     presets: 0,
     promptPlacement: 0,
@@ -336,8 +352,9 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
     })
   }
 
-  const invalidateAllSurfaceEpochs = (): void => {
+  const resetSurfaceOwnership = (): void => {
     for (const surface of CONTEXT_MANAGER_BASELINE_SURFACES) {
+      surfaceOwnerRuns[surface] = 0
       surfaceEpochs[surface] += 1
     }
   }
@@ -350,7 +367,7 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
     latestCompletedRun = 0
     latestCompletedError = undefined
     protocolOwnerRun = 0
-    invalidateAllSurfaceEpochs()
+    resetSurfaceOwnership()
     const current = state.getSnapshot()
     state.set({
       ...current,
@@ -393,17 +410,29 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
 
     const current = state.getSnapshot()
     if (current.instanceId !== next.instanceId) return
+
+    const previous = current.changes
     if (
-      current.changes !== undefined
-      && current.changes.instanceId === next.instanceId
-      && current.changes.generation > next.generation
+      previous !== undefined
+      && previous.instanceId === next.instanceId
+      && previous.generation > next.generation
     ) {
       return
     }
 
+    const sameInstance = previous?.instanceId === next.instanceId
     state.set({
       ...current,
       changes: next,
+      profiles: sameInstance && previous.profiles !== next.profiles
+        ? markSurfaceStale(current.profiles)
+        : current.profiles,
+      presets: sameInstance && previous.presets !== next.presets
+        ? markSurfaceStale(current.presets)
+        : current.presets,
+      promptPlacement: sameInstance && previous.runtime !== next.runtime
+        ? markSurfaceStale(current.promptPlacement)
+        : current.promptPlacement,
     })
   }
 
@@ -419,12 +448,20 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
     )
   }
 
-  const reserveRequestedSurfaces = (
+  const claimRequestedSurfaces = (
     scopes: readonly ContextManagerClientBaselineSurface[],
+    run: number,
   ): Partial<SurfaceEpochs> => {
     const tokens: Partial<SurfaceEpochs> = {}
     for (const surface of scopes) {
-      surfaceEpochs[surface] += 1
+      const owner = surfaceOwnerRuns[surface]
+      if (run < owner) continue
+
+      if (run > owner) {
+        surfaceOwnerRuns[surface] = run
+        surfaceEpochs[surface] += 1
+      }
+
       tokens[surface] = surfaceEpochs[surface]
     }
     return tokens
@@ -558,7 +595,7 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
     let authority = authorityEpoch
     const currentRemote = remote
     const run = beginReconcileRun(attachment)
-    let tokens = reserveRequestedSurfaces(attempted)
+    let tokens: Partial<SurfaceEpochs> = {}
     let authorityRestarts = 0
 
     const detachedResult = (): ContextManagerClientReconcileResult => (
@@ -579,7 +616,7 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
 
       authority = transition.authority
       authorityRestarts += 1
-      tokens = reserveRequestedSurfaces(attempted)
+      tokens = {}
       return 'changed'
     }
 
@@ -588,7 +625,8 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
         kind: 'unstable-authority',
         attempts: MAX_AUTHORITY_RESTARTS,
       }
-      failScopes(attachment, authority, attempted, tokens, unstable)
+      const failureTokens = claimRequestedSurfaces(attempted, run)
+      failScopes(attachment, authority, attempted, failureTokens, unstable)
       completeReconcileRun(attachment, authority, run, unstable)
       return { status: 'completed', attempted }
     }
@@ -620,6 +658,7 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
           if (!isProtocolOwner(attachment, authority, run)) {
             return completeSupersededRun()
           }
+          tokens = claimRequestedSurfaces(attempted, run)
           failScopes(attachment, authority, attempted, tokens, protocol.error)
           completeReconcileRun(attachment, authority, run, protocol.error)
           return { status: 'completed', attempted }
@@ -641,7 +680,7 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
           break
       }
 
-      let pending = [...attempted]
+      let pending: ContextManagerClientBaselineSurface[] | undefined
 
       for (let attempt = 1; attempt <= MAX_STABILIZATION_ATTEMPTS; attempt += 1) {
         const before = await invokeRead(() => currentRemote.changes())
@@ -653,7 +692,8 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
           return completeSupersededRun()
         }
         if (!before.ok) {
-          failScopes(attachment, authority, pending, tokens, before.error)
+          const failureTokens = claimRequestedSurfaces(attempted, run)
+          failScopes(attachment, authority, attempted, failureTokens, before.error)
           completeReconcileRun(attachment, authority, run, before.error)
           return { status: 'completed', attempted }
         }
@@ -676,13 +716,23 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
         }
 
         adoptChanges(attachment, authority, before.value)
+
+        if (pending === undefined) {
+          tokens = claimRequestedSurfaces(attempted, run)
+          pending = attempted.filter(surface => tokens[surface] !== undefined)
+          if (pending.length === 0) {
+            return completeSupersededRun()
+          }
+        }
+
         markScopesLoading(attachment, authority, pending, tokens)
 
+        const activePending = pending
         const reads = new Map<
           ContextManagerClientBaselineSurface,
           ReadOutcome<BaselineSurfaceMap[ContextManagerClientBaselineSurface]>
         >()
-        await Promise.all(pending.map(async surface => {
+        await Promise.all(activePending.map(async surface => {
           reads.set(surface, await readSurface(currentRemote, surface))
         }))
 
@@ -703,7 +753,7 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
           return completeSupersededRun()
         }
         if (!after.ok) {
-          failScopes(attachment, authority, pending, tokens, after.error)
+          failScopes(attachment, authority, activePending, tokens, after.error)
           completeReconcileRun(attachment, authority, run, after.error)
           return { status: 'completed', attempted }
         }
@@ -728,7 +778,7 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
         adoptChanges(attachment, authority, after.value)
 
         const retry: ContextManagerClientBaselineSurface[] = []
-        for (const surface of pending) {
+        for (const surface of activePending) {
           const token = tokens[surface]
           if (
             token === undefined
@@ -756,7 +806,7 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
         }
 
         pending = retry
-        if (pending.length === 0) {
+        if (retry.length === 0) {
           completeReconcileRun(attachment, authority, run)
           return { status: 'completed', attempted }
         }
@@ -766,7 +816,7 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
         kind: 'unstable-snapshot',
         attempts: MAX_STABILIZATION_ATTEMPTS,
       }
-      failScopes(attachment, authority, pending, tokens, unstable)
+      failScopes(attachment, authority, pending ?? [], tokens, unstable)
 
       completeReconcileRun(attachment, authority, run, unstable)
       return { status: 'completed', attempted }
@@ -782,6 +832,7 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
     const attachedEpoch = attachmentEpoch
     remote = nextRemote
     resetRunBookkeeping()
+    resetSurfaceOwnership()
 
     {
       const current = state.getSnapshot()
@@ -803,7 +854,7 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
       attachmentEpoch += 1
       remote = undefined
       resetRunBookkeeping()
-      invalidateAllSurfaceEpochs()
+      resetSurfaceOwnership()
       const current = state.getSnapshot()
       state.set({
         ...current,
@@ -835,7 +886,7 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
     attachmentEpoch += 1
     remote = undefined
     resetRunBookkeeping()
-    invalidateAllSurfaceEpochs()
+    resetSurfaceOwnership()
     const current = state.getSnapshot()
     state.set({
       ...current,

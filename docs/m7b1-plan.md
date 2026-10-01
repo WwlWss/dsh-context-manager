@@ -104,11 +104,13 @@ The stable snapshot contains:
 
 Each surface owns `status`, `stale`, optional authoritative `data`, and optional read error. A failed read does not poison unrelated surfaces.
 
+Whenever an accepted `changes` snapshot advances the cursor for a baseline surface, cached fresh data for that surface becomes stale in the same store publication, even when the surface is not part of the current reconcile. The data is retained; only a stable authoritative read at the latest cursor restores `stale: false`. A newer global generation alone does not stale a surface whose own cursor is unchanged.
+
 Transient refresh failure may retain previous data as stale. A Host `instanceId` change clears all authoritative caches because data from the old Host instance is no longer valid.
 
 ## Stable hydration
 
-A reconcile reserves per-surface epochs immediately so a newer refresh of the same surface supersedes older completions, but it does not mark a surface `loading` until the protocol guard and current Host authority have been established.
+Starting a reconcile records refresh intent but does not immediately claim surface publication ownership. After a locally usable protocol guard and confirmation of the current Host authority, the reconcile claims requested surfaces in reconcile-run order. A later run may supersede an earlier surface owner; an earlier delayed run may never reclaim a surface from a higher run. Surface ownership is reset only at attachment or Host-authority lifetime boundaries, not when an owner merely completes.
 
 Protocol compatibility and cursor stabilization are separate loops:
 
@@ -116,15 +118,16 @@ Protocol compatibility and cursor stabilization are separate loops:
 2. read `before = changes()`;
 3. if `before.instanceId` is the first observed Host lifetime or differs from the adopted one, perform a compare-and-swap authority transition that clears every authoritative cache and the old protocol verdict, then restart from `protocol()`;
 4. only a reconcile whose captured authority epoch is still current may perform that transition; a stale reconcile exits instead of rebasing itself onto the newer authority;
-5. once the same `instanceId` survives the protocol -> `changes()` boundary, adopt the change hint, mark only still-current requested surfaces `loading`, and read those authoritative surfaces in parallel;
-6. re-check attachment and authority before issuing the closing `changes()`;
-7. if the Host lifetime changes during the bracket, clear the batch and restart from the protocol guard;
-8. adopt a read only when its relevant cursor is stable across its own bracket and still equals the latest adopted cursor for that surface; a newer unrelated generation does not invalidate a surface whose own cursor is unchanged;
-9. apply the same current-cursor fence before publishing either successful data or a read error, so a failure from an already superseded cursor is retried instead of becoming the current surface error;
-10. retry only cursor-unstable or no-longer-current surfaces, for at most three cursor-stabilization attempts;
-11. bound repeated Host-lifetime replacement separately; three consecutive authority restarts become an `unstable-authority` read error rather than an unbounded reconcile loop.
+5. once the same `instanceId` survives the protocol -> `changes()` boundary, adopt the change hint, atomically marking any cached baseline surface stale when that surface's accepted cursor advanced, even if the surface was not requested by this reconcile;
+6. claim only requested surfaces whose latest owner run is not newer than this reconcile; the claim issues the surface completion token, then those claimed surfaces enter `loading` and are read in parallel;
+7. re-check attachment and authority before issuing the closing `changes()`;
+8. if the Host lifetime changes during the bracket, clear the batch and restart from the protocol guard with surface ownership reset for the new authority;
+9. adopt a read only when its relevant cursor is stable across its own bracket and still equals the latest adopted cursor for that surface; a newer unrelated generation does not invalidate a surface whose own cursor is unchanged;
+10. apply the same current-cursor fence before publishing either successful data or a read error, so a failure from an already superseded cursor is retried instead of becoming the current surface error;
+11. retry only cursor-unstable or no-longer-current surfaces, for at most three cursor-stabilization attempts;
+12. bound repeated Host-lifetime replacement separately; three consecutive authority restarts become an `unstable-authority` read error rather than an unbounded reconcile loop.
 
-Global protocol publication is owned by the newest reconcile run for the current attachment and Host authority, not by the physically latest RPC attempt. A superseded older run may retry negative protocol results locally for at most three attempts and may use a later compatible result as its own local proof, but it cannot publish `checking`, `compatible`, `error`, or `incompatible` over a newer run. If ownership changes in the helper-to-consumer continuation gap, the older negative result yields instead of restarting an unbounded outer loop. Protocol failure occurs before surfaces enter `loading`; the reserved surface epochs are then failed directly, retaining any previous data as stale.
+Global protocol publication is owned by the newest reconcile run for the current attachment and Host authority, not by the physically latest RPC attempt. A superseded older run may retry negative protocol results locally for at most three attempts and may use a later compatible result as its own local proof, but it cannot publish `checking`, `compatible`, `error`, or `incompatible` over a newer run. If ownership changes in the helper-to-consumer continuation gap, the older negative result yields instead of restarting an unbounded outer loop. A superseded protocol run never claims surface ownership. A current terminal protocol/read failure claims its requested surfaces in run order before publishing errors, so older same-surface completions cannot overwrite the terminal outcome.
 
 Cursor mapping:
 
@@ -140,7 +143,7 @@ Use four related guards:
 
 - one attachment epoch for Remote attach/detach/replacement;
 - one authority epoch for Host `instanceId` ownership;
-- one epoch per baseline surface for data adoption;
+- one epoch plus a latest-owner reconcile run per baseline surface for data adoption;
 - reconcile-run bookkeeping for global `sync` / protocol publication.
 
 A surface completion may publish only when:
@@ -152,7 +155,7 @@ A surface completion may publish only when:
 - its own before/after cursor is stable;
 - the latest adopted `changes` snapshot still carries the same cursor for that surface.
 
-A newer refresh of one surface must not cancel unrelated in-flight surfaces. Global `sync` stays `syncing` until the last overlapping reconcile settles. Global protocol state is similarly run-owned: once a newer reconcile has taken protocol ownership for the current authority, an older reconcile may finish local work but cannot reclaim protocol publication through a later retry. An older or stale-authority reconcile therefore cannot overwrite the protocol/sync result of a newer authoritative run.
+A newer refresh of one surface must not cancel unrelated in-flight surfaces. A reconcile that has not yet passed its protocol/authority gate cannot cancel an existing same-surface owner merely by starting, and an older delayed reconcile cannot reclaim a surface after a higher run has claimed it. Global `sync` stays `syncing` until the last overlapping reconcile settles. Global protocol state is similarly run-owned: once a newer reconcile has taken protocol ownership for the current authority, an older reconcile may finish local work but cannot reclaim protocol publication through a later retry. An older or stale-authority reconcile therefore cannot overwrite the protocol/sync result of a newer authoritative run.
 
 Host identity changes use compare-and-swap semantics: only the reconcile that still owns its captured authority epoch may create the next epoch. A completion from an older authority must exit; it must never assign itself the newer epoch and continue. Protocol verdicts are Host-lifetime facts, so every authority transition clears the old verdict and requires a new guard before business reads.
 
