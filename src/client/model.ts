@@ -568,15 +568,9 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
       attachment: 'detached',
       protocol: { status: 'unchecked' },
       sync: { status: 'idle' },
-      profiles: current.profiles.data === undefined
-        ? current.profiles
-        : { ...current.profiles, stale: true },
-      presets: current.presets.data === undefined
-        ? current.presets
-        : { ...current.presets, stale: true },
-      promptPlacement: current.promptPlacement.data === undefined
-        ? current.promptPlacement
-        : { ...current.promptPlacement, stale: true },
+      profiles: detachedSurface(current.profiles),
+      presets: detachedSurface(current.presets),
+      promptPlacement: detachedSurface(current.promptPlacement),
     })
   }
 
