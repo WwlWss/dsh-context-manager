@@ -229,8 +229,12 @@ test('stable bracket adopts all baseline surfaces and only persistence revision 
 test('cursor instability retries only the affected surface', async () => {
   const remote = new ScriptedRemote()
   remote.changesSteps.push(
+    // Initial authority discovery; the model must then re-run protocol().
+    async () => ok(changes('host-a', 1, 1, 1, 1)),
+    // First authoritative bracket: profiles changes during the read.
     async () => ok(changes('host-a', 1, 1, 1, 1)),
     async () => ok(changes('host-a', 2, 2, 1, 1)),
+    // Retry bracket is stable and only re-reads profiles.
     async () => ok(changes('host-a', 2, 2, 1, 1)),
     async () => ok(changes('host-a', 2, 2, 1, 1)),
   )
@@ -290,8 +294,12 @@ test('a changes failure prevents bracket data from being adopted', async () => {
 test('Host instance change during hydration clears the old batch and rehydrates from the new instance', async () => {
   const remote = new ScriptedRemote()
   remote.changesSteps.push(
+    // Discover and protocol-confirm Host A.
     async () => ok(changes('host-a', 1, 1, 1, 1)),
+    async () => ok(changes('host-a', 1, 1, 1, 1)),
+    // Host changes after the A surface reads, invalidating that batch.
     async () => ok(changes('host-b', 1, 1, 1, 1)),
+    // Protocol-confirmed Host B bracket.
     async () => ok(changes('host-b', 1, 1, 1, 1)),
     async () => ok(changes('host-b', 1, 1, 1, 1)),
   )
@@ -321,6 +329,140 @@ test('Host instance change during hydration clears the old batch and rehydrates 
   assert.equal(remote.calls.profiles, 2)
   assert.equal(remote.calls.presets, 2)
   assert.equal(remote.calls.promptPlacement, 2)
+
+  detach()
+  model.dispose()
+})
+
+test('initial Host authority is protocol-guarded again before any business read', async () => {
+  const remote = new ScriptedRemote()
+  remote.protocolSteps.push(
+    async () => ok({ apiVersion: CONTEXT_MANAGER_REMOTE_API_VERSION }),
+    async () => ok({ apiVersion: CONTEXT_MANAGER_REMOTE_API_VERSION + 1 }),
+  )
+  remote.changesSteps.push(
+    async () => ok(changes('host-b', 1, 1, 1, 1)),
+  )
+
+  const { model, detach } = await attachAndReady(remote)
+  const snapshot = model.state.getSnapshot()
+
+  assert.equal(remote.calls.protocol, 2)
+  assert.equal(remote.calls.changes, 1)
+  assert.equal(remote.calls.profiles, 0)
+  assert.equal(remote.calls.presets, 0)
+  assert.equal(remote.calls.promptPlacement, 0)
+  assert.equal(snapshot.instanceId, undefined)
+  assert.deepEqual(snapshot.protocol, {
+    status: 'incompatible',
+    expected: CONTEXT_MANAGER_REMOTE_API_VERSION,
+    actual: CONTEXT_MANAGER_REMOTE_API_VERSION + 1,
+  })
+
+  detach()
+  model.dispose()
+})
+
+test('Host replacement after protocol cannot adopt new-Host data without a new protocol guard', async () => {
+  const { model, remote, detach } = await attachAndReady()
+  const initialProfileCalls = remote.calls.profiles
+
+  remote.protocolSteps.push(
+    async () => ok({ apiVersion: CONTEXT_MANAGER_REMOTE_API_VERSION }),
+    async () => ok({ apiVersion: CONTEXT_MANAGER_REMOTE_API_VERSION + 1 }),
+  )
+  remote.changesSteps.push(
+    async () => ok(changes('host-b', 1, 1, 1, 1)),
+  )
+
+  const result = await model.reconcile(['profiles'])
+  const snapshot = model.state.getSnapshot()
+
+  assert.equal(result.status, 'incompatible')
+  assert.equal(remote.calls.profiles, initialProfileCalls)
+  assert.equal(snapshot.instanceId, undefined)
+  assert.equal(snapshot.profiles.status, 'idle')
+  assert.deepEqual(snapshot.protocol, {
+    status: 'incompatible',
+    expected: CONTEXT_MANAGER_REMOTE_API_VERSION,
+    actual: CONTEXT_MANAGER_REMOTE_API_VERSION + 1,
+  })
+
+  detach()
+  model.dispose()
+})
+
+test('a stale old-Host changes completion cannot reclaim authority after Host replacement', async () => {
+  const { model, remote, detach } = await attachAndReady()
+  const staleChanges = deferred<RemoteResult<ContextManagerRemoteChangeSnapshot>>()
+  const baseChangesCalls = remote.calls.changes
+
+  remote.changesSteps.push(
+    async () => staleChanges.promise,
+    async () => ok(changes('host-b', 1, 1, 1, 1)),
+    async () => ok(changes('host-b', 1, 1, 1, 1)),
+    async () => ok(changes('host-b', 1, 1, 1, 1)),
+  )
+  remote.profilesSteps.push(async () => ok(profiles(44)))
+
+  const stale = model.reconcile(['presets'])
+  await waitFor(
+    () => remote.calls.changes === baseChangesCalls + 1,
+    'stale old-Host changes read to start',
+  )
+
+  const fresh = model.reconcile(['profiles'])
+  await fresh
+
+  let snapshot = model.state.getSnapshot()
+  assert.equal(snapshot.instanceId, 'host-b')
+  assert.equal(model.getProfileRevision(), 44)
+
+  staleChanges.resolve(ok(changes('host-a', 2, 2, 2, 2)))
+  await stale
+
+  snapshot = model.state.getSnapshot()
+  assert.equal(snapshot.instanceId, 'host-b')
+  assert.equal(model.getProfileRevision(), 44)
+  assert.equal(snapshot.presets.status, 'idle')
+  assert.equal(snapshot.protocol.status, 'compatible')
+
+  detach()
+  model.dispose()
+})
+
+test('a superseded incompatible protocol result retries without leaving a disjoint surface loading', async () => {
+  const { model, remote, detach } = await attachAndReady()
+  const staleProtocol = deferred<RemoteResult<ContextManagerRemoteProtocol>>()
+  const baseProtocolCalls = remote.calls.protocol
+
+  remote.protocolSteps.push(
+    async () => staleProtocol.promise,
+    async () => ok({ apiVersion: CONTEXT_MANAGER_REMOTE_API_VERSION }),
+    async () => ok({ apiVersion: CONTEXT_MANAGER_REMOTE_API_VERSION }),
+  )
+
+  const stale = model.reconcile(['presets'])
+  await waitFor(
+    () => remote.calls.protocol === baseProtocolCalls + 1,
+    'stale protocol check to start',
+  )
+
+  const fresh = model.reconcile(['profiles'])
+  await fresh
+  assert.equal(model.state.getSnapshot().protocol.status, 'compatible')
+
+  staleProtocol.resolve(ok({
+    apiVersion: CONTEXT_MANAGER_REMOTE_API_VERSION + 1,
+  }))
+  await stale
+
+  const snapshot = model.state.getSnapshot()
+  assert.equal(snapshot.protocol.status, 'compatible')
+  assert.equal(snapshot.profiles.status, 'ready')
+  assert.equal(snapshot.presets.status, 'ready')
+  assert.equal(snapshot.presets.stale, false)
+  assert.equal(snapshot.sync.status, 'idle')
 
   detach()
   model.dispose()

@@ -212,3 +212,71 @@ test('M7B0 loader artifact mounts Remote and locale before registering two addit
     'remote:dispose',
   ])
 })
+
+
+test('M7B1 client artifact rolls back a mounted Remote when child model fiber creation throws', async () => {
+  let registration
+  const previousWindow = globalThis.window
+  globalThis.window = {
+    __ModuleLoader__: {
+      load(value) {
+        registration = value
+      },
+    },
+  }
+
+  try {
+    await import(pathToFileURL(clientPath).href + '?m7b1-child-create-rollback')
+  } finally {
+    if (previousWindow === undefined) delete globalThis.window
+    else globalThis.window = previousWindow
+  }
+
+  assert.ok(registration)
+  const plugin = registration.factory((specifier) => {
+    assert.equal(specifier, 'react')
+    return fakeReact()
+  })
+
+  const lifecycle = []
+  const remote = {
+    contextManager: contextManagerRemoteFace(),
+    async $mount() {
+      lifecycle.push('remote:mount')
+      return async () => { lifecycle.push('remote:dispose') }
+    },
+  }
+  const ctx = {
+    remote,
+    plugin() {
+      lifecycle.push('model:plugin')
+      throw new Error('child model setup failed')
+    },
+    locale: {
+      register() {
+        throw new Error('locale must not register after child setup failure')
+      },
+      bind() {
+        throw new Error('locale must not bind after child setup failure')
+      },
+    },
+    slots: {
+      inject() {
+        throw new Error('slots must not inject after child setup failure')
+      },
+      register() {
+        throw new Error('slots must not register after child setup failure')
+      },
+    },
+  }
+
+  await assert.rejects(
+    plugin.apply(ctx),
+    /child model setup failed/,
+  )
+  assert.deepEqual(lifecycle, [
+    'remote:mount',
+    'model:plugin',
+    'remote:dispose',
+  ])
+})
