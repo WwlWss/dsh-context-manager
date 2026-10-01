@@ -183,6 +183,7 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
     promptPlacement: 0,
   }
   let reconcileRunEpoch = 0
+  let authorityEpoch = 0
   const activeReconcileRuns = new Set<number>()
   let latestCompletedRun = 0
   let latestCompletedError: ContextManagerClientReadError | undefined
@@ -223,11 +224,12 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
 
   const completeReconcileRun = (
     attachment: number,
+    authority: number,
     run: number,
     error?: ContextManagerClientReadError,
   ): void => {
     activeReconcileRuns.delete(run)
-    if (run > latestCompletedRun) {
+    if (authority === authorityEpoch && run > latestCompletedRun) {
       latestCompletedRun = run
       latestCompletedError = error
     }
@@ -265,10 +267,15 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
 
   const publishProtocol = (
     attachment: number,
+    authority: number,
     token: number,
     protocol: ContextManagerClientSnapshot['protocol'],
   ): void => {
-    if (!isAttachmentCurrent(attachment) || protocolCheckEpoch !== token) return
+    if (
+      !isAttachmentCurrent(attachment)
+      || authority !== authorityEpoch
+      || protocolCheckEpoch !== token
+    ) return
     const current = state.getSnapshot()
     state.set({
       ...current,
@@ -294,6 +301,10 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
   }
 
   const clearAuthority = (instanceId?: string): void => {
+    authorityEpoch += 1
+    latestCompletedRun = 0
+    latestCompletedError = undefined
+    protocolCheckEpoch += 1
     invalidateAllSurfaceEpochs()
     const current = state.getSnapshot()
     state.set({
@@ -306,10 +317,11 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
     })
   }
 
-  const resetForInstance = (instanceId: string): void => {
+  const resetForInstance = (instanceId: string): boolean => {
     const current = state.getSnapshot()
-    if (current.instanceId === instanceId) return
+    if (current.instanceId === instanceId) return false
     clearAuthority(instanceId)
+    return true
   }
 
   const adoptChanges = (next: ContextManagerRemoteChangeSnapshot): void => {
@@ -393,6 +405,7 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
     if (attempted.length === 0) return { status: 'completed', attempted }
 
     const attachment = attachmentEpoch
+    let authority = authorityEpoch
     const currentRemote = remote
     const run = beginReconcileRun(attachment)
     const tokens = markRequestedLoading(attempted)
@@ -400,7 +413,7 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
 
     for (let attempt = 1; attempt <= MAX_STABILIZATION_ATTEMPTS; attempt += 1) {
       if (!isAttachmentCurrent(attachment)) {
-        completeReconcileRun(attachment, run)
+        completeReconcileRun(attachment, authority, run)
         return disposed
           ? { status: 'disposed', attempted }
           : { status: 'detached', attempted }
@@ -409,50 +422,51 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
       const protocolToken = beginProtocolCheck(attachment)
       const protocol = await invokeRead(() => currentRemote.protocol())
       if (!isAttachmentCurrent(attachment)) {
-        completeReconcileRun(attachment, run)
+        completeReconcileRun(attachment, authority, run)
         return disposed
           ? { status: 'disposed', attempted }
           : { status: 'detached', attempted }
       }
 
       if (!protocol.ok) {
-        publishProtocol(attachment, protocolToken, {
+        publishProtocol(attachment, authority, protocolToken, {
           status: 'error',
           error: protocol.error,
         })
         failScopes(attachment, pending, tokens, protocol.error)
-        completeReconcileRun(attachment, run, protocol.error)
+        completeReconcileRun(attachment, authority, run, protocol.error)
         return { status: 'completed', attempted }
       }
 
       if (protocol.value.apiVersion !== CONTEXT_MANAGER_REMOTE_API_VERSION) {
-        if (protocolCheckEpoch === protocolToken) {
+        if (protocolCheckEpoch === protocolToken && authority === authorityEpoch) {
           clearAuthority()
-          publishProtocol(attachment, protocolToken, {
+          authority = authorityEpoch
+          publishProtocol(attachment, authority, protocolToken, {
             status: 'incompatible',
             expected: CONTEXT_MANAGER_REMOTE_API_VERSION,
             actual: protocol.value.apiVersion,
           })
         }
-        completeReconcileRun(attachment, run)
+        completeReconcileRun(attachment, authority, run)
         return { status: 'incompatible', attempted }
       }
 
-      publishProtocol(attachment, protocolToken, {
+      publishProtocol(attachment, authority, protocolToken, {
         status: 'compatible',
         apiVersion: protocol.value.apiVersion,
       })
 
       const before = await invokeRead(() => currentRemote.changes())
       if (!isAttachmentCurrent(attachment)) {
-        completeReconcileRun(attachment, run)
+        completeReconcileRun(attachment, authority, run)
         return disposed
           ? { status: 'disposed', attempted }
           : { status: 'detached', attempted }
       }
       if (!before.ok) {
         failScopes(attachment, pending, tokens, before.error)
-        completeReconcileRun(attachment, run, before.error)
+        completeReconcileRun(attachment, authority, run, before.error)
         return { status: 'completed', attempted }
       }
 
@@ -460,7 +474,9 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
         state.getSnapshot().instanceId !== undefined
         && state.getSnapshot().instanceId !== before.value.instanceId
       ) {
-        resetForInstance(before.value.instanceId)
+        if (resetForInstance(before.value.instanceId)) {
+          authority = authorityEpoch
+        }
         retokenizeAfterReset(attempted, tokens)
         pending = [...attempted]
       } else if (state.getSnapshot().instanceId === undefined) {
@@ -482,19 +498,21 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
 
       const after = await invokeRead(() => currentRemote.changes())
       if (!isAttachmentCurrent(attachment)) {
-        completeReconcileRun(attachment, run)
+        completeReconcileRun(attachment, authority, run)
         return disposed
           ? { status: 'disposed', attempted }
           : { status: 'detached', attempted }
       }
       if (!after.ok) {
         failScopes(attachment, pending, tokens, after.error)
-        completeReconcileRun(attachment, run, after.error)
+        completeReconcileRun(attachment, authority, run, after.error)
         return { status: 'completed', attempted }
       }
 
       if (before.value.instanceId !== after.value.instanceId) {
-        resetForInstance(after.value.instanceId)
+        if (resetForInstance(after.value.instanceId)) {
+          authority = authorityEpoch
+        }
         retokenizeAfterReset(attempted, tokens)
         pending = [...attempted]
         adoptChanges(after.value)
@@ -527,7 +545,7 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
 
       pending = retry
       if (pending.length === 0) {
-        completeReconcileRun(attachment, run)
+        completeReconcileRun(attachment, authority, run)
         return { status: 'completed', attempted }
       }
     }
@@ -538,7 +556,7 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
     }
     failScopes(attachment, pending, tokens, unstable)
 
-    completeReconcileRun(attachment, run, unstable)
+    completeReconcileRun(attachment, authority, run, unstable)
     return { status: 'completed', attempted }
   }
 
