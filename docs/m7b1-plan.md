@@ -129,15 +129,21 @@ Change cursors are invalidation hints only and are never persistence revisions.
 
 ## Concurrency
 
-Use one attachment epoch plus one epoch per baseline surface.
+Use four related guards:
 
-A completion may publish only when:
+- one attachment epoch for Remote attach/detach/replacement;
+- one authority epoch for Host `instanceId` ownership;
+- one epoch per baseline surface for data adoption;
+- reconcile-run bookkeeping for global `sync` / protocol publication.
+
+A surface completion may publish only when:
 
 - the model is not disposed;
 - its attachment epoch is current;
+- its authority epoch is still current after any Host replacement;
 - its surface epoch is current.
 
-A newer refresh of one surface must not cancel unrelated in-flight surfaces.
+A newer refresh of one surface must not cancel unrelated in-flight surfaces. Global `sync` stays `syncing` until the last overlapping reconcile settles, and an older or stale-authority reconcile cannot overwrite the protocol/sync result of a newer authoritative run.
 
 The latest adopted `changes` snapshot for one `instanceId` must never move backward in `generation`.
 
