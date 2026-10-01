@@ -12,6 +12,78 @@ function fakeReact() {
   }
 }
 
+function contextManagerRemoteFace() {
+  const change = Object.freeze({
+    instanceId: 'client-test-host',
+    generation: 1,
+    profiles: 1,
+    promptResources: 0,
+    presets: 1,
+    runtime: 1,
+  })
+  return {
+    async protocol() { return { ok: true, value: { apiVersion: 1 } } },
+    async changes() { return { ok: true, value: change } },
+    async profiles() {
+      return {
+        ok: true,
+        value: {
+          schemaVersion: 1,
+          schemaCompatible: true,
+          profiles: {},
+          diagnostics: [],
+          persistence: {
+            available: true,
+            registered: true,
+            writable: true,
+            revision: 1,
+          },
+        },
+      }
+    },
+    async presets() {
+      return {
+        ok: true,
+        value: {
+          directory: { status: 'unavailable' },
+          profiles: {},
+        },
+      }
+    },
+    async promptPlacement() {
+      return {
+        ok: true,
+        value: { status: 'unavailable' },
+      }
+    },
+  }
+}
+
+function pluginCapableContext(base) {
+  const ctx = { ...base }
+  ctx.plugin = (definition) => {
+    let disposer
+    const startup = Promise.resolve().then(async () => {
+      disposer = await definition.apply(ctx)
+    })
+    return {
+      then(resolve, reject) {
+        return startup.then(
+          () => resolve === undefined ? undefined : resolve(undefined),
+          reject,
+        )
+      },
+      async dispose() {
+        await startup
+        const current = disposer
+        disposer = undefined
+        await current?.()
+      },
+    }
+  }
+  return ctx
+}
+
 function createSlotsFace(core) {
   return {
     inject(name, factory) {
@@ -112,13 +184,14 @@ let disposeRoot = core.register({
 let mountedContribution
 let remoteDisposed = false
 const remote = {
+  contextManager: contextManagerRemoteFace(),
   async $mount(contribution) {
     mountedContribution = contribution
     return async () => { remoteDisposed = true }
   },
 }
 const locale = createLocale()
-const disposePlugin = await plugin.apply({ remote, slots: createSlotsFace(core), locale })
+const disposePlugin = await plugin.apply(pluginCapableContext({ remote, slots: createSlotsFace(core), locale }))
 
 assert.equal(mountedContribution?.package, 'dsh-context-manager')
 assert.equal(mountedContribution?.descriptors?.length, 31)
