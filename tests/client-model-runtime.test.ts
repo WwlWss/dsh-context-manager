@@ -1323,6 +1323,64 @@ test('transport failure is outcome-unknown, safety-refreshes, and never retries 
   model.dispose()
 })
 
+test('rejected mutation call is outcome-unknown and never auto-retried', async () => {
+  const { model, remote, detach } = await attachAndReady()
+
+  remote.profileMutationSteps.push(async () => {
+    throw new Error('connection withdrawn')
+  })
+  remote.changesSteps.push(
+    async () => ok(changes('host-a', 2, 2, 2, 2)),
+    async () => ok(changes('host-a', 2, 2, 2, 2)),
+  )
+  remote.profilesSteps.push(async () => ok(profiles(8)))
+
+  const result = await model.mutations.setProfileName('main', 'Uncertain')
+
+  assert.equal(result.status, 'unknown')
+  assert.equal(
+    result.status === 'unknown' && result.error.kind === 'call-rejected'
+      ? result.error.message
+      : undefined,
+    'connection withdrawn',
+  )
+  assert.equal(remote.calls.profileMutation, 1)
+
+  detach()
+  model.dispose()
+})
+
+test('profile mutation does not start while protocol compatibility is not current', async () => {
+  const { model, remote, detach } = await attachAndReady()
+  const protocolGate = deferred<RemoteResult<ContextManagerRemoteProtocol>>()
+  const baseProtocolCalls = remote.calls.protocol
+  const beforeMutationCalls = remote.calls.profileMutation
+
+  remote.protocolSteps.push(async () => protocolGate.promise)
+  const refresh = model.reconcile(['presets'])
+  await waitFor(
+    () => remote.calls.protocol === baseProtocolCalls + 1,
+    'protocol recheck to enter checking state',
+  )
+  assert.equal(model.state.getSnapshot().protocol.status, 'checking')
+
+  const result = await model.mutations.setProfileName('main', 'Blocked')
+  assert.equal(result.status, 'rejected')
+  assert.equal(
+    result.status === 'rejected' && result.error.kind === 'precondition'
+      ? result.error.code
+      : undefined,
+    'protocol-unavailable',
+  )
+  assert.equal(remote.calls.profileMutation, beforeMutationCalls)
+
+  protocolGate.resolve(ok({ apiVersion: CONTEXT_MANAGER_REMOTE_API_VERSION }))
+  await refresh
+
+  detach()
+  model.dispose()
+})
+
 test('confirmed mutation success remains applied when rehydration degrades', async () => {
   const { model, remote, detach } = await attachAndReady()
 
