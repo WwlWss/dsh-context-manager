@@ -123,7 +123,7 @@ Protocol compatibility and cursor stabilization are separate loops:
 9. retry only cursor-unstable surfaces, for at most three cursor-stabilization attempts;
 10. bound repeated Host-lifetime replacement separately; three consecutive authority restarts become an `unstable-authority` read error rather than an unbounded reconcile loop.
 
-A superseded negative protocol result is retried a bounded number of times before the stale reconcile yields to the newer protocol owner. A positive result may be used as that reconcile's local guard, while global protocol publication remains token-fenced. Protocol failure occurs before surfaces enter `loading`; the reserved surface epochs are then failed directly, retaining any previous data as stale.
+A superseded negative protocol result is retried a bounded number of times before the stale reconcile yields to the newer protocol owner. A positive result may be used as that reconcile's local guard, while global protocol publication remains token-fenced. Negative results carry their protocol token through the helper boundary and are checked again at the actual error/incompatible commit point, so a newer protocol check cannot supersede a verdict in the promise-continuation gap. Protocol failure occurs before surfaces enter `loading`; the reserved surface epochs are then failed directly, retaining any previous data as stale.
 
 Cursor mapping:
 

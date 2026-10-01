@@ -55,10 +55,12 @@ type ProtocolGuardOutcome =
   | {
       readonly status: 'error'
       readonly error: ContextManagerClientReadError
+      readonly token: number
     }
   | {
       readonly status: 'incompatible'
       readonly actual: number
+      readonly token: number
     }
   | {
       readonly status: 'attachment-stale' | 'authority-stale' | 'superseded'
@@ -503,6 +505,7 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
         return {
           status: 'error',
           error: protocol.error,
+          token,
         }
       }
 
@@ -512,6 +515,7 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
         return {
           status: 'incompatible',
           actual: protocol.value.apiVersion,
+          token,
         }
       }
 
@@ -591,12 +595,21 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
         case 'superseded':
           return completeStaleAuthority()
         case 'error':
+          if (
+            !isAuthorityCurrent(attachment, authority)
+            || protocolCheckEpoch !== protocol.token
+          ) {
+            continue authorityLoop
+          }
           failScopes(attachment, authority, attempted, tokens, protocol.error)
           completeReconcileRun(attachment, authority, run, protocol.error)
           return { status: 'completed', attempted }
         case 'incompatible': {
-          if (!isAuthorityCurrent(attachment, authority)) {
-            return completeStaleAuthority()
+          if (
+            !isAuthorityCurrent(attachment, authority)
+            || protocolCheckEpoch !== protocol.token
+          ) {
+            continue authorityLoop
           }
 
           clearAuthority()
