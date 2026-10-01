@@ -431,15 +431,16 @@ test('a stale old-Host changes completion cannot reclaim authority after Host re
   model.dispose()
 })
 
-test('a superseded incompatible protocol result retries without leaving a disjoint surface loading', async () => {
+test('a superseded incompatible protocol result retries locally without reclaiming global protocol ownership', async () => {
   const { model, remote, detach } = await attachAndReady()
   const staleProtocol = deferred<RemoteResult<ContextManagerRemoteProtocol>>()
+  const localRetry = deferred<RemoteResult<ContextManagerRemoteProtocol>>()
   const baseProtocolCalls = remote.calls.protocol
 
   remote.protocolSteps.push(
     async () => staleProtocol.promise,
     async () => ok({ apiVersion: CONTEXT_MANAGER_REMOTE_API_VERSION }),
-    async () => ok({ apiVersion: CONTEXT_MANAGER_REMOTE_API_VERSION }),
+    async () => localRetry.promise,
   )
 
   const stale = model.reconcile(['presets'])
@@ -455,6 +456,13 @@ test('a superseded incompatible protocol result retries without leaving a disjoi
   staleProtocol.resolve(ok({
     apiVersion: CONTEXT_MANAGER_REMOTE_API_VERSION + 1,
   }))
+  await waitFor(
+    () => remote.calls.protocol === baseProtocolCalls + 3,
+    'stale reconcile local protocol retry to start',
+  )
+
+  assert.equal(model.state.getSnapshot().protocol.status, 'compatible')
+  localRetry.resolve(ok({ apiVersion: CONTEXT_MANAGER_REMOTE_API_VERSION }))
   await stale
 
   const snapshot = model.state.getSnapshot()
@@ -520,6 +528,90 @@ test('a stale higher-run completion cannot override a rehydrated Host instance',
   model.dispose()
 })
 
+test('an older stable bracket retries after a newer disjoint reconcile observes its surface cursor advance', async () => {
+  const { model, remote, detach } = await attachAndReady()
+  const oldAfter = deferred<RemoteResult<ContextManagerRemoteChangeSnapshot>>()
+  const baseChangesCalls = remote.calls.changes
+
+  remote.changesSteps.push(
+    async () => ok(changes('host-a', 1, 1, 1, 1)),
+    async () => oldAfter.promise,
+    async () => ok(changes('host-a', 2, 2, 2, 1)),
+    async () => ok(changes('host-a', 2, 2, 2, 1)),
+    async () => ok(changes('host-a', 2, 2, 2, 1)),
+    async () => ok(changes('host-a', 2, 2, 2, 1)),
+  )
+  remote.profilesSteps.push(
+    async () => ok(profiles(11)),
+    async () => ok(profiles(22)),
+  )
+  remote.presetsSteps.push(async () => ok(presets('newer')))
+
+  const olderProfiles = model.reconcile(['profiles'])
+  await waitFor(
+    () => remote.calls.changes === baseChangesCalls + 2,
+    'older profile closing changes read to start',
+  )
+
+  const newerPresets = model.reconcile(['presets'])
+  await newerPresets
+
+  let snapshot = model.state.getSnapshot()
+  assert.equal(snapshot.changes?.profiles, 2)
+  assert.equal(snapshot.presets.status, 'ready')
+
+  oldAfter.resolve(ok(changes('host-a', 1, 1, 1, 1)))
+  await olderProfiles
+
+  snapshot = model.state.getSnapshot()
+  assert.equal(snapshot.changes?.profiles, 2)
+  assert.equal(snapshot.profiles.status, 'ready')
+  assert.equal(model.getProfileRevision(), 22)
+
+  detach()
+  model.dispose()
+})
+
+test('a stale failed read retries when a newer disjoint reconcile already observed its surface cursor advance', async () => {
+  const { model, remote, detach } = await attachAndReady()
+  const oldAfter = deferred<RemoteResult<ContextManagerRemoteChangeSnapshot>>()
+  const baseChangesCalls = remote.calls.changes
+
+  remote.changesSteps.push(
+    async () => ok(changes('host-a', 1, 1, 1, 1)),
+    async () => oldAfter.promise,
+    async () => ok(changes('host-a', 2, 2, 2, 1)),
+    async () => ok(changes('host-a', 2, 2, 2, 1)),
+    async () => ok(changes('host-a', 2, 2, 2, 1)),
+    async () => ok(changes('host-a', 2, 2, 2, 1)),
+  )
+  remote.profilesSteps.push(
+    async () => fail('stale-profile-read'),
+    async () => ok(profiles(22)),
+  )
+  remote.presetsSteps.push(async () => ok(presets('newer')))
+
+  const olderProfiles = model.reconcile(['profiles'])
+  await waitFor(
+    () => remote.calls.changes === baseChangesCalls + 2,
+    'older failed profile closing changes read to start',
+  )
+
+  await model.reconcile(['presets'])
+  assert.equal(model.state.getSnapshot().changes?.profiles, 2)
+
+  oldAfter.resolve(ok(changes('host-a', 1, 1, 1, 1)))
+  await olderProfiles
+
+  const snapshot = model.state.getSnapshot()
+  assert.equal(snapshot.profiles.status, 'ready')
+  assert.equal(snapshot.profiles.error, undefined)
+  assert.equal(model.getProfileRevision(), 22)
+
+  detach()
+  model.dispose()
+})
+
 test('a late older refresh cannot overwrite a newer refresh of the same surface', async () => {
   const { model, remote, detach } = await attachAndReady()
 
@@ -558,33 +650,53 @@ test('a late older refresh cannot overwrite a newer refresh of the same surface'
   model.dispose()
 })
 
-test('a late older protocol failure cannot overwrite a newer successful reconcile', async () => {
+test('an older reconcile cannot reclaim global protocol ownership through bounded negative retries', async () => {
   const { model, remote, detach } = await attachAndReady()
+  const firstFailure = deferred<RemoteResult<ContextManagerRemoteProtocol>>()
+  const secondFailure = deferred<RemoteResult<ContextManagerRemoteProtocol>>()
+  const thirdFailure = deferred<RemoteResult<ContextManagerRemoteProtocol>>()
+  const baseProtocolCalls = remote.calls.protocol
 
-  const gate = deferred<RemoteResult<ContextManagerRemoteProtocol>>()
   remote.protocolSteps.push(
-    async () => gate.promise,
+    async () => firstFailure.promise,
     async () => ok({ apiVersion: CONTEXT_MANAGER_REMOTE_API_VERSION }),
+    async () => secondFailure.promise,
+    async () => thirdFailure.promise,
   )
   remote.profilesSteps.push(async () => ok(profiles(22)))
 
-  const first = model.reconcile(['presets'])
+  const older = model.reconcile(['presets'])
   await waitFor(
-    () => remote.calls.protocol >= 2,
+    () => remote.calls.protocol === baseProtocolCalls + 1,
     'older reconcile protocol check to start',
   )
 
-  const second = model.reconcile(['profiles'])
-  await second
+  const newer = model.reconcile(['profiles'])
+  await newer
 
   assert.equal(model.getProfileRevision(), 22)
   assert.equal(model.state.getSnapshot().protocol.status, 'compatible')
   assert.equal(model.state.getSnapshot().sync.status, 'syncing')
 
-  gate.resolve(fail('old-protocol-failure'))
-  await first
+  firstFailure.resolve(fail('old-protocol-failure-1'))
+  await waitFor(
+    () => remote.calls.protocol === baseProtocolCalls + 3,
+    'older reconcile second protocol attempt to start',
+  )
+  assert.equal(model.state.getSnapshot().protocol.status, 'compatible')
+
+  secondFailure.resolve(fail('old-protocol-failure-2'))
+  await waitFor(
+    () => remote.calls.protocol === baseProtocolCalls + 4,
+    'older reconcile third protocol attempt to start',
+  )
+  assert.equal(model.state.getSnapshot().protocol.status, 'compatible')
+
+  thirdFailure.resolve(fail('old-protocol-failure-3'))
+  await older
 
   const snapshot = model.state.getSnapshot()
+  assert.equal(remote.calls.protocol, baseProtocolCalls + 4)
   assert.equal(snapshot.protocol.status, 'compatible')
   assert.equal(snapshot.sync.status, 'idle')
   assert.equal(model.getProfileRevision(), 22)

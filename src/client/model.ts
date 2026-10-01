@@ -55,12 +55,10 @@ type ProtocolGuardOutcome =
   | {
       readonly status: 'error'
       readonly error: ContextManagerClientReadError
-      readonly token: number
     }
   | {
       readonly status: 'incompatible'
       readonly actual: number
-      readonly token: number
     }
   | {
       readonly status: 'attachment-stale' | 'authority-stale' | 'superseded'
@@ -213,7 +211,7 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
   const activeReconcileRuns = new Set<number>()
   let latestCompletedRun = 0
   let latestCompletedError: ContextManagerClientReadError | undefined
-  let protocolCheckEpoch = 0
+  let protocolOwnerRun = 0
 
   const isAttachmentCurrent = (epoch: number): boolean => (
     !disposed && remote !== undefined && attachmentEpoch === epoch
@@ -240,7 +238,7 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
     activeReconcileRuns.clear()
     latestCompletedRun = 0
     latestCompletedError = undefined
-    protocolCheckEpoch += 1
+    protocolOwnerRun = 0
   }
 
   const beginReconcileRun = (attachment: number): number => {
@@ -287,33 +285,39 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
     })
   }
 
+  const isProtocolOwner = (
+    attachment: number,
+    authority: number,
+    run: number,
+  ): boolean => (
+    isAuthorityCurrent(attachment, authority)
+    && protocolOwnerRun === run
+  )
+
   const beginProtocolCheck = (
     attachment: number,
     authority: number,
-  ): number => {
-    protocolCheckEpoch += 1
-    const token = protocolCheckEpoch
-    if (isAuthorityCurrent(attachment, authority)) {
-      const current = state.getSnapshot()
-      state.set({
-        ...current,
-        protocol: { status: 'checking' },
-      })
-    }
-    return token
+    run: number,
+  ): void => {
+    if (!isAuthorityCurrent(attachment, authority)) return
+    if (run < protocolOwnerRun) return
+
+    protocolOwnerRun = run
+    const current = state.getSnapshot()
+    state.set({
+      ...current,
+      protocol: { status: 'checking' },
+    })
   }
 
   const publishProtocol = (
     attachment: number,
     authority: number,
-    token: number,
+    run: number,
     protocol: ContextManagerClientSnapshot['protocol'],
   ): void => {
-    if (
-      !isAttachmentCurrent(attachment)
-      || authority !== authorityEpoch
-      || protocolCheckEpoch !== token
-    ) return
+    if (!isProtocolOwner(attachment, authority, run)) return
+
     const current = state.getSnapshot()
     state.set({
       ...current,
@@ -338,18 +342,21 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
     }
   }
 
-  const clearAuthority = (instanceId?: string): void => {
+  const clearAuthority = (
+    instanceId?: string,
+    protocol: ContextManagerClientSnapshot['protocol'] = { status: 'unchecked' },
+  ): void => {
     authorityEpoch += 1
     latestCompletedRun = 0
     latestCompletedError = undefined
-    protocolCheckEpoch += 1
+    protocolOwnerRun = 0
     invalidateAllSurfaceEpochs()
     const current = state.getSnapshot()
     state.set({
       ...current,
       instanceId,
       changes: undefined,
-      protocol: { status: 'unchecked' },
+      protocol,
       profiles: idleSurface(),
       presets: idleSurface(),
       promptPlacement: idleSurface(),
@@ -381,24 +388,35 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
     attachment: number,
     authority: number,
     next: ContextManagerRemoteChangeSnapshot,
-  ): boolean => {
-    if (!isAuthorityCurrent(attachment, authority)) return false
+  ): void => {
+    if (!isAuthorityCurrent(attachment, authority)) return
 
     const current = state.getSnapshot()
-    if (current.instanceId !== next.instanceId) return false
+    if (current.instanceId !== next.instanceId) return
     if (
       current.changes !== undefined
       && current.changes.instanceId === next.instanceId
       && current.changes.generation > next.generation
     ) {
-      return false
+      return
     }
 
     state.set({
       ...current,
       changes: next,
     })
-    return true
+  }
+
+  const isSurfaceCursorCurrent = (
+    surface: ContextManagerClientBaselineSurface,
+    bracket: ContextManagerRemoteChangeSnapshot,
+  ): boolean => {
+    const latest = state.getSnapshot().changes
+    return (
+      latest !== undefined
+      && latest.instanceId === bracket.instanceId
+      && cursorOf(surface, latest) === cursorOf(surface, bracket)
+    )
   }
 
   const reserveRequestedSurfaces = (
@@ -475,6 +493,7 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
     currentRemote: ContextManagerClientReadRemote,
     attachment: number,
     authority: number,
+    run: number,
   ): Promise<ProtocolGuardOutcome> => {
     for (let attempt = 1; attempt <= MAX_PROTOCOL_ATTEMPTS; attempt += 1) {
       if (!isAttachmentCurrent(attachment)) {
@@ -484,7 +503,7 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
         return { status: 'authority-stale' }
       }
 
-      const token = beginProtocolCheck(attachment, authority)
+      beginProtocolCheck(attachment, authority, run)
       const protocol = await invokeRead(() => currentRemote.protocol())
 
       if (!isAttachmentCurrent(attachment)) {
@@ -494,32 +513,30 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
         return { status: 'authority-stale' }
       }
 
-      const tokenIsCurrent = protocolCheckEpoch === token
+      const ownsPublication = isProtocolOwner(attachment, authority, run)
       if (!protocol.ok) {
-        if (!tokenIsCurrent) continue
+        if (!ownsPublication) continue
 
-        publishProtocol(attachment, authority, token, {
+        publishProtocol(attachment, authority, run, {
           status: 'error',
           error: protocol.error,
         })
         return {
           status: 'error',
           error: protocol.error,
-          token,
         }
       }
 
       if (protocol.value.apiVersion !== CONTEXT_MANAGER_REMOTE_API_VERSION) {
-        if (!tokenIsCurrent) continue
+        if (!ownsPublication) continue
 
         return {
           status: 'incompatible',
           actual: protocol.value.apiVersion,
-          token,
         }
       }
 
-      publishProtocol(attachment, authority, token, {
+      publishProtocol(attachment, authority, run, {
         status: 'compatible',
         apiVersion: protocol.value.apiVersion,
       })
@@ -550,7 +567,7 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
         : { status: 'detached', attempted }
     )
 
-    const completeStaleAuthority = (): ContextManagerClientReconcileResult => {
+    const completeSupersededRun = (): ContextManagerClientReconcileResult => {
       completeReconcileRun(attachment, authority, run)
       return { status: 'completed', attempted }
     }
@@ -583,48 +600,40 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
         return detachedResult()
       }
       if (authority !== authorityEpoch) {
-        return completeStaleAuthority()
+        return completeSupersededRun()
       }
 
-      const protocol = await guardProtocol(currentRemote, attachment, authority)
+      const protocol = await guardProtocol(
+        currentRemote,
+        attachment,
+        authority,
+        run,
+      )
       switch (protocol.status) {
         case 'attachment-stale':
           completeReconcileRun(attachment, authority, run)
           return detachedResult()
         case 'authority-stale':
         case 'superseded':
-          return completeStaleAuthority()
+          return completeSupersededRun()
         case 'error':
-          if (
-            !isAuthorityCurrent(attachment, authority)
-            || protocolCheckEpoch !== protocol.token
-          ) {
-            continue authorityLoop
+          if (!isProtocolOwner(attachment, authority, run)) {
+            return completeSupersededRun()
           }
           failScopes(attachment, authority, attempted, tokens, protocol.error)
           completeReconcileRun(attachment, authority, run, protocol.error)
           return { status: 'completed', attempted }
         case 'incompatible': {
-          if (
-            !isAuthorityCurrent(attachment, authority)
-            || protocolCheckEpoch !== protocol.token
-          ) {
-            continue authorityLoop
+          if (!isProtocolOwner(attachment, authority, run)) {
+            return completeSupersededRun()
           }
 
-          clearAuthority()
+          clearAuthority(undefined, {
+            status: 'incompatible',
+            expected: CONTEXT_MANAGER_REMOTE_API_VERSION,
+            actual: protocol.actual,
+          })
           authority = authorityEpoch
-          if (isAttachmentCurrent(attachment)) {
-            const current = state.getSnapshot()
-            state.set({
-              ...current,
-              protocol: {
-                status: 'incompatible',
-                expected: CONTEXT_MANAGER_REMOTE_API_VERSION,
-                actual: protocol.actual,
-              },
-            })
-          }
           completeReconcileRun(attachment, authority, run)
           return { status: 'incompatible', attempted }
         }
@@ -641,7 +650,7 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
           return detachedResult()
         }
         if (authority !== authorityEpoch) {
-          return completeStaleAuthority()
+          return completeSupersededRun()
         }
         if (!before.ok) {
           failScopes(attachment, authority, pending, tokens, before.error)
@@ -657,7 +666,7 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
           ),
         )
         if (beforeTransition === 'superseded') {
-          return completeStaleAuthority()
+          return completeSupersededRun()
         }
         if (beforeTransition === 'changed') {
           if (authorityRestarts >= MAX_AUTHORITY_RESTARTS) {
@@ -682,7 +691,7 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
           return detachedResult()
         }
         if (authority !== authorityEpoch) {
-          return completeStaleAuthority()
+          return completeSupersededRun()
         }
 
         const after = await invokeRead(() => currentRemote.changes())
@@ -691,7 +700,7 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
           return detachedResult()
         }
         if (authority !== authorityEpoch) {
-          return completeStaleAuthority()
+          return completeSupersededRun()
         }
         if (!after.ok) {
           failScopes(attachment, authority, pending, tokens, after.error)
@@ -707,7 +716,7 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
           ),
         )
         if (afterTransition === 'superseded') {
-          return completeStaleAuthority()
+          return completeSupersededRun()
         }
         if (afterTransition === 'changed') {
           if (authorityRestarts >= MAX_AUTHORITY_RESTARTS) {
@@ -729,14 +738,17 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
           const read = reads.get(surface)
           if (read === undefined) continue
 
-          if (!read.ok) {
-            const current = state.getSnapshot()[surface] as ContextManagerClientSurface<BaselineSurfaceMap[typeof surface]>
-            replaceSurface(surface, failedSurface(current, read.error) as never)
+          if (
+            cursorOf(surface, before.value) !== cursorOf(surface, after.value)
+            || !isSurfaceCursorCurrent(surface, after.value)
+          ) {
+            retry.push(surface)
             continue
           }
 
-          if (cursorOf(surface, before.value) !== cursorOf(surface, after.value)) {
-            retry.push(surface)
+          if (!read.ok) {
+            const current = state.getSnapshot()[surface] as ContextManagerClientSurface<BaselineSurfaceMap[typeof surface]>
+            replaceSurface(surface, failedSurface(current, read.error) as never)
             continue
           }
 

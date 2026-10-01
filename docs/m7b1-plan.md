@@ -119,11 +119,12 @@ Protocol compatibility and cursor stabilization are separate loops:
 5. once the same `instanceId` survives the protocol -> `changes()` boundary, adopt the change hint, mark only still-current requested surfaces `loading`, and read those authoritative surfaces in parallel;
 6. re-check attachment and authority before issuing the closing `changes()`;
 7. if the Host lifetime changes during the bracket, clear the batch and restart from the protocol guard;
-8. adopt only reads whose relevant cursor is stable across the bracket;
-9. retry only cursor-unstable surfaces, for at most three cursor-stabilization attempts;
-10. bound repeated Host-lifetime replacement separately; three consecutive authority restarts become an `unstable-authority` read error rather than an unbounded reconcile loop.
+8. adopt a read only when its relevant cursor is stable across its own bracket and still equals the latest adopted cursor for that surface; a newer unrelated generation does not invalidate a surface whose own cursor is unchanged;
+9. apply the same current-cursor fence before publishing either successful data or a read error, so a failure from an already superseded cursor is retried instead of becoming the current surface error;
+10. retry only cursor-unstable or no-longer-current surfaces, for at most three cursor-stabilization attempts;
+11. bound repeated Host-lifetime replacement separately; three consecutive authority restarts become an `unstable-authority` read error rather than an unbounded reconcile loop.
 
-A superseded negative protocol result is retried a bounded number of times before the stale reconcile yields to the newer protocol owner. A positive result may be used as that reconcile's local guard, while global protocol publication remains token-fenced. Negative results carry their protocol token through the helper boundary and are checked again at the actual error/incompatible commit point, so a newer protocol check cannot supersede a verdict in the promise-continuation gap. Protocol failure occurs before surfaces enter `loading`; the reserved surface epochs are then failed directly, retaining any previous data as stale.
+Global protocol publication is owned by the newest reconcile run for the current attachment and Host authority, not by the physically latest RPC attempt. A superseded older run may retry negative protocol results locally for at most three attempts and may use a later compatible result as its own local proof, but it cannot publish `checking`, `compatible`, `error`, or `incompatible` over a newer run. If ownership changes in the helper-to-consumer continuation gap, the older negative result yields instead of restarting an unbounded outer loop. Protocol failure occurs before surfaces enter `loading`; the reserved surface epochs are then failed directly, retaining any previous data as stale.
 
 Cursor mapping:
 
@@ -147,9 +148,11 @@ A surface completion may publish only when:
 - the model is not disposed;
 - its attachment epoch is current;
 - its authority epoch is still current after any Host replacement;
-- its surface epoch is current.
+- its surface epoch is current;
+- its own before/after cursor is stable;
+- the latest adopted `changes` snapshot still carries the same cursor for that surface.
 
-A newer refresh of one surface must not cancel unrelated in-flight surfaces. Global `sync` stays `syncing` until the last overlapping reconcile settles, and an older or stale-authority reconcile cannot overwrite the protocol/sync result of a newer authoritative run.
+A newer refresh of one surface must not cancel unrelated in-flight surfaces. Global `sync` stays `syncing` until the last overlapping reconcile settles. Global protocol state is similarly run-owned: once a newer reconcile has taken protocol ownership for the current authority, an older reconcile may finish local work but cannot reclaim protocol publication through a later retry. An older or stale-authority reconcile therefore cannot overwrite the protocol/sync result of a newer authoritative run.
 
 Host identity changes use compare-and-swap semantics: only the reconcile that still owns its captured authority epoch may create the next epoch. A completion from an older authority must exit; it must never assign itself the newer epoch and continue. Protocol verdicts are Host-lifetime facts, so every authority transition clears the old verdict and requires a new guard before business reads.
 
