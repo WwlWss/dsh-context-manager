@@ -327,7 +327,7 @@ export function createContextManagerProfileMutationController(
     return result
   }
 
-  const controller: ContextManagerClientMutationController = Object.freeze({
+  const controller: ContextManagerClientMutationController = {
     state,
     createProfile: (id, input) => run('create-profile', (remote, revision) => remote.createProfile(id, input, revision)),
     deleteProfile: id => run('delete-profile', (remote, revision) => remote.deleteProfile(id, revision)),
@@ -343,7 +343,8 @@ export function createContextManagerProfileMutationController(
     setPromptBindingPlacement: (profileId, bindingId, placement) => run('set-prompt-binding-placement', (remote, revision) => remote.setPromptBindingPlacement(profileId, bindingId, placement, revision)),
     setPromptBindingOrder: (profileId, bindingId, order) => run('set-prompt-binding-order', (remote, revision) => remote.setPromptBindingOrder(profileId, bindingId, order, revision)),
     removePromptBinding: (profileId, bindingId) => run('remove-prompt-binding', (remote, revision) => remote.removePromptBinding(profileId, bindingId, revision)),
-  })
+  }
+  Object.freeze(controller)
 
   return Object.freeze({ controller, reset })
 }
