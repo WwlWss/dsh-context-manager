@@ -6,8 +6,6 @@ import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
 
 import type { Context } from '@deepseek-ai/cordis'
-import type { TypertRemoteNamespaceMap } from '@deepseek-ai/dsh-typert-protocol'
-
 import type {
   ContextManagerClientContext,
   ContextManagerClientRemote,
@@ -114,7 +112,9 @@ export function createContextManagerClientPlugin(contribution: ContextManagerRem
         inject: ['remote', 'remote.contextManager'],
         apply(childCtx: Context) {
           const childRemote = (childCtx as Context & {
-            readonly remote: ContextManagerClientRemote & Pick<TypertRemoteNamespaceMap, 'contextManager'>
+            readonly remote: ContextManagerClientRemote & {
+              readonly contextManager: ContextManagerClientReadRemote
+            }
           }).remote
           return model.attach(childRemote.contextManager as ContextManagerClientReadRemote)
         },
