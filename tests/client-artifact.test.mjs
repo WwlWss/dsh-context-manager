@@ -15,6 +15,78 @@ function fakeReact() {
   }
 }
 
+function contextManagerRemoteFace() {
+  const change = Object.freeze({
+    instanceId: 'client-test-host',
+    generation: 1,
+    profiles: 1,
+    promptResources: 0,
+    presets: 1,
+    runtime: 1,
+  })
+  return {
+    async protocol() { return { ok: true, value: { apiVersion: 1 } } },
+    async changes() { return { ok: true, value: change } },
+    async profiles() {
+      return {
+        ok: true,
+        value: {
+          schemaVersion: 1,
+          schemaCompatible: true,
+          profiles: {},
+          diagnostics: [],
+          persistence: {
+            available: true,
+            registered: true,
+            writable: true,
+            revision: 1,
+          },
+        },
+      }
+    },
+    async presets() {
+      return {
+        ok: true,
+        value: {
+          directory: { status: 'unavailable' },
+          profiles: {},
+        },
+      }
+    },
+    async promptPlacement() {
+      return {
+        ok: true,
+        value: { status: 'unavailable' },
+      }
+    },
+  }
+}
+
+function pluginCapableContext(base) {
+  const ctx = { ...base }
+  ctx.plugin = (definition) => {
+    let disposer
+    const startup = Promise.resolve().then(async () => {
+      disposer = await definition.apply(ctx)
+    })
+    return {
+      then(resolve, reject) {
+        return startup.then(
+          () => resolve === undefined ? undefined : resolve(undefined),
+          reject,
+        )
+      },
+      async dispose() {
+        await startup
+        const current = disposer
+        disposer = undefined
+        await current?.()
+      },
+    }
+  }
+  return ctx
+}
+
 test('M7B0 client artifact is a single DSH loader factory with only retained baseline externals', async () => {
   const source = await readFile(clientPath, 'utf8')
   assert.match(source, /window\.__ModuleLoader__\.load\(\{\s*id:\s*["']dsh-context-manager["']/)
@@ -98,7 +170,7 @@ test('M7B0 loader artifact mounts Remote and locale before registering two addit
     },
   }
 
-  const dispose = await plugin.apply({ remote, slots, locale })
+  const dispose = await plugin.apply(pluginCapableContext({ remote, slots, locale }))
   assert.deepEqual(entries.map(entry => entry.options.name), [
     'sidebar.footer.action',
     'shell.overlay',
