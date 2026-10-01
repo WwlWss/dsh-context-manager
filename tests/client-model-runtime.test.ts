@@ -326,6 +326,58 @@ test('Host instance change during hydration clears the old batch and rehydrates 
   model.dispose()
 })
 
+test('a stale higher-run completion cannot override a rehydrated Host instance', async () => {
+  const { model, remote, detach } = await attachAndReady()
+
+  const oldProfileGate = deferred<RemoteResult<ContextManagerRemoteProfilesSnapshot>>()
+  remote.changesSteps.push(
+    async () => ok(changes('host-a', 2, 2, 1, 1)),
+    async () => ok(changes('host-b', 1, 1, 1, 1)),
+    async () => ok(changes('host-b', 1, 1, 1, 1)),
+    async () => ok(changes('host-b', 1, 1, 1, 1)),
+  )
+  remote.profilesSteps.push(
+    async () => oldProfileGate.promise,
+    async () => ok(profiles(44)),
+  )
+
+  const resetting = model.reconcile(['profiles'])
+  await waitFor(
+    () => remote.calls.profiles >= 2,
+    'old-host profile read to start',
+  )
+
+  const staleProtocol = deferred<RemoteResult<ContextManagerRemoteProtocol>>()
+  remote.protocolSteps.push(async () => staleProtocol.promise)
+  const stale = model.reconcile(['presets'])
+  await waitFor(
+    () => remote.calls.protocol >= 3,
+    'stale higher-run protocol check to start',
+  )
+
+  oldProfileGate.resolve(ok(profiles(11)))
+  await resetting
+
+  let snapshot = model.state.getSnapshot()
+  assert.equal(snapshot.instanceId, 'host-b')
+  assert.equal(model.getProfileRevision(), 44)
+  assert.equal(snapshot.protocol.status, 'compatible')
+  assert.equal(snapshot.sync.status, 'syncing')
+
+  staleProtocol.resolve(fail('old-host-protocol-failure'))
+  await stale
+
+  snapshot = model.state.getSnapshot()
+  assert.equal(snapshot.instanceId, 'host-b')
+  assert.equal(model.getProfileRevision(), 44)
+  assert.equal(snapshot.protocol.status, 'compatible')
+  assert.equal(snapshot.presets.status, 'idle')
+  assert.equal(snapshot.sync.status, 'idle')
+
+  detach()
+  model.dispose()
+})
+
 test('a late older refresh cannot overwrite a newer refresh of the same surface', async () => {
   const { model, remote, detach } = await attachAndReady()
 
