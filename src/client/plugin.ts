@@ -5,8 +5,10 @@ import type {
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
 
+import type { Context } from '@deepseek-ai/cordis'
 import type {
   ContextManagerClientContext,
+  ContextManagerClientRemote,
   ContextManagerRemoteContribution,
 } from './context.js'
 import {
@@ -17,6 +19,8 @@ import {
   createContextManagerPresentationStore,
   type ContextManagerPresentationStoreHandle,
 } from './presentation-store.js'
+import { createContextManagerClientModel } from './model.js'
+import type { ContextManagerClientReadRemote } from './remote-port.js'
 import styles from './plugin.module.css'
 
 type TriggerProps = ComposedProps<
@@ -102,10 +106,28 @@ export function createContextManagerClientPlugin(contribution: ContextManagerRem
     inject,
     async apply(ctx) {
       const disposeRemote = await ctx.remote.$mount(contribution)
+      let model: ReturnType<typeof createContextManagerClientModel> | undefined
+      let modelFiber: ReturnType<Context['plugin']> | undefined
       let disposeLocale: (() => void) | undefined
       const slotDisposers: Array<() => void> = []
 
       try {
+        const nextModel = createContextManagerClientModel()
+        model = nextModel
+        modelFiber = ctx.plugin({
+          name: 'dsh-context-manager-client-model',
+          inject: ['remote', 'remote.contextManager'],
+          apply(childCtx: Context) {
+            const childRemote = (childCtx as Context & {
+              readonly remote: ContextManagerClientRemote & {
+                readonly contextManager: ContextManagerClientReadRemote
+              }
+            }).remote
+            return nextModel.attach(childRemote.contextManager as ContextManagerClientReadRemote)
+          },
+        })
+
+        await modelFiber
         disposeLocale = ctx.locale.register(CONTEXT_MANAGER_LOCALE, CONTEXT_MANAGER_LOCALES)
         const t = ctx.locale.bind(CONTEXT_MANAGER_LOCALE)
         const presentationStore = createContextManagerPresentationStore()
@@ -133,14 +155,24 @@ export function createContextManagerClientPlugin(contribution: ContextManagerRem
       } catch (error) {
         for (const dispose of slotDisposers.reverse()) dispose()
         disposeLocale?.()
-        await disposeRemote()
+        try {
+          await modelFiber?.dispose()
+        } finally {
+          model?.dispose()
+          await disposeRemote()
+        }
         throw error
       }
 
       return async () => {
         for (const dispose of slotDisposers.reverse()) dispose()
         disposeLocale?.()
-        await disposeRemote()
+        try {
+          await modelFiber?.dispose()
+        } finally {
+          model?.dispose()
+          await disposeRemote()
+        }
       }
     },
   }

@@ -15,6 +15,79 @@ function fakeReact() {
   }
 }
 
+function contextManagerRemoteFace() {
+  const change = Object.freeze({
+    instanceId: 'client-test-host',
+    generation: 1,
+    profiles: 1,
+    promptResources: 0,
+    presets: 1,
+    runtime: 1,
+  })
+  return {
+    async protocol() { return { ok: true, value: { apiVersion: 1 } } },
+    async changes() { return { ok: true, value: change } },
+    async profiles() {
+      return {
+        ok: true,
+        value: {
+          schemaVersion: 1,
+          schemaCompatible: true,
+          profiles: {},
+          diagnostics: [],
+          persistence: {
+            available: true,
+            registered: true,
+            writable: true,
+            revision: 1,
+          },
+        },
+      }
+    },
+    async presets() {
+      return {
+        ok: true,
+        value: {
+          directory: { status: 'unavailable' },
+          profiles: {},
+        },
+      }
+    },
+    async promptPlacement() {
+      return {
+        ok: true,
+        value: { status: 'unavailable' },
+      }
+    },
+  }
+}
+
+function pluginCapableContext(base) {
+  const ctx = { ...base }
+  ctx.plugin = (definition) => {
+    assert.deepEqual(definition.inject, ['remote', 'remote.contextManager'])
+    let disposer
+    const startup = Promise.resolve().then(async () => {
+      disposer = await definition.apply(ctx)
+    })
+    return {
+      then(resolve, reject) {
+        return startup.then(
+          () => resolve === undefined ? undefined : resolve(undefined),
+          reject,
+        )
+      },
+      async dispose() {
+        await startup
+        const current = disposer
+        disposer = undefined
+        await current?.()
+      },
+    }
+  }
+  return ctx
+}
+
 test('M7B0 client artifact is a single DSH loader factory with only retained baseline externals', async () => {
   const source = await readFile(clientPath, 'utf8')
   assert.match(source, /window\.__ModuleLoader__\.load\(\{\s*id:\s*["']dsh-context-manager["']/)
@@ -56,6 +129,7 @@ test('M7B0 loader artifact mounts Remote and locale before registering two addit
   const lifecycle = []
   const entries = []
   const remote = {
+    contextManager: contextManagerRemoteFace(),
     async $mount(contribution) {
       lifecycle.push('remote:mount')
       assert.equal(contribution.package, 'dsh-context-manager')
@@ -98,7 +172,7 @@ test('M7B0 loader artifact mounts Remote and locale before registering two addit
     },
   }
 
-  const dispose = await plugin.apply({ remote, slots, locale })
+  const dispose = await plugin.apply(pluginCapableContext({ remote, slots, locale }))
   assert.deepEqual(entries.map(entry => entry.options.name), [
     'sidebar.footer.action',
     'shell.overlay',
@@ -135,6 +209,74 @@ test('M7B0 loader artifact mounts Remote and locale before registering two addit
     'slot:inject-dispose:sidebar.footer.action',
     'slot:register-dispose:sidebar.footer.action',
     'locale:dispose:context-manager',
+    'remote:dispose',
+  ])
+})
+
+
+test('M7B1 client artifact rolls back a mounted Remote when child model fiber creation throws', async () => {
+  let registration
+  const previousWindow = globalThis.window
+  globalThis.window = {
+    __ModuleLoader__: {
+      load(value) {
+        registration = value
+      },
+    },
+  }
+
+  try {
+    await import(pathToFileURL(clientPath).href + '?m7b1-child-create-rollback')
+  } finally {
+    if (previousWindow === undefined) delete globalThis.window
+    else globalThis.window = previousWindow
+  }
+
+  assert.ok(registration)
+  const plugin = registration.factory((specifier) => {
+    assert.equal(specifier, 'react')
+    return fakeReact()
+  })
+
+  const lifecycle = []
+  const remote = {
+    contextManager: contextManagerRemoteFace(),
+    async $mount() {
+      lifecycle.push('remote:mount')
+      return async () => { lifecycle.push('remote:dispose') }
+    },
+  }
+  const ctx = {
+    remote,
+    plugin() {
+      lifecycle.push('model:plugin')
+      throw new Error('child model setup failed')
+    },
+    locale: {
+      register() {
+        throw new Error('locale must not register after child setup failure')
+      },
+      bind() {
+        throw new Error('locale must not bind after child setup failure')
+      },
+    },
+    slots: {
+      inject() {
+        throw new Error('slots must not inject after child setup failure')
+      },
+      register() {
+        throw new Error('slots must not register after child setup failure')
+      },
+    },
+  }
+
+  await assert.rejects(
+    plugin.apply(ctx),
+    /child model setup failed/,
+  )
+  assert.deepEqual(lifecycle, [
+    'remote:mount',
+    'model:plugin',
     'remote:dispose',
   ])
 })
