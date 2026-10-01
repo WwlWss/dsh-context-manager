@@ -642,7 +642,7 @@ jobs:
         run: node ./tests/client-upstream-runtime.mjs
 
   client-presentation-contract:
-    name: M7B1 Client model/public contract (${{ matrix.version }})
+    name: M7B2A Client model/mutation contract (${{ matrix.version }})
     needs: remote-foundation-artifact
     strategy:
       fail-fast: false
@@ -680,13 +680,14 @@ jobs:
             @deepseek-ai/dsh-typert-protocol@${{ matrix.version }} \
             @types/react@18.3.31 \
             react@18.3.1
-      - name: Compile M7B1 Client model/public contract
+      - name: Compile M7B2A Client model/mutation contract
         run: |
           pnpm exec tsc --ignoreConfig --noEmit --strict --skipLibCheck \
             --module NodeNext --moduleResolution NodeNext --target ES2024 \
             src/client/css-modules.d.ts \
             src/client/context.ts src/client-contract.ts \
-            src/client/model-types.ts src/client/remote-port.ts src/client/model.ts src/client/plugin.ts \
+            src/client/model-types.ts src/client/mutation-types.ts src/client/remote-port.ts \
+            src/client/mutation-controller.ts src/client/model.ts src/client/plugin.ts \
             tests/client-upstream-contract.ts tests/client-generated-remote-contract.ts
 
   package:
