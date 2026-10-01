@@ -1,6 +1,6 @@
 # M6B — Profiles and Prompt Resources Remote plan
 
-Status: **implementation in progress**.
+Status: **complete in merged PR #20**.
 
 M6B is the first business Remote slice after the strict Typert foundation shipped in merged PR #19. It exposes browser-safe profile state and explicit profile/PromptResource mutations while keeping the Host services authoritative.
 
