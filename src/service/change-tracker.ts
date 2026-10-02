@@ -32,7 +32,10 @@ declare module '@deepseek-ai/cordis' {
  * read may be stale and should be pulled again.
  */
 export class ContextManagerChangeTracker extends Service {
-  private readonly instanceId = randomUUID()
+  private instanceId = randomUUID()
+  private readonly ownerCtx: Context
+  private authorityInitialized = false
+  private profileAuthority: string | undefined
   private generation = 0
   private profiles = 0
   private promptResources = 0
@@ -41,10 +44,12 @@ export class ContextManagerChangeTracker extends Service {
 
   constructor(ctx: Context) {
     super(ctx, 'dshContextChanges')
+    this.ownerCtx = ctx
 
     const events = ctx as unknown as ContextManagerChangeEvents
 
     events.on('dsh-context-manager/change', () => {
+      this.syncAuthority()
       this.bump({ profiles: true, presets: true, runtime: true })
     })
 
@@ -70,6 +75,7 @@ export class ContextManagerChangeTracker extends Service {
   }
 
   snapshot(): ContextManagerChangeSnapshot {
+    this.syncAuthority()
     return Object.freeze({
       instanceId: this.instanceId,
       generation: this.generation,
@@ -90,6 +96,26 @@ export class ContextManagerChangeTracker extends Service {
 
   markRuntime(): void {
     this.bump({ runtime: true })
+  }
+
+  private syncAuthority(): void {
+    const manager = this.ownerCtx.get('dshContextManager')
+    const profileAuthority = manager?.profileWriteAuthority()
+
+    if (!this.authorityInitialized) {
+      this.authorityInitialized = true
+      this.profileAuthority = profileAuthority
+      return
+    }
+
+    if (
+      this.profileAuthority === profileAuthority
+    ) {
+      return
+    }
+
+    this.profileAuthority = profileAuthority
+    this.instanceId = randomUUID()
   }
 
   private bump(channels: {

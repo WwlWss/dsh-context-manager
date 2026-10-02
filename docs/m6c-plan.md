@@ -75,6 +75,8 @@ interface ContextManagerRemoteChangeSnapshot {
 - PromptResource writes continue to use the resource revision.
 - a Host restart or changed `instanceId` invalidates every browser cache.
 
+**M7B2 semantic strengthening:** M6C originally scoped `instanceId` to the Host/ChangeTracker lifetime. M7B2 retains the same field and wire shape but strengthens its producer semantics to the observed profile-write-authority lifetime: Settings authority replacement and `ContextManagerService` replacement also rotate it. Change cursors remain invalidation hints and are still not revisions.
+
 The tracker is intentionally not an audit log and does not promise to observe arbitrary out-of-band filesystem edits. Client correctness must also refresh after its own successful mutations, connection reset/reconnect, and normal UI lifecycle refreshes.
 
 ## Cursor dependencies

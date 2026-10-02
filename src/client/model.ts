@@ -18,7 +18,15 @@ import type {
   ContextManagerClientSnapshot,
   ContextManagerClientSurface,
 } from './model-types.js'
-import type { ContextManagerClientReadRemote } from './remote-port.js'
+import {
+  createContextManagerProfileMutationController,
+  type ContextManagerClientMutationController,
+} from './mutation-controller.js'
+import type { ContextManagerClientProfileMutationBasis } from './mutation-types.js'
+import type {
+  ContextManagerClientBusinessRemote,
+  ContextManagerClientReadRemote,
+} from './remote-port.js'
 
 const MAX_PROTOCOL_ATTEMPTS = 3
 const MAX_STABILIZATION_ATTEMPTS = 3
@@ -67,13 +75,15 @@ type ProtocolGuardOutcome =
 
 export interface ContextManagerClientModel {
   readonly state: SnapshotStore<ContextManagerClientSnapshot>
+  readonly mutations: ContextManagerClientMutationController
 
-  attach(remote: ContextManagerClientReadRemote): () => void
+  attach(remote: ContextManagerClientBusinessRemote): () => void
   refresh(): Promise<ContextManagerClientReconcileResult>
   reconcile(
     scopes: readonly ContextManagerClientBaselineSurface[],
   ): Promise<ContextManagerClientReconcileResult>
   getProfileRevision(): number | undefined
+  captureProfileMutationBasis(): ContextManagerClientProfileMutationBasis | undefined
   dispose(): void
 }
 
@@ -209,8 +219,9 @@ function detachedSurface<T>(
 export function createContextManagerClientModel(): ContextManagerClientModel {
   const state = createSnapshotStore<ContextManagerClientSnapshot>(initialSnapshot())
 
-  let remote: ContextManagerClientReadRemote | undefined
+  let remote: ContextManagerClientBusinessRemote | undefined
   let disposed = false
+  let resetMutationController = (): void => {}
   let attachmentEpoch = 0
   const surfaceEpochs: SurfaceEpochs = {
     profiles: 0,
@@ -378,6 +389,7 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
       presets: idleSurface(),
       promptPlacement: idleSurface(),
     })
+    resetMutationController()
   }
 
   const transitionAuthority = (
@@ -843,7 +855,7 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
     }
   }
 
-  const attach = (nextRemote: ContextManagerClientReadRemote): (() => void) => {
+  const attach = (nextRemote: ContextManagerClientBusinessRemote): (() => void) => {
     if (disposed) {
       throw new Error('Context Manager Client model is disposed')
     }
@@ -866,6 +878,7 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
         promptPlacement: detachedSurface(current.promptPlacement),
       })
     }
+    resetMutationController()
 
     void reconcile(CONTEXT_MANAGER_BASELINE_SURFACES)
 
@@ -885,6 +898,7 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
         presets: detachedSurface(current.presets),
         promptPlacement: detachedSurface(current.promptPlacement),
       })
+      resetMutationController()
     }
   }
 
@@ -899,6 +913,51 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
     }
     return snapshot.profiles.data.persistence.revision
   }
+
+  const captureProfileMutationBasis = (): ContextManagerClientProfileMutationBasis | undefined => {
+    const snapshot = state.getSnapshot()
+    const revision = getProfileRevision()
+    if (
+      snapshot.attachment !== 'attached'
+      || snapshot.protocol.status !== 'compatible'
+      || snapshot.instanceId === undefined
+      || snapshot.changes?.instanceId !== snapshot.instanceId
+      || revision === undefined
+    ) {
+      return undefined
+    }
+    return Object.freeze({
+      instanceId: snapshot.instanceId,
+      revision,
+    })
+  }
+
+  const mutationHandle = createContextManagerProfileMutationController({
+    getRemote: () => remote,
+    getLifecycle: () => (
+      disposed ? 'disposed' : remote === undefined ? 'detached' : 'attached'
+    ),
+    getProtocolStatus: () => state.getSnapshot().protocol.status,
+    getCurrentProfileMutationBasis: captureProfileMutationBasis,
+    rehydrate: async () => {
+      const result = await reconcile(CONTEXT_MANAGER_BASELINE_SURFACES)
+      if (result.status !== 'completed') return false
+      const snapshot = state.getSnapshot()
+      return (
+        snapshot.attachment === 'attached'
+        && snapshot.protocol.status === 'compatible'
+        && snapshot.sync.status === 'idle'
+        && snapshot.profiles.status === 'ready'
+        && !snapshot.profiles.stale
+        && snapshot.presets.status === 'ready'
+        && !snapshot.presets.stale
+        && snapshot.promptPlacement.status === 'ready'
+        && !snapshot.promptPlacement.stale
+      )
+    },
+  })
+  const mutations = mutationHandle.controller
+  resetMutationController = mutationHandle.reset
 
   const dispose = (): void => {
     if (disposed) return
@@ -917,14 +976,17 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
       presets: detachedSurface(current.presets),
       promptPlacement: detachedSurface(current.promptPlacement),
     })
+    resetMutationController()
   }
 
   return Object.freeze({
     state,
+    mutations,
     attach,
     refresh: () => reconcile(CONTEXT_MANAGER_BASELINE_SURFACES),
     reconcile,
     getProfileRevision,
+    captureProfileMutationBasis,
     dispose,
   })
 }

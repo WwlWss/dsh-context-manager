@@ -5,6 +5,7 @@ import type {
 } from './types.js'
 
 const BUSINESS_CODES = new Set<ContextManagerRemoteErrorCode>([
+  'host-instance-conflict',
   'profile-exists',
   'profile-not-found',
   'profile-path-not-editable',
@@ -45,6 +46,18 @@ export function invalidRevision(expectedRevision: number): ContextManagerRemoteE
   return Object.freeze({
     code: 'invalid-revision',
     message: 'expectedRevision must be a non-negative safe integer',
+  })
+}
+
+export function hostInstanceConflict(
+  expectedInstanceId: string,
+  actualInstanceId: string,
+): ContextManagerRemoteError {
+  return Object.freeze({
+    code: 'host-instance-conflict',
+    message: 'Profile write authority changed before profile mutation',
+    expectedInstanceId,
+    actualInstanceId,
   })
 }
 

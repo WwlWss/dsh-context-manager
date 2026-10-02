@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto'
 import { Service, type Context } from '@deepseek-ai/cordis'
 import {
   installSettingsSection,
@@ -61,6 +62,7 @@ interface WritableState {
  */
 export class ContextManagerService extends Service {
   private readonly ownerCtx: Context
+  private profileWriteAuthorityId = randomUUID()
   private source: () => StoredContextManagerSettings = () => EMPTY_CONTEXT_MANAGER_SETTINGS
 
   constructor(ctx: Context) {
@@ -75,6 +77,7 @@ export class ContextManagerService extends Service {
       {
         setSource: source => {
           this.source = source
+          this.profileWriteAuthorityId = randomUUID()
         },
         // Runtime consumers own their own derived caches. Publish only an
         // invalidation signal and make them pull current authoritative state.
@@ -83,6 +86,10 @@ export class ContextManagerService extends Service {
         },
       },
     )
+  }
+
+  profileWriteAuthority(): string {
+    return this.profileWriteAuthorityId
   }
 
   /**

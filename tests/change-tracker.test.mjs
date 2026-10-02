@@ -164,6 +164,7 @@ test('profile Settings commits invalidate profiles, preset resolution, and runti
   }, ctx.dshContextManager.snapshot().persistence.revision)
 
   const after = ctx.dshContextChanges.snapshot()
+  assert.equal(after.instanceId, before.instanceId)
   assert.ok(after.generation > before.generation)
   assert.ok(after.profiles > before.profiles)
   assert.ok(after.presets > before.presets)
@@ -244,6 +245,52 @@ test('native preset authoring bumps only after successful copy/remove and never 
   after = ctx.dshContextChanges.snapshot()
   assert.equal(after.generation, before.generation + 1)
   assert.equal(after.presets, before.presets + 1)
+})
+
+test('change tracker rotates authority identity when the Settings provider is replaced', async (t) => {
+  const ctx = new Context()
+  t.after(() => ctx.fiber.dispose())
+
+  const settingsA = ctx.plugin(MemorySettings, {})
+  await settingsA
+  const managerFiber = ctx.plugin(ContextManagerService)
+  await managerFiber
+  const trackerFiber = ctx.plugin(ContextManagerChangeTracker)
+  await trackerFiber
+
+  const first = ctx.dshContextChanges.snapshot()
+
+  await settingsA.dispose()
+  const afterDetach = ctx.dshContextChanges.snapshot()
+  assert.notEqual(afterDetach.instanceId, first.instanceId)
+
+  const settingsB = ctx.plugin(MemorySettings, {})
+  await settingsB
+  const afterAttach = ctx.dshContextChanges.snapshot()
+  assert.notEqual(afterAttach.instanceId, afterDetach.instanceId)
+})
+
+test('change tracker rotates authority identity when ContextManagerService is replaced', async (t) => {
+  const ctx = new Context()
+  t.after(() => ctx.fiber.dispose())
+
+  const settingsFiber = ctx.plugin(MemorySettings, {})
+  await settingsFiber
+  const managerA = ctx.plugin(ContextManagerService)
+  await managerA
+  const trackerFiber = ctx.plugin(ContextManagerChangeTracker)
+  await trackerFiber
+
+  const first = ctx.dshContextChanges.snapshot()
+
+  await managerA.dispose()
+  const afterDetach = ctx.dshContextChanges.snapshot()
+  assert.notEqual(afterDetach.instanceId, first.instanceId)
+
+  const managerB = ctx.plugin(ContextManagerService)
+  await managerB
+  const afterAttach = ctx.dshContextChanges.snapshot()
+  assert.notEqual(afterAttach.instanceId, afterDetach.instanceId)
 })
 
 test('change tracker instance identity is stable for one service lifetime and changes after remount', async () => {

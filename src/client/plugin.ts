@@ -20,7 +20,7 @@ import {
   type ContextManagerPresentationStoreHandle,
 } from './presentation-store.js'
 import { createContextManagerClientModel } from './model.js'
-import type { ContextManagerClientReadRemote } from './remote-port.js'
+import type { ContextManagerClientBusinessRemote } from './remote-port.js'
 import styles from './plugin.module.css'
 
 type TriggerProps = ComposedProps<
@@ -120,10 +120,10 @@ export function createContextManagerClientPlugin(contribution: ContextManagerRem
           apply(childCtx: Context) {
             const childRemote = (childCtx as Context & {
               readonly remote: ContextManagerClientRemote & {
-                readonly contextManager: ContextManagerClientReadRemote
+                readonly contextManager: ContextManagerClientBusinessRemote
               }
             }).remote
-            return nextModel.attach(childRemote.contextManager as ContextManagerClientReadRemote)
+            return nextModel.attach(childRemote.contextManager as ContextManagerClientBusinessRemote)
           },
         })
 

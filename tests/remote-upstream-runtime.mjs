@@ -317,13 +317,23 @@ try {
   })
   assert.equal(initial.persistence.revision, 0)
 
+  const changeSnapshot = await ctx.typertGateway.invoke({
+    namespace: 'contextManager',
+    method: 'changes',
+    args: {},
+  })
+  assert.equal(changeSnapshot.instanceId, 'runtime-matrix')
+
   const created = await ctx.typertGateway.invoke({
     namespace: 'contextManager',
     method: 'createProfile',
     args: {
       id: 'main',
       input: { name: 'Main', basePreset: 'standard' },
-      expectedRevision: 0,
+      basis: {
+        instanceId: changeSnapshot.instanceId,
+        revision: 0,
+      },
     },
   })
   assert.equal(created.ok, true)
@@ -335,11 +345,42 @@ try {
     args: {
       profileId: 'main',
       name: 'Stale',
-      expectedRevision: 0,
+      basis: {
+        instanceId: changeSnapshot.instanceId,
+        revision: 0,
+      },
     },
   })
   assert.equal(stale.ok, false)
   assert.equal(stale.error.code, 'profile-conflict')
+
+  const wrongInstance = await ctx.typertGateway.invoke({
+    namespace: 'contextManager',
+    method: 'setProfileName',
+    args: {
+      profileId: 'main',
+      name: 'Must not apply',
+      basis: {
+        instanceId: 'stale-runtime-matrix',
+        revision: created.value.persistence.revision,
+      },
+    },
+  })
+  assert.equal(wrongInstance.ok, false)
+  assert.equal(wrongInstance.error.code, 'host-instance-conflict')
+  assert.equal(wrongInstance.error.expectedInstanceId, 'stale-runtime-matrix')
+  assert.equal(wrongInstance.error.actualInstanceId, changeSnapshot.instanceId)
+
+  const afterWrongInstance = await ctx.typertGateway.invoke({
+    namespace: 'contextManager',
+    method: 'profiles',
+    args: {},
+  })
+  assert.equal(afterWrongInstance.profiles.main.name, 'Main')
+  assert.equal(
+    afterWrongInstance.persistence.revision,
+    created.value.persistence.revision,
+  )
 
   const promptCreated = await ctx.typertGateway.invoke({
     namespace: 'contextManager',

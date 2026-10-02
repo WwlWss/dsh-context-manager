@@ -1,7 +1,12 @@
-export const CONTEXT_MANAGER_REMOTE_API_VERSION = 1
+export const CONTEXT_MANAGER_REMOTE_API_VERSION = 2
 
 export interface ContextManagerRemoteProtocol {
   readonly apiVersion: number
+}
+
+export interface ContextManagerRemoteProfileMutationBasis {
+  readonly instanceId: string
+  readonly revision: number
 }
 
 export type ContextManagerRemoteSkillMode = 'pinned' | 'auto' | 'manual' | 'off'
@@ -109,6 +114,7 @@ export interface ContextManagerRemoteDeleteReceipt {
 
 export type ContextManagerRemoteErrorCode =
   | 'profile-conflict'
+  | 'host-instance-conflict'
   | 'invalid-revision'
   | 'profile-exists'
   | 'profile-not-found'
@@ -141,6 +147,8 @@ export interface ContextManagerRemoteError {
   readonly message: string
   readonly expectedRevision?: number
   readonly actualRevision?: number
+  readonly expectedInstanceId?: string
+  readonly actualInstanceId?: string
 }
 
 export type ContextManagerRemoteResult<T> =

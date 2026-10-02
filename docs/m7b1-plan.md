@@ -1,6 +1,6 @@
 # M7B1 — Authoritative Client Model
 
-**Status:** B1-0 contract normalization is merged. This document freezes the B1-1 implementation contract only.
+**Status:** B1-1 is complete in merged PR #27. B1-2 presentation/hook bridging and B1-3 PromptResource/keyed lazy Client surfaces remain pending.
 
 ## Goal
 
@@ -107,6 +107,8 @@ Each surface owns `status`, `stale`, optional authoritative `data`, and optional
 Whenever an accepted `changes` snapshot advances the cursor for a baseline surface, cached fresh data for that surface becomes stale in the same store publication, even when the surface is not part of the current reconcile. The data is retained; only a stable authoritative read at the latest cursor restores `stale: false`. A newer global generation alone does not stale a surface whose own cursor is unchanged.
 
 Transient refresh failure may retain previous data as stale. A Host `instanceId` change clears all authoritative caches because data from the old Host instance is no longer valid.
+
+**M7B2 semantic strengthening:** B1-1 originally consumed `instanceId` as a Host-authority lifetime. M7B2 keeps the B1-1 reconciliation algorithm and wire field unchanged but broadens the producer semantics: ChangeTracker now rotates `instanceId` when the profile-write-authority token changes, including Settings-provider or `ContextManagerService` replacement. B1-1's existing full-cache invalidation therefore applies to those replacements without adding Client state.
 
 ## Stable hydration
 
