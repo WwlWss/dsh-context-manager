@@ -54,8 +54,8 @@ A profile write is scoped by an immutable **Profile Mutation Basis**:
 
 The basis is captured from B1-1 when the user action or presentation-local draft is formed, and that same basis is passed unchanged when the operation is committed. Save-time recapture is forbidden because it would silently rebase a stale draft onto newer authoritative state.
 
-- `instanceId` identifies the Host/service lifetime;
-- `revision` is the Settings persistence revision associated with the authoritative profile snapshot the user acted on.
+- `instanceId` identifies the current **profile-write authority lifetime**, not merely the `ContextManagerChangeTracker` object. It rotates when the current `ContextManagerService` identity or current `SettingsProvider` identity changes; a ChangeTracker remount naturally creates a new ID as well.
+- `revision` is the Settings persistence revision associated with the authoritative profile snapshot the user acted on and is interpreted only inside that authority lifetime.
 
 Never use:
 
@@ -68,6 +68,18 @@ Never use:
 If B1-1 has no fresh authoritative basis, the Client refuses the write locally with `profile-basis-unavailable`. If the caller's basis no longer matches the current authoritative basis, the Client refuses the write locally with `profile-basis-stale`.
 
 A write also requires the currently attached Host protocol to be `compatible`. `unchecked`, `checking`, or protocol-error state is not sufficient proof for a new mutation.
+
+## Authority rotation contract
+
+The ChangeTracker synchronizes the current write-authority tuple before every `changes()` snapshot:
+
+```text
+(current ContextManagerService object, current SettingsProvider object)
+```
+
+If either object identity changes, `instanceId` rotates immediately. This closes same-revision collisions after Settings-provider or ContextManagerService replacement without adding another wire field or advancing Remote API version beyond v2. Authority synchronization itself does not bump cursors; existing lifecycle/change events retain their original cursor-bump semantics, while `instanceId` replacement is the stronger all-cache invalidation signal.
+
+The Host profile mutation execution path obtains the current instance ID through the package-owned Remote read sanitizer before comparing it with the mutation basis. Unexpected authority lookup/snapshot failures therefore remain sanitized Remote failures rather than leaking Host internals.
 
 ## Concurrency contract
 
@@ -94,7 +106,7 @@ Known business failure means the Host explicitly rejected the write.
 
 Transport failure or a rejected unary call is outcome-unknown: the Client cannot prove whether the Host committed before the reply was lost. It must not retry the write. It performs a safety rehydrate when the operation still belongs to the current lifecycle.
 
-Confirmed mutation success is always reported as applied, even if post-success rehydration is degraded.
+A confirmed mutation success is reported as applied when the operation still belongs to the same Client/Host lifecycle, even if post-success rehydration is degraded. If lifecycle/authority replacement occurs during terminal publication or recovery, the stale operation returns `superseded` (or detached/disposed/incompatible when directly observable) instead of publishing current success.
 
 ## Authoritative recovery
 
@@ -165,5 +177,7 @@ Required focused evidence:
 11. stable business refusal does not poison read surfaces;
 12. outer Remote failure and rejected calls are outcome-unknown and never auto-retried;
 13. confirmed success remains applied when same-lifecycle rehydration degrades;
-14. attachment/authority replacement prevents late operation-state publication and returns stale operations as superseded/detached/disposed rather than current success;
-15. retained Gateway, Client declaration, packed artifact, and published bundle matrices remain green.
+14. SettingsProvider and ContextManagerService replacement rotate `instanceId`; an old basis is rejected even when the new Settings registration reuses the same numeric revision;
+15. unexpected write-authority lookup failures are sanitized through the package-owned Remote error boundary;
+16. attachment/authority replacement, including synchronous reentrancy during the final settled/precondition publication, prevents stale operation results from returning as current applied/rejected/unknown results;
+17. retained Gateway, Client declaration, packed artifact, and published bundle matrices remain green.
