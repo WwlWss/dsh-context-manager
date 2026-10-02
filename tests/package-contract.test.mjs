@@ -97,7 +97,7 @@ test('built host entry exposes the Context Manager Host service contracts', asyn
   assert.equal(typeof entry.ContextManagerPresetAuthoring, 'function')
   assert.equal(typeof entry.ContextManagerPromptLibrary, 'function')
   assert.equal(typeof entry.ContextManagerRemoteService, 'function')
-  assert.equal(entry.CONTEXT_MANAGER_REMOTE_API_VERSION, 1)
+  assert.equal(entry.CONTEXT_MANAGER_REMOTE_API_VERSION, 2)
   assert.equal(entry.ContextManagerSessionPreset, undefined)
   assert.equal(entry.CONTEXT_MANAGER_SETTINGS_NAMESPACE, 'dsh-context-manager')
 })
@@ -193,7 +193,7 @@ test('generated M6C Host Typert surface stays isolated from M2-M5 services', asy
   }
 })
 
-test('generated M6C Remote contribution exposes exactly the strict business surface', async () => {
+test('generated M7B2 Remote contribution exposes exactly the strict business surface', async () => {
   const remote = await import(pathToFileURL(fromRoot(packageJson.exports['./remote'].default)).href)
   const contribution = remote.TYPERT_REMOTE
   assert.equal(contribution.package, 'dsh-context-manager')
@@ -253,8 +253,8 @@ test('generated M6C Remote contribution exposes exactly the strict business surf
   const protocol = contribution.descriptors.find(item => item.method === 'protocol')
   assert.ok(protocol)
   assert.deepEqual(protocol.parameters, [])
-  assert.equal(protocol.result.schema.safeParse({ apiVersion: 1 }).success, true)
-  assert.equal(protocol.result.schema.safeParse({ apiVersion: '1' }).success, false)
+  assert.equal(protocol.result.schema.safeParse({ apiVersion: 2 }).success, true)
+  assert.equal(protocol.result.schema.safeParse({ apiVersion: '2' }).success, false)
 
   const presets = contribution.descriptors.find(item => item.method === 'presets')
   assert.ok(presets)
@@ -287,7 +287,22 @@ test('generated M6C Remote contribution exposes exactly the strict business surf
 
   const createProfile = contribution.descriptors.find(item => item.method === 'createProfile')
   assert.ok(createProfile)
-  assert.deepEqual(createProfile.parameters.map(item => item.name), ['id', 'input', 'expectedRevision'])
+  assert.deepEqual(createProfile.parameters.map(item => item.name), ['id', 'input', 'basis'])
+
+  const basisParameter = createProfile.parameters.find(item => item.name === 'basis')
+  assert.ok(basisParameter)
+  assert.equal(basisParameter.codec.schema.safeParse({
+    instanceId: 'host-a',
+    revision: 1,
+  }).success, true)
+  assert.equal(basisParameter.codec.schema.safeParse({
+    instanceId: 'host-a',
+    revision: '1',
+  }).success, false)
+  assert.equal(basisParameter.codec.schema.safeParse({
+    revision: 1,
+  }).success, false)
+
   assert.equal(createProfile.result.schema.safeParse({
     ok: false,
     error: {
@@ -295,6 +310,15 @@ test('generated M6C Remote contribution exposes exactly the strict business surf
       message: 'stale',
       expectedRevision: 1,
       actualRevision: 2,
+    },
+  }).success, true)
+  assert.equal(createProfile.result.schema.safeParse({
+    ok: false,
+    error: {
+      code: 'host-instance-conflict',
+      message: 'Host changed',
+      expectedInstanceId: 'host-a',
+      actualInstanceId: 'host-b',
     },
   }).success, true)
 })
