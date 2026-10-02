@@ -55,7 +55,7 @@ export function hostInstanceConflict(
 ): ContextManagerRemoteError {
   return Object.freeze({
     code: 'host-instance-conflict',
-    message: 'Host instance changed before profile mutation',
+    message: 'Profile write authority changed before profile mutation',
     expectedInstanceId,
     actualInstanceId,
   })

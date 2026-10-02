@@ -164,6 +164,7 @@ test('profile Settings commits invalidate profiles, preset resolution, and runti
   }, ctx.dshContextManager.snapshot().persistence.revision)
 
   const after = ctx.dshContextChanges.snapshot()
+  assert.equal(after.instanceId, before.instanceId)
   assert.ok(after.generation > before.generation)
   assert.ok(after.profiles > before.profiles)
   assert.ok(after.presets > before.presets)

@@ -108,6 +108,8 @@ Whenever an accepted `changes` snapshot advances the cursor for a baseline surfa
 
 Transient refresh failure may retain previous data as stale. A Host `instanceId` change clears all authoritative caches because data from the old Host instance is no longer valid.
 
+**M7B2 semantic strengthening:** B1-1 originally consumed `instanceId` as a Host-authority lifetime. M7B2 keeps the B1-1 reconciliation algorithm and wire field unchanged but broadens the producer semantics: ChangeTracker now rotates `instanceId` when the profile-write-authority token changes, including Settings-provider or `ContextManagerService` replacement. B1-1's existing full-cache invalidation therefore applies to those replacements without adding Client state.
+
 ## Stable hydration
 
 Starting a reconcile records refresh intent but does not immediately claim surface publication ownership. After a locally usable protocol guard and confirmation of the current Host authority, the reconcile claims requested surfaces in reconcile-run order. A later run may supersede an earlier surface owner; an earlier delayed run may never reclaim a surface from a higher run. Surface ownership is reset only at attachment or Host-authority lifetime boundaries, not when an owner merely completes.
