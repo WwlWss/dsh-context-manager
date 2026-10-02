@@ -52,6 +52,7 @@ function businessFail<T>(
   code: ContextManagerRemoteErrorCode,
   message = 'test business failure',
   revision?: { readonly expected: number; readonly actual: number },
+  instance?: { readonly expected: string; readonly actual: string },
 ): ContextManagerRemoteResult<T> {
   return {
     ok: false,
@@ -63,6 +64,12 @@ function businessFail<T>(
         : {
             expectedRevision: revision.expected,
             actualRevision: revision.actual,
+          }),
+      ...(instance === undefined
+        ? {}
+        : {
+            expectedInstanceId: instance.expected,
+            actualInstanceId: instance.actual,
           }),
     },
   }
@@ -1186,6 +1193,7 @@ test('profile mutation uses persistence revision and rehydrates instead of adopt
 
 test('profile mutation refuses to write without a fresh persistence revision', async () => {
   const { model, remote, detach } = await attachAndReady()
+  const basis = requireProfileMutationBasis(model)
 
   remote.changesSteps.push(
     async () => ok(changes('host-a', 2, 2, 2, 1)),
@@ -1204,6 +1212,42 @@ test('profile mutation refuses to write without a fresh persistence revision', a
       ? result.error.code
       : undefined,
     'profile-basis-unavailable',
+  )
+  assert.equal(remote.calls.profileMutation, before)
+
+  detach()
+  model.dispose()
+})
+
+test('a stale draft basis is rejected locally after authoritative profiles advance', async () => {
+  const { model, remote, detach } = await attachAndReady()
+  const draftBasis = requireProfileMutationBasis(model)
+
+  remote.changesSteps.push(
+    async () => ok(changes('host-a', 2, 2, 1, 1)),
+    async () => ok(changes('host-a', 2, 2, 1, 1)),
+  )
+  remote.profilesSteps.push(async () => ok(profiles(8)))
+  await model.reconcile(['profiles'])
+
+  assert.deepEqual(model.captureProfileMutationBasis(), {
+    instanceId: 'host-a',
+    revision: 8,
+  })
+
+  const before = remote.calls.profileMutation
+  const result = await model.mutations.setProfileName(
+    draftBasis,
+    'main',
+    'Stale draft',
+  )
+
+  assert.equal(result.status, 'rejected')
+  assert.equal(
+    result.status === 'rejected' && result.error.kind === 'precondition'
+      ? result.error.code
+      : undefined,
+    'profile-basis-stale',
   )
   assert.equal(remote.calls.profileMutation, before)
 
@@ -1417,6 +1461,73 @@ test('confirmed mutation success remains applied when rehydration degrades', asy
   model.dispose()
 })
 
+test('Host instance conflict rehydrates the new authority and supersedes the old operation', async () => {
+  const { model, remote, detach } = await attachAndReady()
+  const basis = requireProfileMutationBasis(model)
+
+  remote.profileMutationSteps.push(async () => {
+    remote.defaultChanges = changes('host-b', 1, 1, 1, 1)
+    return ok(businessFail(
+      'host-instance-conflict',
+      'host changed',
+      undefined,
+      { expected: 'host-a', actual: 'host-b' },
+    ))
+  })
+
+  const result = await model.mutations.setProfileName(
+    basis,
+    'main',
+    'Must not carry across Host lifetime',
+  )
+
+  assert.deepEqual(result, { status: 'superseded' })
+  const snapshot = model.state.getSnapshot()
+  assert.equal(snapshot.instanceId, 'host-b')
+  assert.equal(snapshot.protocol.status, 'compatible')
+  assert.deepEqual(model.captureProfileMutationBasis(), {
+    instanceId: 'host-b',
+    revision: 7,
+  })
+  assert.equal(remote.calls.profileMutation, 1)
+
+  detach()
+  model.dispose()
+})
+
+test('a late old-Host completion is superseded after detach and reattach', async () => {
+  const { model, remote, detach } = await attachAndReady()
+  const gate = deferred<
+    RemoteResult<ContextManagerRemoteResult<ContextManagerRemoteProfilesSnapshot>>
+  >()
+  remote.profileMutationSteps.push(async () => gate.promise)
+
+  const mutation = model.mutations.setProfileName(
+    requireProfileMutationBasis(model),
+    'main',
+    'Old host',
+  )
+  await waitFor(() => remote.calls.profileMutation === 1, 'old Host mutation to start')
+
+  detach()
+
+  const nextRemote = new ScriptedRemote()
+  nextRemote.defaultChanges = changes('host-b')
+  const detachNext = model.attach(nextRemote)
+  await waitFor(() => (
+    model.state.getSnapshot().instanceId === 'host-b'
+    && model.captureProfileMutationBasis() !== undefined
+  ), 'new Host attachment to hydrate')
+
+  gate.resolve(ok(businessOk(profiles(8))))
+  assert.deepEqual(await mutation, { status: 'superseded' })
+  assert.equal(model.mutations.state.getSnapshot().profile.status, 'idle')
+  assert.equal(model.state.getSnapshot().instanceId, 'host-b')
+
+  detachNext()
+  model.dispose()
+})
+
 test('detach resets mutation state and a late confirmed completion cannot republish old operation state', async () => {
   const { model, remote, detach } = await attachAndReady()
   const gate = deferred<
@@ -1439,6 +1550,137 @@ test('detach resets mutation state and a late confirmed completion cannot republ
   assert.deepEqual(await mutation, { status: 'detached' })
   assert.equal(model.mutations.state.getSnapshot().profile.status, 'idle')
 
+  model.dispose()
+})
+
+test('all profile mutation wrappers forward the exact arguments and immutable basis', async () => {
+  const { model, remote, detach } = await attachAndReady()
+  const basis = requireProfileMutationBasis(model)
+  const prompt = {
+    resourceId: 'resource',
+    enabled: true,
+    placement: 'after-persona' as const,
+    order: 4,
+  }
+
+  const cases: readonly {
+    readonly kind: string
+    readonly args: readonly unknown[]
+    readonly invoke: () => Promise<unknown>
+  }[] = [
+    {
+      kind: 'create-profile',
+      args: ['new', { name: 'New', basePreset: 'standard' }],
+      invoke: () => model.mutations.createProfile(
+        basis,
+        'new',
+        { name: 'New', basePreset: 'standard' },
+      ),
+    },
+    {
+      kind: 'delete-profile',
+      args: ['main'],
+      invoke: () => model.mutations.deleteProfile(basis, 'main'),
+    },
+    {
+      kind: 'set-default-profile',
+      args: ['main'],
+      invoke: () => model.mutations.setDefaultProfile(basis, 'main'),
+    },
+    {
+      kind: 'set-profile-name',
+      args: ['main', 'Renamed'],
+      invoke: () => model.mutations.setProfileName(basis, 'main', 'Renamed'),
+    },
+    {
+      kind: 'set-profile-description',
+      args: ['main', 'Desc'],
+      invoke: () => model.mutations.setProfileDescription(basis, 'main', 'Desc'),
+    },
+    {
+      kind: 'set-profile-base-preset',
+      args: ['main', 'future'],
+      invoke: () => model.mutations.setProfileBasePreset(basis, 'main', 'future'),
+    },
+    {
+      kind: 'set-skill-mode',
+      args: ['main', 'docker', 'manual'],
+      invoke: () => model.mutations.setSkillMode(basis, 'main', 'docker', 'manual'),
+    },
+    {
+      kind: 'remove-skill-binding',
+      args: ['main', 'docker'],
+      invoke: () => model.mutations.removeSkillBinding(basis, 'main', 'docker'),
+    },
+    {
+      kind: 'add-prompt-binding',
+      args: ['main', 'binding', prompt],
+      invoke: () => model.mutations.addPromptBinding(basis, 'main', 'binding', prompt),
+    },
+    {
+      kind: 'set-prompt-binding-resource-id',
+      args: ['main', 'binding', 'resource-2'],
+      invoke: () => model.mutations.setPromptBindingResourceId(
+        basis,
+        'main',
+        'binding',
+        'resource-2',
+      ),
+    },
+    {
+      kind: 'set-prompt-binding-enabled',
+      args: ['main', 'binding', false],
+      invoke: () => model.mutations.setPromptBindingEnabled(
+        basis,
+        'main',
+        'binding',
+        false,
+      ),
+    },
+    {
+      kind: 'set-prompt-binding-placement',
+      args: ['main', 'binding', 'before-persona'],
+      invoke: () => model.mutations.setPromptBindingPlacement(
+        basis,
+        'main',
+        'binding',
+        'before-persona',
+      ),
+    },
+    {
+      kind: 'set-prompt-binding-order',
+      args: ['main', 'binding', 9],
+      invoke: () => model.mutations.setPromptBindingOrder(
+        basis,
+        'main',
+        'binding',
+        9,
+      ),
+    },
+    {
+      kind: 'remove-prompt-binding',
+      args: ['main', 'binding'],
+      invoke: () => model.mutations.removePromptBinding(
+        basis,
+        'main',
+        'binding',
+      ),
+    },
+  ]
+
+  for (const item of cases) {
+    remote.profileMutationSteps.push(
+      async () => ok(businessFail('persistence-read-only')),
+    )
+    const before = remote.profileMutationCalls.length
+    await item.invoke()
+    const call = remote.profileMutationCalls[before]
+    assert.equal(call?.kind, item.kind)
+    assert.deepEqual(call?.args, item.args)
+    assert.deepEqual(call?.basis, basis)
+  }
+
+  detach()
   model.dispose()
 })
 
