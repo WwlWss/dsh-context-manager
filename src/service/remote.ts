@@ -29,6 +29,7 @@ import {
 import {
   businessResult,
   fail,
+  hostInstanceConflict,
   invalidRevision,
   mapBusinessError,
   ok,
@@ -46,6 +47,7 @@ import {
   type ContextManagerRemotePresetReceipt,
   type ContextManagerRemotePresetSnapshot,
   type ContextManagerRemoteProfileInput,
+  type ContextManagerRemoteProfileMutationBasis,
   type ContextManagerRemoteProfilesSnapshot,
   type ContextManagerRemotePromptBinding,
   type ContextManagerRemotePromptPlacement,
@@ -83,27 +85,33 @@ export class ContextManagerRemoteService extends TypertRemoteService {
   async createProfile(
     id: string,
     input: ContextManagerRemoteProfileInput,
-    expectedRevision: number,
+    basis: ContextManagerRemoteProfileMutationBasis,
   ): Promise<ContextManagerRemoteResult<ContextManagerRemoteProfilesSnapshot>> {
-    return this.profileMutation(expectedRevision, port => port.createProfile(id, input, expectedRevision))
+    return this.profileMutation(
+      basis,
+      (port, revision) => port.createProfile(id, input, revision),
+    )
   }
 
   @Remote
   async deleteProfile(
     id: string,
-    expectedRevision: number,
+    basis: ContextManagerRemoteProfileMutationBasis,
   ): Promise<ContextManagerRemoteResult<ContextManagerRemoteProfilesSnapshot>> {
-    return this.profileMutation(expectedRevision, port => port.deleteProfile(id, expectedRevision))
+    return this.profileMutation(
+      basis,
+      (port, revision) => port.deleteProfile(id, revision),
+    )
   }
 
   @Remote
   async setDefaultProfile(
     id: string | null,
-    expectedRevision: number,
+    basis: ContextManagerRemoteProfileMutationBasis,
   ): Promise<ContextManagerRemoteResult<ContextManagerRemoteProfilesSnapshot>> {
     return this.profileMutation(
-      expectedRevision,
-      port => port.setDefaultProfile(id === null ? undefined : id, expectedRevision),
+      basis,
+      (port, revision) => port.setDefaultProfile(id === null ? undefined : id, revision),
     )
   }
 
@@ -111,11 +119,11 @@ export class ContextManagerRemoteService extends TypertRemoteService {
   async setProfileName(
     profileId: string,
     name: string,
-    expectedRevision: number,
+    basis: ContextManagerRemoteProfileMutationBasis,
   ): Promise<ContextManagerRemoteResult<ContextManagerRemoteProfilesSnapshot>> {
     return this.profileMutation(
-      expectedRevision,
-      port => port.setProfileName(profileId, name, expectedRevision),
+      basis,
+      (port, revision) => port.setProfileName(profileId, name, revision),
     )
   }
 
@@ -123,14 +131,14 @@ export class ContextManagerRemoteService extends TypertRemoteService {
   async setProfileDescription(
     profileId: string,
     description: string | null,
-    expectedRevision: number,
+    basis: ContextManagerRemoteProfileMutationBasis,
   ): Promise<ContextManagerRemoteResult<ContextManagerRemoteProfilesSnapshot>> {
     return this.profileMutation(
-      expectedRevision,
-      port => port.setProfileDescription(
+      basis,
+      (port, revision) => port.setProfileDescription(
         profileId,
         description === null ? undefined : description,
-        expectedRevision,
+        revision,
       ),
     )
   }
@@ -139,11 +147,11 @@ export class ContextManagerRemoteService extends TypertRemoteService {
   async setProfileBasePreset(
     profileId: string,
     basePreset: string,
-    expectedRevision: number,
+    basis: ContextManagerRemoteProfileMutationBasis,
   ): Promise<ContextManagerRemoteResult<ContextManagerRemoteProfilesSnapshot>> {
     return this.profileMutation(
-      expectedRevision,
-      port => port.setProfileBasePreset(profileId, basePreset, expectedRevision),
+      basis,
+      (port, revision) => port.setProfileBasePreset(profileId, basePreset, revision),
     )
   }
 
@@ -152,11 +160,11 @@ export class ContextManagerRemoteService extends TypertRemoteService {
     profileId: string,
     skillName: string,
     mode: ContextManagerRemoteSkillMode,
-    expectedRevision: number,
+    basis: ContextManagerRemoteProfileMutationBasis,
   ): Promise<ContextManagerRemoteResult<ContextManagerRemoteProfilesSnapshot>> {
     return this.profileMutation(
-      expectedRevision,
-      port => port.setSkillMode(profileId, skillName, mode, expectedRevision),
+      basis,
+      (port, revision) => port.setSkillMode(profileId, skillName, mode, revision),
     )
   }
 
@@ -164,11 +172,11 @@ export class ContextManagerRemoteService extends TypertRemoteService {
   async removeSkillBinding(
     profileId: string,
     skillName: string,
-    expectedRevision: number,
+    basis: ContextManagerRemoteProfileMutationBasis,
   ): Promise<ContextManagerRemoteResult<ContextManagerRemoteProfilesSnapshot>> {
     return this.profileMutation(
-      expectedRevision,
-      port => port.removeSkillBinding(profileId, skillName, expectedRevision),
+      basis,
+      (port, revision) => port.removeSkillBinding(profileId, skillName, revision),
     )
   }
 
@@ -177,11 +185,11 @@ export class ContextManagerRemoteService extends TypertRemoteService {
     profileId: string,
     bindingId: string,
     input: ContextManagerRemotePromptBinding,
-    expectedRevision: number,
+    basis: ContextManagerRemoteProfileMutationBasis,
   ): Promise<ContextManagerRemoteResult<ContextManagerRemoteProfilesSnapshot>> {
     return this.profileMutation(
-      expectedRevision,
-      port => port.addPromptBinding(profileId, bindingId, input, expectedRevision),
+      basis,
+      (port, revision) => port.addPromptBinding(profileId, bindingId, input, revision),
     )
   }
 
@@ -190,15 +198,15 @@ export class ContextManagerRemoteService extends TypertRemoteService {
     profileId: string,
     bindingId: string,
     resourceId: string,
-    expectedRevision: number,
+    basis: ContextManagerRemoteProfileMutationBasis,
   ): Promise<ContextManagerRemoteResult<ContextManagerRemoteProfilesSnapshot>> {
     return this.profileMutation(
-      expectedRevision,
-      port => port.setPromptBindingResourceId(
+      basis,
+      (port, revision) => port.setPromptBindingResourceId(
         profileId,
         bindingId,
         resourceId,
-        expectedRevision,
+        revision,
       ),
     )
   }
@@ -208,11 +216,11 @@ export class ContextManagerRemoteService extends TypertRemoteService {
     profileId: string,
     bindingId: string,
     enabled: boolean,
-    expectedRevision: number,
+    basis: ContextManagerRemoteProfileMutationBasis,
   ): Promise<ContextManagerRemoteResult<ContextManagerRemoteProfilesSnapshot>> {
     return this.profileMutation(
-      expectedRevision,
-      port => port.setPromptBindingEnabled(profileId, bindingId, enabled, expectedRevision),
+      basis,
+      (port, revision) => port.setPromptBindingEnabled(profileId, bindingId, enabled, revision),
     )
   }
 
@@ -221,15 +229,15 @@ export class ContextManagerRemoteService extends TypertRemoteService {
     profileId: string,
     bindingId: string,
     placement: ContextManagerRemotePromptPlacement,
-    expectedRevision: number,
+    basis: ContextManagerRemoteProfileMutationBasis,
   ): Promise<ContextManagerRemoteResult<ContextManagerRemoteProfilesSnapshot>> {
     return this.profileMutation(
-      expectedRevision,
-      port => port.setPromptBindingPlacement(
+      basis,
+      (port, revision) => port.setPromptBindingPlacement(
         profileId,
         bindingId,
         placement,
-        expectedRevision,
+        revision,
       ),
     )
   }
@@ -239,11 +247,11 @@ export class ContextManagerRemoteService extends TypertRemoteService {
     profileId: string,
     bindingId: string,
     order: number,
-    expectedRevision: number,
+    basis: ContextManagerRemoteProfileMutationBasis,
   ): Promise<ContextManagerRemoteResult<ContextManagerRemoteProfilesSnapshot>> {
     return this.profileMutation(
-      expectedRevision,
-      port => port.setPromptBindingOrder(profileId, bindingId, order, expectedRevision),
+      basis,
+      (port, revision) => port.setPromptBindingOrder(profileId, bindingId, order, revision),
     )
   }
 
@@ -251,11 +259,11 @@ export class ContextManagerRemoteService extends TypertRemoteService {
   async removePromptBinding(
     profileId: string,
     bindingId: string,
-    expectedRevision: number,
+    basis: ContextManagerRemoteProfileMutationBasis,
   ): Promise<ContextManagerRemoteResult<ContextManagerRemoteProfilesSnapshot>> {
     return this.profileMutation(
-      expectedRevision,
-      port => port.removePromptBinding(profileId, bindingId, expectedRevision),
+      basis,
+      (port, revision) => port.removePromptBinding(profileId, bindingId, revision),
     )
   }
 
@@ -490,14 +498,23 @@ export class ContextManagerRemoteService extends TypertRemoteService {
   }
 
   private async profileMutation(
-    expectedRevision: number,
-    mutate: (port: ContextManagerProfileRemotePort) => Promise<void>,
+    basis: ContextManagerRemoteProfileMutationBasis,
+    mutate: (
+      port: ContextManagerProfileRemotePort,
+      expectedRevision: number,
+    ) => Promise<void>,
   ): Promise<ContextManagerRemoteResult<ContextManagerRemoteProfilesSnapshot>> {
-    const invalid = invalidRevision(expectedRevision)
+    const invalid = invalidRevision(basis.revision)
     if (invalid !== undefined) return fail(invalid)
+
+    const actualInstanceId = this.changePort().snapshot().instanceId
+    if (actualInstanceId !== basis.instanceId) {
+      return fail(hostInstanceConflict(basis.instanceId, actualInstanceId))
+    }
+
     return businessResult(async () => {
       const port = this.profilePort()
-      await mutate(port)
+      await mutate(port, basis.revision)
       return projectProfilesSnapshot(port.snapshotForWire())
     })
   }
