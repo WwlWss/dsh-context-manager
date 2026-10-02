@@ -1553,6 +1553,114 @@ test('detach resets mutation state and a late confirmed completion cannot republ
   model.dispose()
 })
 
+test('a synchronous settled-success subscriber detach changes the returned result to detached', async () => {
+  const { model, detach } = await attachAndReady()
+
+  let unsubscribe = () => {}
+  unsubscribe = model.mutations.state.subscribe(() => {
+    const operation = model.mutations.state.getSnapshot().profile
+    if (
+      operation.status !== 'settled'
+      || operation.result.status !== 'applied'
+    ) {
+      return
+    }
+    unsubscribe()
+    detach()
+  })
+
+  const result = await model.mutations.setProfileName(
+    requireProfileMutationBasis(model),
+    'main',
+    'Commit-point detach',
+  )
+
+  assert.deepEqual(result, { status: 'detached' })
+  assert.equal(model.mutations.state.getSnapshot().profile.status, 'idle')
+
+  unsubscribe()
+  model.dispose()
+})
+
+test('a synchronous settled-success subscriber reattach supersedes the old result', async () => {
+  const { model, detach } = await attachAndReady()
+  const nextRemote = new ScriptedRemote()
+  nextRemote.defaultChanges = changes('host-b')
+  let detachNext = () => {}
+
+  let unsubscribe = () => {}
+  unsubscribe = model.mutations.state.subscribe(() => {
+    const operation = model.mutations.state.getSnapshot().profile
+    if (
+      operation.status !== 'settled'
+      || operation.result.status !== 'applied'
+    ) {
+      return
+    }
+    unsubscribe()
+    detach()
+    detachNext = model.attach(nextRemote)
+  })
+
+  const result = await model.mutations.setProfileName(
+    requireProfileMutationBasis(model),
+    'main',
+    'Commit-point reattach',
+  )
+
+  assert.deepEqual(result, { status: 'superseded' })
+  await waitFor(
+    () => model.state.getSnapshot().instanceId === 'host-b',
+    'replacement Host to hydrate after settled publication',
+  )
+  assert.equal(model.mutations.state.getSnapshot().profile.status, 'idle')
+
+  unsubscribe()
+  detachNext()
+  model.dispose()
+})
+
+test('a synchronous precondition publication detach supersedes the stale-basis rejection', async () => {
+  const { model, remote, detach } = await attachAndReady()
+  const draftBasis = requireProfileMutationBasis(model)
+
+  remote.changesSteps.push(
+    async () => ok(changes('host-a', 2, 2, 1, 1)),
+    async () => ok(changes('host-a', 2, 2, 1, 1)),
+  )
+  remote.profilesSteps.push(async () => ok(profiles(8)))
+  await model.reconcile(['profiles'])
+
+  let unsubscribe = () => {}
+  unsubscribe = model.mutations.state.subscribe(() => {
+    const operation = model.mutations.state.getSnapshot().profile
+    if (
+      operation.status !== 'settled'
+      || operation.result.status !== 'rejected'
+      || operation.result.error.kind !== 'precondition'
+      || operation.result.error.code !== 'profile-basis-stale'
+    ) {
+      return
+    }
+    unsubscribe()
+    detach()
+  })
+
+  const before = remote.calls.profileMutation
+  const result = await model.mutations.setProfileName(
+    draftBasis,
+    'main',
+    'Stale at terminal publication',
+  )
+
+  assert.deepEqual(result, { status: 'detached' })
+  assert.equal(remote.calls.profileMutation, before)
+  assert.equal(model.mutations.state.getSnapshot().profile.status, 'idle')
+
+  unsubscribe()
+  model.dispose()
+})
+
 test('all profile mutation wrappers forward the exact arguments and immutable basis', async () => {
   const { model, remote, detach } = await attachAndReady()
   const basis = requireProfileMutationBasis(model)
