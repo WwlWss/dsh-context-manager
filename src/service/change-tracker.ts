@@ -35,8 +35,7 @@ export class ContextManagerChangeTracker extends Service {
   private instanceId = randomUUID()
   private readonly ownerCtx: Context
   private authorityInitialized = false
-  private profileAuthority: unknown
-  private settingsAuthority: unknown
+  private profileAuthority: string | undefined
   private generation = 0
   private profiles = 0
   private promptResources = 0
@@ -100,25 +99,22 @@ export class ContextManagerChangeTracker extends Service {
   }
 
   private syncAuthority(): void {
-    const profileAuthority = this.ownerCtx.get('dshContextManager')
-    const settingsAuthority = this.ownerCtx.get('settings')
+    const manager = this.ownerCtx.get('dshContextManager')
+    const profileAuthority = manager?.profileWriteAuthority()
 
     if (!this.authorityInitialized) {
       this.authorityInitialized = true
       this.profileAuthority = profileAuthority
-      this.settingsAuthority = settingsAuthority
       return
     }
 
     if (
       this.profileAuthority === profileAuthority
-      && this.settingsAuthority === settingsAuthority
     ) {
       return
     }
 
     this.profileAuthority = profileAuthority
-    this.settingsAuthority = settingsAuthority
     this.instanceId = randomUUID()
   }
 
