@@ -4,6 +4,7 @@ import { SettingsProvider } from '@deepseek-ai/dsh-settings'
 import { test } from 'node:test'
 
 import {
+  ContextManagerChangeTracker,
   ContextManagerRemoteService,
   ContextManagerService,
 } from '../lib/index.js'
@@ -106,11 +107,20 @@ async function boot() {
   await settingsFiber
   const managerFiber = ctx.plugin(ContextManagerService)
   await managerFiber
+  const changesFiber = ctx.plugin(ContextManagerChangeTracker)
+  await changesFiber
   const promptFiber = ctx.plugin(FakePromptLibrary)
   await promptFiber
   const remoteFiber = ctx.plugin(ContextManagerRemoteService)
   await remoteFiber
-  return { ctx, settingsFiber, managerFiber, promptFiber, remoteFiber }
+  return { ctx, settingsFiber, managerFiber, changesFiber, promptFiber, remoteFiber }
+}
+
+function profileBasis(remote, revision) {
+  return {
+    instanceId: remote.changes().instanceId,
+    revision,
+  }
 }
 
 test('M6B profile Remote returns authoritative snapshots after narrow mutations', async () => {
@@ -127,25 +137,25 @@ test('M6B profile Remote returns authoritative snapshots after narrow mutations'
     basePreset: 'standard',
     skills: { docker: { mode: 'manual' } },
     prompts: {},
-  }, snapshot.persistence.revision)
+  }, profileBasis(remote, snapshot.persistence.revision))
 
   assert.equal(result.ok, true)
   snapshot = result.value
   assert.equal(snapshot.profiles.main.name, 'Main')
   assert.equal(snapshot.profiles.main.skills.docker.mode, 'manual')
 
-  result = await remote.setProfileName('main', 'Renamed', snapshot.persistence.revision)
+  result = await remote.setProfileName('main', 'Renamed', profileBasis(remote, snapshot.persistence.revision))
   assert.equal(result.ok, true)
   assert.equal(result.value.profiles.main.name, 'Renamed')
 
-  result = await remote.setProfileDescription('main', null, result.value.persistence.revision)
+  result = await remote.setProfileDescription('main', null, profileBasis(remote, result.value.persistence.revision))
   assert.equal(result.ok, true)
   assert.equal(result.value.profiles.main.description, undefined)
 
   result = await remote.setProfileBasePreset(
     'main',
     'future-preset',
-    result.value.persistence.revision,
+    profileBasis(remote, result.value.persistence.revision),
   )
   assert.equal(result.ok, true)
   assert.equal(result.value.profiles.main.basePreset, 'future-preset')
@@ -159,18 +169,48 @@ test('M6B profile Remote maps stale Settings revisions and invalid revisions to 
   const created = await remote.createProfile('main', {
     name: 'Main',
     basePreset: 'standard',
-  }, before.persistence.revision)
+  }, profileBasis(remote, before.persistence.revision))
   assert.equal(created.ok, true)
 
-  const conflict = await remote.setProfileName('main', 'stale', before.persistence.revision)
+  const conflict = await remote.setProfileName('main', 'stale', profileBasis(remote, before.persistence.revision))
   assert.deepEqual(conflict.ok, false)
   assert.equal(conflict.error.code, 'profile-conflict')
   assert.equal(conflict.error.expectedRevision, before.persistence.revision)
   assert.equal(conflict.error.actualRevision, created.value.persistence.revision)
 
-  const invalid = await remote.setProfileName('main', 'bad', -1)
+  const invalid = await remote.setProfileName('main', 'bad', {
+    instanceId: remote.changes().instanceId,
+    revision: -1,
+  })
   assert.equal(invalid.ok, false)
   assert.equal(invalid.error.code, 'invalid-revision')
+})
+
+test('M7B2 profile Remote rejects a wrong Host instance even when Settings revision matches', async () => {
+  const { ctx } = await boot()
+  const remote = ctx.dshContextRemote
+
+  const before = remote.profiles()
+  const revision = before.persistence.revision
+  assert.equal(typeof revision, 'number')
+  const actualInstanceId = remote.changes().instanceId
+
+  const result = await remote.createProfile('must-not-exist', {
+    name: 'Wrong host',
+    basePreset: 'standard',
+  }, {
+    instanceId: 'stale-host-instance',
+    revision,
+  })
+
+  assert.equal(result.ok, false)
+  assert.equal(result.error.code, 'host-instance-conflict')
+  assert.equal(result.error.expectedInstanceId, 'stale-host-instance')
+  assert.equal(result.error.actualInstanceId, actualInstanceId)
+
+  const after = remote.profiles()
+  assert.equal(after.persistence.revision, revision)
+  assert.equal(after.profiles['must-not-exist'], undefined)
 })
 
 test('M6B Prompt Resource Remote keeps list metadata-only and get projection narrow', async () => {
