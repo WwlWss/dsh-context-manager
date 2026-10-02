@@ -10,6 +10,7 @@ import {
   type ContextManagerRemotePresetSnapshot,
   type ContextManagerRemoteProfilesSnapshot,
   type ContextManagerRemoteProfileInput,
+  type ContextManagerRemoteProfileMutationBasis,
   type ContextManagerRemotePromptBinding,
   type ContextManagerRemotePromptPlacement,
   type ContextManagerRemotePromptPlacementCapability,
@@ -146,7 +147,7 @@ class ScriptedRemote implements ContextManagerClientBusinessRemote {
   readonly profileMutationCalls: Array<{
     readonly kind: string
     readonly args: readonly unknown[]
-    readonly expectedRevision: number
+    readonly basis: ContextManagerRemoteProfileMutationBasis
   }> = []
 
   readonly protocolSteps: Array<Step<ContextManagerRemoteProtocol>> = []
@@ -200,76 +201,76 @@ class ScriptedRemote implements ContextManagerClientBusinessRemote {
   private mutate(
     kind: string,
     args: readonly unknown[],
-    expectedRevision: number,
+    basis: ContextManagerRemoteProfileMutationBasis,
   ): Promise<RemoteResult<ContextManagerRemoteResult<ContextManagerRemoteProfilesSnapshot>>> {
     this.calls.profileMutation += 1
-    this.profileMutationCalls.push({ kind, args, expectedRevision })
+    this.profileMutationCalls.push({ kind, args, basis })
     return this.take(
       this.profileMutationSteps,
-      businessOk(profiles(expectedRevision + 1)),
+      businessOk(profiles(basis.revision + 1)),
     )
   }
 
-  createProfile(id: string, input: ContextManagerRemoteProfileInput, expectedRevision: number) {
-    return this.mutate('create-profile', [id, input], expectedRevision)
+  createProfile(id: string, input: ContextManagerRemoteProfileInput, basis: ContextManagerRemoteProfileMutationBasis) {
+    return this.mutate('create-profile', [id, input], basis)
   }
 
-  deleteProfile(id: string, expectedRevision: number) {
-    return this.mutate('delete-profile', [id], expectedRevision)
+  deleteProfile(id: string, basis: ContextManagerRemoteProfileMutationBasis) {
+    return this.mutate('delete-profile', [id], basis)
   }
 
-  setDefaultProfile(id: string | null, expectedRevision: number) {
-    return this.mutate('set-default-profile', [id], expectedRevision)
+  setDefaultProfile(id: string | null, basis: ContextManagerRemoteProfileMutationBasis) {
+    return this.mutate('set-default-profile', [id], basis)
   }
 
-  setProfileName(profileId: string, name: string, expectedRevision: number) {
-    return this.mutate('set-profile-name', [profileId, name], expectedRevision)
+  setProfileName(profileId: string, name: string, basis: ContextManagerRemoteProfileMutationBasis) {
+    return this.mutate('set-profile-name', [profileId, name], basis)
   }
 
   setProfileDescription(
     profileId: string,
     description: string | null,
-    expectedRevision: number,
+    basis: ContextManagerRemoteProfileMutationBasis,
   ) {
-    return this.mutate('set-profile-description', [profileId, description], expectedRevision)
+    return this.mutate('set-profile-description', [profileId, description], basis)
   }
 
-  setProfileBasePreset(profileId: string, basePreset: string, expectedRevision: number) {
-    return this.mutate('set-profile-base-preset', [profileId, basePreset], expectedRevision)
+  setProfileBasePreset(profileId: string, basePreset: string, basis: ContextManagerRemoteProfileMutationBasis) {
+    return this.mutate('set-profile-base-preset', [profileId, basePreset], basis)
   }
 
   setSkillMode(
     profileId: string,
     skillName: string,
     mode: ContextManagerRemoteSkillMode,
-    expectedRevision: number,
+    basis: ContextManagerRemoteProfileMutationBasis,
   ) {
-    return this.mutate('set-skill-mode', [profileId, skillName, mode], expectedRevision)
+    return this.mutate('set-skill-mode', [profileId, skillName, mode], basis)
   }
 
-  removeSkillBinding(profileId: string, skillName: string, expectedRevision: number) {
-    return this.mutate('remove-skill-binding', [profileId, skillName], expectedRevision)
+  removeSkillBinding(profileId: string, skillName: string, basis: ContextManagerRemoteProfileMutationBasis) {
+    return this.mutate('remove-skill-binding', [profileId, skillName], basis)
   }
 
   addPromptBinding(
     profileId: string,
     bindingId: string,
     input: ContextManagerRemotePromptBinding,
-    expectedRevision: number,
+    basis: ContextManagerRemoteProfileMutationBasis,
   ) {
-    return this.mutate('add-prompt-binding', [profileId, bindingId, input], expectedRevision)
+    return this.mutate('add-prompt-binding', [profileId, bindingId, input], basis)
   }
 
   setPromptBindingResourceId(
     profileId: string,
     bindingId: string,
     resourceId: string,
-    expectedRevision: number,
+    basis: ContextManagerRemoteProfileMutationBasis,
   ) {
     return this.mutate(
       'set-prompt-binding-resource-id',
       [profileId, bindingId, resourceId],
-      expectedRevision,
+      basis,
     )
   }
 
@@ -277,12 +278,12 @@ class ScriptedRemote implements ContextManagerClientBusinessRemote {
     profileId: string,
     bindingId: string,
     enabled: boolean,
-    expectedRevision: number,
+    basis: ContextManagerRemoteProfileMutationBasis,
   ) {
     return this.mutate(
       'set-prompt-binding-enabled',
       [profileId, bindingId, enabled],
-      expectedRevision,
+      basis,
     )
   }
 
@@ -290,12 +291,12 @@ class ScriptedRemote implements ContextManagerClientBusinessRemote {
     profileId: string,
     bindingId: string,
     placement: ContextManagerRemotePromptPlacement,
-    expectedRevision: number,
+    basis: ContextManagerRemoteProfileMutationBasis,
   ) {
     return this.mutate(
       'set-prompt-binding-placement',
       [profileId, bindingId, placement],
-      expectedRevision,
+      basis,
     )
   }
 
@@ -303,17 +304,17 @@ class ScriptedRemote implements ContextManagerClientBusinessRemote {
     profileId: string,
     bindingId: string,
     order: number,
-    expectedRevision: number,
+    basis: ContextManagerRemoteProfileMutationBasis,
   ) {
     return this.mutate(
       'set-prompt-binding-order',
       [profileId, bindingId, order],
-      expectedRevision,
+      basis,
     )
   }
 
-  removePromptBinding(profileId: string, bindingId: string, expectedRevision: number) {
-    return this.mutate('remove-prompt-binding', [profileId, bindingId], expectedRevision)
+  removePromptBinding(profileId: string, bindingId: string, basis: ContextManagerRemoteProfileMutationBasis) {
+    return this.mutate('remove-prompt-binding', [profileId, bindingId], basis)
   }
 }
 
@@ -340,6 +341,14 @@ async function attachAndReady(remote = new ScriptedRemote()) {
       && snapshot.promptPlacement.status !== 'loading'
   }, 'initial model hydration')
   return { model, remote, detach }
+}
+
+function requireProfileMutationBasis(
+  model: ReturnType<typeof createContextManagerClientModel>,
+) {
+  const basis = model.captureProfileMutationBasis()
+  assert.ok(basis, 'expected a fresh profile mutation basis')
+  return basis
 }
 
 test('protocol mismatch blocks authoritative reads', async () => {
