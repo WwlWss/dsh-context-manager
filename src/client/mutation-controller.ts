@@ -180,7 +180,7 @@ export function createContextManagerProfileMutationController(
         id,
         kind,
         phase: 'rehydrating',
-        basis: operationBasis,
+        basis,
       },
     })
     if (!isOperationCurrent(operationEpoch, id)) return 'superseded'
@@ -288,7 +288,7 @@ export function createContextManagerProfileMutationController(
         id,
         kind,
         phase: 'mutating',
-        basis,
+        basis: operationBasis,
       },
     })
 
