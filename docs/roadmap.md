@@ -523,7 +523,7 @@ Remaining Client-model slices are explicit:
 
 M7B2 is intentionally split by revision domain.
 
-**M7B2-A — Profile Mutation Controller Foundation** is the next implementation slice. It adds explicit profile mutations over the B1-1 authoritative model, uses only the fresh Settings persistence revision, keeps one single-flight profile mutation lane, preserves the two-layer Typert/business result boundary, never retries stale/uncertain writes, and rehydrates authoritative baseline state after confirmed writes, conflicts, or transport-uncertain outcomes.
+**M7B2-A — Profile Mutation Controller Foundation** is the next implementation slice. It adds explicit profile mutations over the B1-1 authoritative model, uses an immutable mutation basis consisting of Host `instanceId` plus the Settings persistence revision associated with the state the user actually acted on, keeps one single-flight profile mutation lane, preserves the two-layer Typert/business result boundary, never retries or silently rebases stale/uncertain writes, advances the Context Manager Remote protocol to API version 2 for the basis-bearing profile mutation signatures, and rehydrates authoritative baseline state after confirmed writes, conflicts, or transport-uncertain outcomes.
 
 **M7B2-B — PromptResource mutation controller** is deferred until B1-3 owns the exact revision associated with the resource snapshot/draft being edited. It must not fetch a new revision at save time and silently rebase a stale draft.
 
