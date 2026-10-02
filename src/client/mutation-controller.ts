@@ -132,25 +132,6 @@ export function createContextManagerProfileMutationController(
     epoch === operationEpoch && activeOperationId === id
   )
 
-  const settle = (
-    operationEpoch: number,
-    id: number,
-    kind: ContextManagerClientProfileMutationKind,
-    result: ContextManagerClientProfileMutationResult,
-  ): void => {
-    if (!isOperationCurrent(operationEpoch, id)) return
-    activeOperationId = undefined
-    state.set({ profile: { status: 'settled', id, kind, result } })
-  }
-
-  const publishPrecondition = (
-    kind: ContextManagerClientProfileMutationKind,
-    result: ContextManagerClientProfileMutationResult,
-  ): void => {
-    nextOperationId += 1
-    state.set({ profile: { status: 'settled', id: nextOperationId, kind, result } })
-  }
-
   const lifecycleResult = (): ContextManagerClientProfileMutationResult | undefined => {
     const lifecycle = deps.getLifecycle()
     if (lifecycle === 'disposed') return { status: 'disposed' }
@@ -162,6 +143,28 @@ export function createContextManagerProfileMutationController(
   const staleLifecycleResult = (): ContextManagerClientProfileMutationResult => (
     lifecycleResult() ?? { status: 'superseded' }
   )
+
+  const settle = (
+    operationEpoch: number,
+    id: number,
+    kind: ContextManagerClientProfileMutationKind,
+    result: ContextManagerClientProfileMutationResult,
+  ): boolean => {
+    if (!isOperationCurrent(operationEpoch, id)) return false
+    activeOperationId = undefined
+    state.set({ profile: { status: 'settled', id, kind, result } })
+    return epoch === operationEpoch
+  }
+
+  const publishPrecondition = (
+    kind: ContextManagerClientProfileMutationKind,
+    result: ContextManagerClientProfileMutationResult,
+  ): ContextManagerClientProfileMutationResult => {
+    const publicationEpoch = epoch
+    nextOperationId += 1
+    state.set({ profile: { status: 'settled', id: nextOperationId, kind, result } })
+    return epoch === publicationEpoch ? result : staleLifecycleResult()
+  }
 
   const recover = async (
     operationEpoch: number,
@@ -177,7 +180,7 @@ export function createContextManagerProfileMutationController(
         id,
         kind,
         phase: 'rehydrating',
-        basis,
+        basis: operationBasis,
       },
     })
     if (!isOperationCurrent(operationEpoch, id)) return 'superseded'
@@ -221,8 +224,7 @@ export function createContextManagerProfileMutationController(
           message: 'A compatible Host protocol is required before mutation',
         },
       }
-      publishPrecondition(kind, result)
-      return result
+      return publishPrecondition(kind, result)
     }
 
     const currentBasis = deps.getCurrentProfileMutationBasis()
@@ -236,8 +238,7 @@ export function createContextManagerProfileMutationController(
           message: 'A fresh authoritative profile mutation basis is required',
         },
       }
-      publishPrecondition(kind, result)
-      return result
+      return publishPrecondition(kind, result)
     }
 
     if (!sameBasis(currentBasis, basis)) {
@@ -250,8 +251,7 @@ export function createContextManagerProfileMutationController(
           message: 'The profile mutation basis no longer matches authoritative state',
         },
       }
-      publishPrecondition(kind, result)
-      return result
+      return publishPrecondition(kind, result)
     }
 
     return undefined
@@ -267,7 +267,12 @@ export function createContextManagerProfileMutationController(
       RemoteResult<ContextManagerRemoteResult<ContextManagerRemoteProfilesSnapshot>>
     >,
   ): Promise<ContextManagerClientProfileMutationResult> => {
-    const blocked = precondition(kind, basis)
+    const operationBasis = Object.freeze({
+      instanceId: basis.instanceId,
+      revision: basis.revision,
+    })
+
+    const blocked = precondition(kind, operationBasis)
     if (blocked !== undefined) return blocked
 
     const remote = deps.getRemote()
@@ -293,7 +298,9 @@ export function createContextManagerProfileMutationController(
 
     const afterPublicationLifecycle = lifecycleResult()
     if (afterPublicationLifecycle !== undefined) {
-      settle(operationEpoch, id, kind, afterPublicationLifecycle)
+      if (!settle(operationEpoch, id, kind, afterPublicationLifecycle)) {
+        return staleLifecycleResult()
+      }
       return afterPublicationLifecycle
     }
 
@@ -307,12 +314,14 @@ export function createContextManagerProfileMutationController(
           message: 'A compatible Host protocol is required before mutation',
         },
       }
-      settle(operationEpoch, id, kind, result)
+      if (!settle(operationEpoch, id, kind, result)) {
+        return staleLifecycleResult()
+      }
       return result
     }
 
     if (
-      !sameBasis(deps.getCurrentProfileMutationBasis(), basis)
+      !sameBasis(deps.getCurrentProfileMutationBasis(), operationBasis)
       || deps.getRemote() !== remote
     ) {
       const result: ContextManagerClientProfileMutationResult = {
@@ -324,22 +333,26 @@ export function createContextManagerProfileMutationController(
           message: 'Profile authority changed before the mutation started',
         },
       }
-      settle(operationEpoch, id, kind, result)
+      if (!settle(operationEpoch, id, kind, result)) {
+        return staleLifecycleResult()
+      }
       return result
     }
 
-    const outcome = await invokeMutation(() => call(remote, wireBasis(basis)))
+    const outcome = await invokeMutation(() => call(remote, wireBasis(operationBasis)))
 
     if (!isOperationCurrent(operationEpoch, id)) {
       return staleLifecycleResult()
     }
 
     if (outcome.kind === 'success') {
-      const refresh = await recover(operationEpoch, id, kind, basis)
+      const refresh = await recover(operationEpoch, id, kind, operationBasis)
       if (refresh === 'superseded') return staleLifecycleResult()
 
       const result: ContextManagerClientProfileMutationResult = { status: 'applied', refresh }
-      settle(operationEpoch, id, kind, result)
+      if (!settle(operationEpoch, id, kind, result)) {
+        return staleLifecycleResult()
+      }
       return result
     }
 
@@ -348,7 +361,7 @@ export function createContextManagerProfileMutationController(
         outcome.error.code === 'profile-conflict'
         || outcome.error.code === 'host-instance-conflict'
       ) {
-        const refresh = await recover(operationEpoch, id, kind, basis)
+        const refresh = await recover(operationEpoch, id, kind, operationBasis)
         if (refresh === 'superseded') return staleLifecycleResult()
 
         const result: ContextManagerClientProfileMutationResult = {
@@ -356,7 +369,9 @@ export function createContextManagerProfileMutationController(
           error: businessError(outcome.error),
           refresh,
         }
-        settle(operationEpoch, id, kind, result)
+        if (!settle(operationEpoch, id, kind, result)) {
+          return staleLifecycleResult()
+        }
         return result
       }
 
@@ -365,11 +380,13 @@ export function createContextManagerProfileMutationController(
         error: businessError(outcome.error),
         refresh: 'not-requested',
       }
-      settle(operationEpoch, id, kind, result)
+      if (!settle(operationEpoch, id, kind, result)) {
+        return staleLifecycleResult()
+      }
       return result
     }
 
-    const refresh = await recover(operationEpoch, id, kind, basis)
+    const refresh = await recover(operationEpoch, id, kind, operationBasis)
     if (refresh === 'superseded') return staleLifecycleResult()
 
     const result: ContextManagerClientProfileMutationResult = {
@@ -377,7 +394,9 @@ export function createContextManagerProfileMutationController(
       error: outcome.error,
       refresh,
     }
-    settle(operationEpoch, id, kind, result)
+    if (!settle(operationEpoch, id, kind, result)) {
+      return staleLifecycleResult()
+    }
     return result
   }
 

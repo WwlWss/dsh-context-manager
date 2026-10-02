@@ -507,7 +507,9 @@ export class ContextManagerRemoteService extends TypertRemoteService {
     const invalid = invalidRevision(basis.revision)
     if (invalid !== undefined) return fail(invalid)
 
-    const actualInstanceId = this.changePort().snapshot().instanceId
+    const actualInstanceId = remoteRead(
+      () => this.changePort().snapshot().instanceId,
+    )
     if (actualInstanceId !== basis.instanceId) {
       return fail(hostInstanceConflict(basis.instanceId, actualInstanceId))
     }
