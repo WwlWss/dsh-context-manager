@@ -701,6 +701,8 @@ test('adopting a newer unrequested surface cursor marks cached data stale immedi
   assert.equal(model.getProfileRevision(), 7)
   assert.equal(model.state.getSnapshot().profiles.stale, false)
 
+  const basis = requireProfileMutationBasis(model)
+
   remote.changesSteps.push(
     async () => ok(changes('host-a', 2, 2, 2, 1)),
     async () => ok(changes('host-a', 2, 2, 2, 1)),
@@ -1162,10 +1164,14 @@ test('profile mutation uses persistence revision and rehydrates instead of adopt
   )
   remote.profilesSteps.push(async () => profileGate.promise)
 
-  const mutation = model.mutations.setProfileName('main', 'Renamed')
+  const basis = requireProfileMutationBasis(model)
+  const mutation = model.mutations.setProfileName(basis, 'main', 'Renamed')
   await waitFor(() => remote.calls.profiles >= 2, 'post-mutation profile read to start')
 
-  assert.equal(remote.profileMutationCalls[0]?.expectedRevision, 7)
+  assert.deepEqual(remote.profileMutationCalls[0]?.basis, {
+    instanceId: 'host-a',
+    revision: 7,
+  })
   assert.equal(model.getProfileRevision(), undefined)
   assert.notEqual(model.state.getSnapshot().profiles.data?.persistence.revision, 99)
 
@@ -1190,14 +1196,14 @@ test('profile mutation refuses to write without a fresh persistence revision', a
 
   assert.equal(model.getProfileRevision(), undefined)
   const before = remote.calls.profileMutation
-  const result = await model.mutations.setProfileName('main', 'Should not write')
+  const result = await model.mutations.setProfileName(basis, 'main', 'Should not write')
 
   assert.equal(result.status, 'rejected')
   assert.equal(
     result.status === 'rejected' && result.error.kind === 'precondition'
       ? result.error.code
       : undefined,
-    'profile-revision-unavailable',
+    'profile-basis-unavailable',
   )
   assert.equal(remote.calls.profileMutation, before)
 
@@ -1218,10 +1224,11 @@ test('profile mutations are single-flight and do not silently queue or rebase', 
   )
   remote.profilesSteps.push(async () => ok(profiles(8)))
 
-  const first = model.mutations.setProfileName('main', 'First')
+  const basis = requireProfileMutationBasis(model)
+  const first = model.mutations.setProfileName(basis, 'main', 'First')
   await waitFor(() => remote.calls.profileMutation === 1, 'first mutation to start')
 
-  const second = await model.mutations.setProfileDescription('main', 'Second')
+  const second = await model.mutations.setProfileDescription(basis, 'main', 'Second')
   assert.equal(second.status, 'rejected')
   assert.equal(
     second.status === 'rejected' && second.error.kind === 'precondition'
@@ -1253,7 +1260,7 @@ test('profile conflict is never retried and preserves conflict revisions while r
   )
   remote.profilesSteps.push(async () => ok(profiles(8)))
 
-  const result = await model.mutations.setProfileName('main', 'Conflicting')
+  const result = await model.mutations.setProfileName(requireProfileMutationBasis(model), 'main', 'Conflicting')
 
   assert.equal(result.status, 'rejected')
   assert.equal(
@@ -1286,7 +1293,7 @@ test('known business refusal stays isolated from authoritative read surfaces', a
   const { model, remote, detach } = await attachAndReady()
   remote.profileMutationSteps.push(async () => ok(businessFail('persistence-read-only')))
 
-  const result = await model.mutations.setProfileName('main', 'Denied')
+  const result = await model.mutations.setProfileName(requireProfileMutationBasis(model), 'main', 'Denied')
   const snapshot = model.state.getSnapshot()
 
   assert.equal(result.status, 'rejected')
@@ -1315,7 +1322,7 @@ test('transport failure is outcome-unknown, safety-refreshes, and never retries 
   )
   remote.profilesSteps.push(async () => ok(profiles(8)))
 
-  const result = await model.mutations.setProfileName('main', 'Uncertain')
+  const result = await model.mutations.setProfileName(requireProfileMutationBasis(model), 'main', 'Uncertain')
 
   assert.equal(result.status, 'unknown')
   assert.equal(
@@ -1344,7 +1351,7 @@ test('rejected mutation call is outcome-unknown and never auto-retried', async (
   )
   remote.profilesSteps.push(async () => ok(profiles(8)))
 
-  const result = await model.mutations.setProfileName('main', 'Uncertain')
+  const result = await model.mutations.setProfileName(requireProfileMutationBasis(model), 'main', 'Uncertain')
 
   assert.equal(result.status, 'unknown')
   assert.equal(
@@ -1365,6 +1372,7 @@ test('profile mutation does not start while protocol compatibility is not curren
   const baseProtocolCalls = remote.calls.protocol
   const beforeMutationCalls = remote.calls.profileMutation
 
+  const basis = requireProfileMutationBasis(model)
   remote.protocolSteps.push(async () => protocolGate.promise)
   const refresh = model.reconcile(['presets'])
   await waitFor(
@@ -1373,7 +1381,7 @@ test('profile mutation does not start while protocol compatibility is not curren
   )
   assert.equal(model.state.getSnapshot().protocol.status, 'checking')
 
-  const result = await model.mutations.setProfileName('main', 'Blocked')
+  const result = await model.mutations.setProfileName(basis, 'main', 'Blocked')
   assert.equal(result.status, 'rejected')
   assert.equal(
     result.status === 'rejected' && result.error.kind === 'precondition'
@@ -1396,7 +1404,11 @@ test('confirmed mutation success remains applied when rehydration degrades', asy
   remote.profileMutationSteps.push(async () => ok(businessOk(profiles(8))))
   remote.changesSteps.push(async () => fail('rehydration-failed'))
 
-  const result = await model.mutations.setProfileName('main', 'Applied')
+  const result = await model.mutations.setProfileName(
+    requireProfileMutationBasis(model),
+    'main',
+    'Applied',
+  )
 
   assert.deepEqual(result, { status: 'applied', refresh: 'degraded' })
   assert.equal(remote.calls.profileMutation, 1)
@@ -1412,7 +1424,11 @@ test('detach resets mutation state and a late confirmed completion cannot republ
   >()
   remote.profileMutationSteps.push(async () => gate.promise)
 
-  const mutation = model.mutations.setProfileName('main', 'Late')
+  const mutation = model.mutations.setProfileName(
+    requireProfileMutationBasis(model),
+    'main',
+    'Late',
+  )
   await waitFor(() => remote.calls.profileMutation === 1, 'mutation to start')
   assert.equal(model.mutations.state.getSnapshot().profile.status, 'running')
 
@@ -1420,7 +1436,7 @@ test('detach resets mutation state and a late confirmed completion cannot republ
   assert.equal(model.mutations.state.getSnapshot().profile.status, 'idle')
 
   gate.resolve(ok(businessOk(profiles(8))))
-  assert.deepEqual(await mutation, { status: 'applied', refresh: 'degraded' })
+  assert.deepEqual(await mutation, { status: 'detached' })
   assert.equal(model.mutations.state.getSnapshot().profile.status, 'idle')
 
   model.dispose()
