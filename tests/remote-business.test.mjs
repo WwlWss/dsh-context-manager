@@ -28,6 +28,16 @@ class MemorySettings extends SettingsProvider {
   }
 }
 
+class ThrowingChanges extends Service {
+  constructor(ctx) {
+    super(ctx, 'dshContextChanges')
+  }
+
+  snapshot() {
+    throw new Error("EACCES: '/home/private/context-manager/secret'")
+  }
+}
+
 class FakePromptLibrary extends Service {
   constructor(ctx) {
     super(ctx, 'dshContextPromptLibrary')
@@ -211,6 +221,95 @@ test('M7B2 profile Remote rejects a wrong Host instance even when Settings revis
   const after = remote.profiles()
   assert.equal(after.persistence.revision, revision)
   assert.equal(after.profiles['must-not-exist'], undefined)
+})
+
+test('M7B2 rotates instanceId across Settings provider replacement and rejects the old same-revision basis', async () => {
+  const { ctx, settingsFiber } = await boot()
+  const remote = ctx.dshContextRemote
+
+  const before = remote.profiles()
+  assert.equal(before.persistence.revision, 0)
+  const basis = profileBasis(remote, before.persistence.revision)
+
+  await settingsFiber.dispose()
+  const settingsB = ctx.plugin(MemorySettings, {})
+  await settingsB
+
+  const replacement = remote.profiles()
+  assert.equal(replacement.persistence.revision, 0)
+
+  const result = await remote.createProfile('must-not-cross-settings', {
+    name: 'Wrong settings authority',
+    basePreset: 'standard',
+  }, basis)
+
+  assert.equal(result.ok, false)
+  assert.equal(result.error.code, 'host-instance-conflict')
+  assert.equal(result.error.expectedInstanceId, basis.instanceId)
+  assert.notEqual(result.error.actualInstanceId, basis.instanceId)
+
+  const after = remote.profiles()
+  assert.equal(after.persistence.revision, 0)
+  assert.equal(after.profiles['must-not-cross-settings'], undefined)
+})
+
+test('M7B2 rotates instanceId across ContextManagerService replacement and rejects the old same-revision basis', async () => {
+  const { ctx, managerFiber } = await boot()
+  const remote = ctx.dshContextRemote
+
+  const before = remote.profiles()
+  assert.equal(before.persistence.revision, 0)
+  const basis = profileBasis(remote, before.persistence.revision)
+
+  await managerFiber.dispose()
+  const managerB = ctx.plugin(ContextManagerService)
+  await managerB
+
+  const replacement = remote.profiles()
+  assert.equal(replacement.persistence.revision, 0)
+
+  const result = await remote.createProfile('must-not-cross-manager', {
+    name: 'Wrong manager authority',
+    basePreset: 'standard',
+  }, basis)
+
+  assert.equal(result.ok, false)
+  assert.equal(result.error.code, 'host-instance-conflict')
+  assert.equal(result.error.expectedInstanceId, basis.instanceId)
+  assert.notEqual(result.error.actualInstanceId, basis.instanceId)
+
+  const after = remote.profiles()
+  assert.equal(after.persistence.revision, 0)
+  assert.equal(after.profiles['must-not-cross-manager'], undefined)
+})
+
+test('M7B2 sanitizes unexpected change-authority failures before rejecting a profile mutation', async () => {
+  const { ctx, changesFiber } = await boot()
+  const remote = ctx.dshContextRemote
+
+  const before = remote.profiles()
+  const basis = profileBasis(remote, before.persistence.revision)
+
+  await changesFiber.dispose()
+  const throwingChanges = ctx.plugin(ThrowingChanges)
+  await throwingChanges
+
+  await assert.rejects(
+    remote.createProfile('must-not-run', {
+      name: 'Must not run',
+      basePreset: 'standard',
+    }, basis),
+    error => {
+      assert.equal(error.message, 'Context Manager Remote operation failed')
+      assert.equal(error.message.includes('/home/private'), false)
+      assert.match(String(error.cause?.message), /\/home\/private\/context-manager\/secret/)
+      return true
+    },
+  )
+
+  const after = remote.profiles()
+  assert.equal(after.persistence.revision, before.persistence.revision)
+  assert.equal(after.profiles['must-not-run'], undefined)
 })
 
 test('M6B Prompt Resource Remote keeps list metadata-only and get projection narrow', async () => {
