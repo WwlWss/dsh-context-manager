@@ -5,6 +5,7 @@ import type {
   ContextManagerRemotePresetSnapshot,
   ContextManagerRemoteProfilesSnapshot,
   ContextManagerRemoteProfileInput,
+  ContextManagerRemoteProfileMutationBasis,
   ContextManagerRemotePromptBinding,
   ContextManagerRemotePromptPlacement,
   ContextManagerRemotePromptPlacementCapability,
@@ -26,20 +27,20 @@ type ProfileMutationResult = Promise<
 >
 
 export interface ContextManagerClientProfileMutationRemote {
-  createProfile(id: string, input: ContextManagerRemoteProfileInput, expectedRevision: number): ProfileMutationResult
-  deleteProfile(id: string, expectedRevision: number): ProfileMutationResult
-  setDefaultProfile(id: string | null, expectedRevision: number): ProfileMutationResult
-  setProfileName(profileId: string, name: string, expectedRevision: number): ProfileMutationResult
-  setProfileDescription(profileId: string, description: string | null, expectedRevision: number): ProfileMutationResult
-  setProfileBasePreset(profileId: string, basePreset: string, expectedRevision: number): ProfileMutationResult
-  setSkillMode(profileId: string, skillName: string, mode: ContextManagerRemoteSkillMode, expectedRevision: number): ProfileMutationResult
-  removeSkillBinding(profileId: string, skillName: string, expectedRevision: number): ProfileMutationResult
-  addPromptBinding(profileId: string, bindingId: string, input: ContextManagerRemotePromptBinding, expectedRevision: number): ProfileMutationResult
-  setPromptBindingResourceId(profileId: string, bindingId: string, resourceId: string, expectedRevision: number): ProfileMutationResult
-  setPromptBindingEnabled(profileId: string, bindingId: string, enabled: boolean, expectedRevision: number): ProfileMutationResult
-  setPromptBindingPlacement(profileId: string, bindingId: string, placement: ContextManagerRemotePromptPlacement, expectedRevision: number): ProfileMutationResult
-  setPromptBindingOrder(profileId: string, bindingId: string, order: number, expectedRevision: number): ProfileMutationResult
-  removePromptBinding(profileId: string, bindingId: string, expectedRevision: number): ProfileMutationResult
+  createProfile(id: string, input: ContextManagerRemoteProfileInput, basis: ContextManagerRemoteProfileMutationBasis): ProfileMutationResult
+  deleteProfile(id: string, basis: ContextManagerRemoteProfileMutationBasis): ProfileMutationResult
+  setDefaultProfile(id: string | null, basis: ContextManagerRemoteProfileMutationBasis): ProfileMutationResult
+  setProfileName(profileId: string, name: string, basis: ContextManagerRemoteProfileMutationBasis): ProfileMutationResult
+  setProfileDescription(profileId: string, description: string | null, basis: ContextManagerRemoteProfileMutationBasis): ProfileMutationResult
+  setProfileBasePreset(profileId: string, basePreset: string, basis: ContextManagerRemoteProfileMutationBasis): ProfileMutationResult
+  setSkillMode(profileId: string, skillName: string, mode: ContextManagerRemoteSkillMode, basis: ContextManagerRemoteProfileMutationBasis): ProfileMutationResult
+  removeSkillBinding(profileId: string, skillName: string, basis: ContextManagerRemoteProfileMutationBasis): ProfileMutationResult
+  addPromptBinding(profileId: string, bindingId: string, input: ContextManagerRemotePromptBinding, basis: ContextManagerRemoteProfileMutationBasis): ProfileMutationResult
+  setPromptBindingResourceId(profileId: string, bindingId: string, resourceId: string, basis: ContextManagerRemoteProfileMutationBasis): ProfileMutationResult
+  setPromptBindingEnabled(profileId: string, bindingId: string, enabled: boolean, basis: ContextManagerRemoteProfileMutationBasis): ProfileMutationResult
+  setPromptBindingPlacement(profileId: string, bindingId: string, placement: ContextManagerRemotePromptPlacement, basis: ContextManagerRemoteProfileMutationBasis): ProfileMutationResult
+  setPromptBindingOrder(profileId: string, bindingId: string, order: number, basis: ContextManagerRemoteProfileMutationBasis): ProfileMutationResult
+  removePromptBinding(profileId: string, bindingId: string, basis: ContextManagerRemoteProfileMutationBasis): ProfileMutationResult
 }
 
 export interface ContextManagerClientBusinessRemote

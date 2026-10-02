@@ -22,6 +22,7 @@ import {
   createContextManagerProfileMutationController,
   type ContextManagerClientMutationController,
 } from './mutation-controller.js'
+import type { ContextManagerClientProfileMutationBasis } from './mutation-types.js'
 import type {
   ContextManagerClientBusinessRemote,
   ContextManagerClientReadRemote,
@@ -82,6 +83,7 @@ export interface ContextManagerClientModel {
     scopes: readonly ContextManagerClientBaselineSurface[],
   ): Promise<ContextManagerClientReconcileResult>
   getProfileRevision(): number | undefined
+  captureProfileMutationBasis(): ContextManagerClientProfileMutationBasis | undefined
   dispose(): void
 }
 
@@ -912,13 +914,31 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
     return snapshot.profiles.data.persistence.revision
   }
 
+  const captureProfileMutationBasis = (): ContextManagerClientProfileMutationBasis | undefined => {
+    const snapshot = state.getSnapshot()
+    const revision = getProfileRevision()
+    if (
+      snapshot.attachment !== 'attached'
+      || snapshot.protocol.status !== 'compatible'
+      || snapshot.instanceId === undefined
+      || snapshot.changes?.instanceId !== snapshot.instanceId
+      || revision === undefined
+    ) {
+      return undefined
+    }
+    return Object.freeze({
+      instanceId: snapshot.instanceId,
+      revision,
+    })
+  }
+
   const mutationHandle = createContextManagerProfileMutationController({
     getRemote: () => remote,
     getLifecycle: () => (
       disposed ? 'disposed' : remote === undefined ? 'detached' : 'attached'
     ),
     getProtocolStatus: () => state.getSnapshot().protocol.status,
-    getProfileRevision,
+    getCurrentProfileMutationBasis: captureProfileMutationBasis,
     rehydrate: async () => {
       const result = await reconcile(CONTEXT_MANAGER_BASELINE_SURFACES)
       if (result.status !== 'completed') return false
@@ -966,6 +986,7 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
     refresh: () => reconcile(CONTEXT_MANAGER_BASELINE_SURFACES),
     reconcile,
     getProfileRevision,
+    captureProfileMutationBasis,
     dispose,
   })
 }

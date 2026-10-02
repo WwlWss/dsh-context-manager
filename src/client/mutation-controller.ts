@@ -6,6 +6,7 @@ import type { RemoteFailure, RemoteResult } from '@deepseek-ai/dsh-typert-protoc
 
 import type {
   ContextManagerRemoteError,
+  ContextManagerRemoteProfileMutationBasis,
   ContextManagerRemoteProfilesSnapshot,
   ContextManagerRemoteResult,
 } from '../remote/types.js'
@@ -13,6 +14,7 @@ import type {
   ContextManagerClientMutationError,
   ContextManagerClientMutationSnapshot,
   ContextManagerClientMutationTransportError,
+  ContextManagerClientProfileMutationBasis,
   ContextManagerClientProfileMutationKind,
   ContextManagerClientProfileMutationResult,
   ContextManagerClientProfileMutations,
@@ -21,6 +23,7 @@ import type { ContextManagerClientProfileMutationRemote } from './remote-port.js
 
 type Lifecycle = 'attached' | 'detached' | 'disposed'
 type ProtocolStatus = 'unchecked' | 'checking' | 'compatible' | 'incompatible' | 'error'
+type RecoveryOutcome = 'fresh' | 'degraded' | 'superseded'
 
 type MutationInvokeOutcome =
   | { readonly kind: 'success' }
@@ -31,7 +34,7 @@ interface ContextManagerProfileMutationControllerDeps {
   readonly getRemote: () => ContextManagerClientProfileMutationRemote | undefined
   readonly getLifecycle: () => Lifecycle
   readonly getProtocolStatus: () => ProtocolStatus
-  readonly getProfileRevision: () => number | undefined
+  readonly getCurrentProfileMutationBasis: () => ContextManagerClientProfileMutationBasis | undefined
   readonly rehydrate: () => Promise<boolean>
 }
 
@@ -47,6 +50,26 @@ interface ContextManagerClientMutationControllerHandle {
 
 function initialSnapshot(): ContextManagerClientMutationSnapshot {
   return { profile: { status: 'idle' } }
+}
+
+function sameBasis(
+  left: ContextManagerClientProfileMutationBasis | undefined,
+  right: ContextManagerClientProfileMutationBasis,
+): boolean {
+  return (
+    left !== undefined
+    && left.instanceId === right.instanceId
+    && left.revision === right.revision
+  )
+}
+
+function wireBasis(
+  basis: ContextManagerClientProfileMutationBasis,
+): ContextManagerRemoteProfileMutationBasis {
+  return {
+    instanceId: basis.instanceId,
+    revision: basis.revision,
+  }
 }
 
 function remoteFailure(error: RemoteFailure): ContextManagerClientMutationTransportError {
@@ -67,6 +90,8 @@ function businessError(error: ContextManagerRemoteError): ContextManagerClientMu
     message: error.message,
     ...(error.expectedRevision === undefined ? {} : { expectedRevision: error.expectedRevision }),
     ...(error.actualRevision === undefined ? {} : { actualRevision: error.actualRevision }),
+    ...(error.expectedInstanceId === undefined ? {} : { expectedInstanceId: error.expectedInstanceId }),
+    ...(error.actualInstanceId === undefined ? {} : { actualInstanceId: error.actualInstanceId }),
   }
 }
 
@@ -134,33 +159,42 @@ export function createContextManagerProfileMutationController(
     return undefined
   }
 
+  const staleLifecycleResult = (): ContextManagerClientProfileMutationResult => (
+    lifecycleResult() ?? { status: 'superseded' }
+  )
+
   const recover = async (
     operationEpoch: number,
     id: number,
     kind: ContextManagerClientProfileMutationKind,
-    expectedRevision: number,
-  ): Promise<'fresh' | 'degraded'> => {
-    if (!isOperationCurrent(operationEpoch, id)) return 'degraded'
+    basis: ContextManagerClientProfileMutationBasis,
+  ): Promise<RecoveryOutcome> => {
+    if (!isOperationCurrent(operationEpoch, id)) return 'superseded'
+
     state.set({
       profile: {
         status: 'running',
         id,
         kind,
         phase: 'rehydrating',
-        expectedRevision,
+        basis,
       },
     })
-    if (!isOperationCurrent(operationEpoch, id)) return 'degraded'
+    if (!isOperationCurrent(operationEpoch, id)) return 'superseded'
+
     try {
       const fresh = await deps.rehydrate()
-      return isOperationCurrent(operationEpoch, id) && fresh ? 'fresh' : 'degraded'
+      if (!isOperationCurrent(operationEpoch, id)) return 'superseded'
+      return fresh ? 'fresh' : 'degraded'
     } catch {
+      if (!isOperationCurrent(operationEpoch, id)) return 'superseded'
       return 'degraded'
     }
   }
 
   const precondition = (
     kind: ContextManagerClientProfileMutationKind,
+    basis: ContextManagerClientProfileMutationBasis,
   ): ContextManagerClientProfileMutationResult | undefined => {
     const lifecycle = lifecycleResult()
     if (lifecycle !== undefined) return lifecycle
@@ -191,35 +225,50 @@ export function createContextManagerProfileMutationController(
       return result
     }
 
-    return undefined
-  }
-
-  const run = async (
-    kind: ContextManagerClientProfileMutationKind,
-    call: (
-      remote: ContextManagerClientProfileMutationRemote,
-      expectedRevision: number,
-    ) => Promise<
-      RemoteResult<ContextManagerRemoteResult<ContextManagerRemoteProfilesSnapshot>>
-    >,
-  ): Promise<ContextManagerClientProfileMutationResult> => {
-    const blocked = precondition(kind)
-    if (blocked !== undefined) return blocked
-
-    const expectedRevision = deps.getProfileRevision()
-    if (expectedRevision === undefined) {
+    const currentBasis = deps.getCurrentProfileMutationBasis()
+    if (currentBasis === undefined) {
       const result: ContextManagerClientProfileMutationResult = {
         status: 'rejected',
         refresh: 'not-requested',
         error: {
           kind: 'precondition',
-          code: 'profile-revision-unavailable',
-          message: 'A fresh authoritative profile revision is required before mutation',
+          code: 'profile-basis-unavailable',
+          message: 'A fresh authoritative profile mutation basis is required',
         },
       }
       publishPrecondition(kind, result)
       return result
     }
+
+    if (!sameBasis(currentBasis, basis)) {
+      const result: ContextManagerClientProfileMutationResult = {
+        status: 'rejected',
+        refresh: 'not-requested',
+        error: {
+          kind: 'precondition',
+          code: 'profile-basis-stale',
+          message: 'The profile mutation basis no longer matches authoritative state',
+        },
+      }
+      publishPrecondition(kind, result)
+      return result
+    }
+
+    return undefined
+  }
+
+  const run = async (
+    kind: ContextManagerClientProfileMutationKind,
+    basis: ContextManagerClientProfileMutationBasis,
+    call: (
+      remote: ContextManagerClientProfileMutationRemote,
+      basis: ContextManagerRemoteProfileMutationBasis,
+    ) => Promise<
+      RemoteResult<ContextManagerRemoteResult<ContextManagerRemoteProfilesSnapshot>>
+    >,
+  ): Promise<ContextManagerClientProfileMutationResult> => {
+    const blocked = precondition(kind, basis)
+    if (blocked !== undefined) return blocked
 
     const remote = deps.getRemote()
     if (remote === undefined) return { status: 'detached' }
@@ -234,20 +283,12 @@ export function createContextManagerProfileMutationController(
         id,
         kind,
         phase: 'mutating',
-        expectedRevision,
+        basis,
       },
     })
 
     if (!isOperationCurrent(operationEpoch, id)) {
-      return lifecycleResult() ?? {
-        status: 'rejected',
-        refresh: 'not-requested',
-        error: {
-          kind: 'precondition',
-          code: 'profile-revision-unavailable',
-          message: 'Profile authority changed before the mutation started',
-        },
-      }
+      return staleLifecycleResult()
     }
 
     const afterPublicationLifecycle = lifecycleResult()
@@ -271,7 +312,7 @@ export function createContextManagerProfileMutationController(
     }
 
     if (
-      deps.getProfileRevision() !== expectedRevision
+      !sameBasis(deps.getCurrentProfileMutationBasis(), basis)
       || deps.getRemote() !== remote
     ) {
       const result: ContextManagerClientProfileMutationResult = {
@@ -279,7 +320,7 @@ export function createContextManagerProfileMutationController(
         refresh: 'not-requested',
         error: {
           kind: 'precondition',
-          code: 'profile-revision-unavailable',
+          code: 'profile-basis-stale',
           message: 'Profile authority changed before the mutation started',
         },
       }
@@ -287,18 +328,29 @@ export function createContextManagerProfileMutationController(
       return result
     }
 
-    const outcome = await invokeMutation(() => call(remote, expectedRevision))
+    const outcome = await invokeMutation(() => call(remote, wireBasis(basis)))
+
+    if (!isOperationCurrent(operationEpoch, id)) {
+      return staleLifecycleResult()
+    }
 
     if (outcome.kind === 'success') {
-      const refresh = await recover(operationEpoch, id, kind, expectedRevision)
+      const refresh = await recover(operationEpoch, id, kind, basis)
+      if (refresh === 'superseded') return staleLifecycleResult()
+
       const result: ContextManagerClientProfileMutationResult = { status: 'applied', refresh }
       settle(operationEpoch, id, kind, result)
       return result
     }
 
     if (outcome.kind === 'business-failure') {
-      if (outcome.error.code === 'profile-conflict') {
-        const refresh = await recover(operationEpoch, id, kind, expectedRevision)
+      if (
+        outcome.error.code === 'profile-conflict'
+        || outcome.error.code === 'host-instance-conflict'
+      ) {
+        const refresh = await recover(operationEpoch, id, kind, basis)
+        if (refresh === 'superseded') return staleLifecycleResult()
+
         const result: ContextManagerClientProfileMutationResult = {
           status: 'rejected',
           error: businessError(outcome.error),
@@ -317,7 +369,9 @@ export function createContextManagerProfileMutationController(
       return result
     }
 
-    const refresh = await recover(operationEpoch, id, kind, expectedRevision)
+    const refresh = await recover(operationEpoch, id, kind, basis)
+    if (refresh === 'superseded') return staleLifecycleResult()
+
     const result: ContextManagerClientProfileMutationResult = {
       status: 'unknown',
       error: outcome.error,
@@ -329,20 +383,20 @@ export function createContextManagerProfileMutationController(
 
   const controller: ContextManagerClientMutationController = {
     state,
-    createProfile: (id, input) => run('create-profile', (remote, revision) => remote.createProfile(id, input, revision)),
-    deleteProfile: id => run('delete-profile', (remote, revision) => remote.deleteProfile(id, revision)),
-    setDefaultProfile: id => run('set-default-profile', (remote, revision) => remote.setDefaultProfile(id, revision)),
-    setProfileName: (profileId, name) => run('set-profile-name', (remote, revision) => remote.setProfileName(profileId, name, revision)),
-    setProfileDescription: (profileId, description) => run('set-profile-description', (remote, revision) => remote.setProfileDescription(profileId, description, revision)),
-    setProfileBasePreset: (profileId, basePreset) => run('set-profile-base-preset', (remote, revision) => remote.setProfileBasePreset(profileId, basePreset, revision)),
-    setSkillMode: (profileId, skillName, mode) => run('set-skill-mode', (remote, revision) => remote.setSkillMode(profileId, skillName, mode, revision)),
-    removeSkillBinding: (profileId, skillName) => run('remove-skill-binding', (remote, revision) => remote.removeSkillBinding(profileId, skillName, revision)),
-    addPromptBinding: (profileId, bindingId, input) => run('add-prompt-binding', (remote, revision) => remote.addPromptBinding(profileId, bindingId, input, revision)),
-    setPromptBindingResourceId: (profileId, bindingId, resourceId) => run('set-prompt-binding-resource-id', (remote, revision) => remote.setPromptBindingResourceId(profileId, bindingId, resourceId, revision)),
-    setPromptBindingEnabled: (profileId, bindingId, enabled) => run('set-prompt-binding-enabled', (remote, revision) => remote.setPromptBindingEnabled(profileId, bindingId, enabled, revision)),
-    setPromptBindingPlacement: (profileId, bindingId, placement) => run('set-prompt-binding-placement', (remote, revision) => remote.setPromptBindingPlacement(profileId, bindingId, placement, revision)),
-    setPromptBindingOrder: (profileId, bindingId, order) => run('set-prompt-binding-order', (remote, revision) => remote.setPromptBindingOrder(profileId, bindingId, order, revision)),
-    removePromptBinding: (profileId, bindingId) => run('remove-prompt-binding', (remote, revision) => remote.removePromptBinding(profileId, bindingId, revision)),
+    createProfile: (basis, id, input) => run('create-profile', basis, (remote, wire) => remote.createProfile(id, input, wire)),
+    deleteProfile: (basis, id) => run('delete-profile', basis, (remote, wire) => remote.deleteProfile(id, wire)),
+    setDefaultProfile: (basis, id) => run('set-default-profile', basis, (remote, wire) => remote.setDefaultProfile(id, wire)),
+    setProfileName: (basis, profileId, name) => run('set-profile-name', basis, (remote, wire) => remote.setProfileName(profileId, name, wire)),
+    setProfileDescription: (basis, profileId, description) => run('set-profile-description', basis, (remote, wire) => remote.setProfileDescription(profileId, description, wire)),
+    setProfileBasePreset: (basis, profileId, basePreset) => run('set-profile-base-preset', basis, (remote, wire) => remote.setProfileBasePreset(profileId, basePreset, wire)),
+    setSkillMode: (basis, profileId, skillName, mode) => run('set-skill-mode', basis, (remote, wire) => remote.setSkillMode(profileId, skillName, mode, wire)),
+    removeSkillBinding: (basis, profileId, skillName) => run('remove-skill-binding', basis, (remote, wire) => remote.removeSkillBinding(profileId, skillName, wire)),
+    addPromptBinding: (basis, profileId, bindingId, input) => run('add-prompt-binding', basis, (remote, wire) => remote.addPromptBinding(profileId, bindingId, input, wire)),
+    setPromptBindingResourceId: (basis, profileId, bindingId, resourceId) => run('set-prompt-binding-resource-id', basis, (remote, wire) => remote.setPromptBindingResourceId(profileId, bindingId, resourceId, wire)),
+    setPromptBindingEnabled: (basis, profileId, bindingId, enabled) => run('set-prompt-binding-enabled', basis, (remote, wire) => remote.setPromptBindingEnabled(profileId, bindingId, enabled, wire)),
+    setPromptBindingPlacement: (basis, profileId, bindingId, placement) => run('set-prompt-binding-placement', basis, (remote, wire) => remote.setPromptBindingPlacement(profileId, bindingId, placement, wire)),
+    setPromptBindingOrder: (basis, profileId, bindingId, order) => run('set-prompt-binding-order', basis, (remote, wire) => remote.setPromptBindingOrder(profileId, bindingId, order, wire)),
+    removePromptBinding: (basis, profileId, bindingId) => run('remove-prompt-binding', basis, (remote, wire) => remote.removePromptBinding(profileId, bindingId, wire)),
   }
   Object.freeze(controller)
 

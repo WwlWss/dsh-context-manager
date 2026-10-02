@@ -6,6 +6,11 @@ import type {
   ContextManagerRemoteSkillMode,
 } from '../remote/types.js'
 
+export interface ContextManagerClientProfileMutationBasis {
+  readonly instanceId: string
+  readonly revision: number
+}
+
 export type ContextManagerClientProfileMutationKind =
   | 'create-profile'
   | 'delete-profile'
@@ -35,12 +40,15 @@ export type ContextManagerClientMutationError =
       readonly message: string
       readonly expectedRevision?: number
       readonly actualRevision?: number
+      readonly expectedInstanceId?: string
+      readonly actualInstanceId?: string
     }
   | {
       readonly kind: 'precondition'
       readonly code:
         | 'busy'
-        | 'profile-revision-unavailable'
+        | 'profile-basis-unavailable'
+        | 'profile-basis-stale'
         | 'protocol-unavailable'
       readonly message: string
     }
@@ -57,7 +65,7 @@ export type ContextManagerClientProfileMutationResult =
       readonly error: ContextManagerClientMutationTransportError
       readonly refresh: 'fresh' | 'degraded'
     }
-  | { readonly status: 'detached' | 'disposed' | 'incompatible' }
+  | { readonly status: 'detached' | 'disposed' | 'incompatible' | 'superseded' }
 
 export type ContextManagerClientProfileMutationOperation =
   | { readonly status: 'idle' }
@@ -66,7 +74,7 @@ export type ContextManagerClientProfileMutationOperation =
       readonly id: number
       readonly kind: ContextManagerClientProfileMutationKind
       readonly phase: 'mutating' | 'rehydrating'
-      readonly expectedRevision: number
+      readonly basis: ContextManagerClientProfileMutationBasis
     }
   | {
       readonly status: 'settled'
@@ -80,18 +88,78 @@ export interface ContextManagerClientMutationSnapshot {
 }
 
 export interface ContextManagerClientProfileMutations {
-  createProfile(id: string, input: ContextManagerRemoteProfileInput): Promise<ContextManagerClientProfileMutationResult>
-  deleteProfile(id: string): Promise<ContextManagerClientProfileMutationResult>
-  setDefaultProfile(id: string | null): Promise<ContextManagerClientProfileMutationResult>
-  setProfileName(profileId: string, name: string): Promise<ContextManagerClientProfileMutationResult>
-  setProfileDescription(profileId: string, description: string | null): Promise<ContextManagerClientProfileMutationResult>
-  setProfileBasePreset(profileId: string, basePreset: string): Promise<ContextManagerClientProfileMutationResult>
-  setSkillMode(profileId: string, skillName: string, mode: ContextManagerRemoteSkillMode): Promise<ContextManagerClientProfileMutationResult>
-  removeSkillBinding(profileId: string, skillName: string): Promise<ContextManagerClientProfileMutationResult>
-  addPromptBinding(profileId: string, bindingId: string, input: ContextManagerRemotePromptBinding): Promise<ContextManagerClientProfileMutationResult>
-  setPromptBindingResourceId(profileId: string, bindingId: string, resourceId: string): Promise<ContextManagerClientProfileMutationResult>
-  setPromptBindingEnabled(profileId: string, bindingId: string, enabled: boolean): Promise<ContextManagerClientProfileMutationResult>
-  setPromptBindingPlacement(profileId: string, bindingId: string, placement: ContextManagerRemotePromptPlacement): Promise<ContextManagerClientProfileMutationResult>
-  setPromptBindingOrder(profileId: string, bindingId: string, order: number): Promise<ContextManagerClientProfileMutationResult>
-  removePromptBinding(profileId: string, bindingId: string): Promise<ContextManagerClientProfileMutationResult>
+  createProfile(
+    basis: ContextManagerClientProfileMutationBasis,
+    id: string,
+    input: ContextManagerRemoteProfileInput,
+  ): Promise<ContextManagerClientProfileMutationResult>
+  deleteProfile(
+    basis: ContextManagerClientProfileMutationBasis,
+    id: string,
+  ): Promise<ContextManagerClientProfileMutationResult>
+  setDefaultProfile(
+    basis: ContextManagerClientProfileMutationBasis,
+    id: string | null,
+  ): Promise<ContextManagerClientProfileMutationResult>
+  setProfileName(
+    basis: ContextManagerClientProfileMutationBasis,
+    profileId: string,
+    name: string,
+  ): Promise<ContextManagerClientProfileMutationResult>
+  setProfileDescription(
+    basis: ContextManagerClientProfileMutationBasis,
+    profileId: string,
+    description: string | null,
+  ): Promise<ContextManagerClientProfileMutationResult>
+  setProfileBasePreset(
+    basis: ContextManagerClientProfileMutationBasis,
+    profileId: string,
+    basePreset: string,
+  ): Promise<ContextManagerClientProfileMutationResult>
+  setSkillMode(
+    basis: ContextManagerClientProfileMutationBasis,
+    profileId: string,
+    skillName: string,
+    mode: ContextManagerRemoteSkillMode,
+  ): Promise<ContextManagerClientProfileMutationResult>
+  removeSkillBinding(
+    basis: ContextManagerClientProfileMutationBasis,
+    profileId: string,
+    skillName: string,
+  ): Promise<ContextManagerClientProfileMutationResult>
+  addPromptBinding(
+    basis: ContextManagerClientProfileMutationBasis,
+    profileId: string,
+    bindingId: string,
+    input: ContextManagerRemotePromptBinding,
+  ): Promise<ContextManagerClientProfileMutationResult>
+  setPromptBindingResourceId(
+    basis: ContextManagerClientProfileMutationBasis,
+    profileId: string,
+    bindingId: string,
+    resourceId: string,
+  ): Promise<ContextManagerClientProfileMutationResult>
+  setPromptBindingEnabled(
+    basis: ContextManagerClientProfileMutationBasis,
+    profileId: string,
+    bindingId: string,
+    enabled: boolean,
+  ): Promise<ContextManagerClientProfileMutationResult>
+  setPromptBindingPlacement(
+    basis: ContextManagerClientProfileMutationBasis,
+    profileId: string,
+    bindingId: string,
+    placement: ContextManagerRemotePromptPlacement,
+  ): Promise<ContextManagerClientProfileMutationResult>
+  setPromptBindingOrder(
+    basis: ContextManagerClientProfileMutationBasis,
+    profileId: string,
+    bindingId: string,
+    order: number,
+  ): Promise<ContextManagerClientProfileMutationResult>
+  removePromptBinding(
+    basis: ContextManagerClientProfileMutationBasis,
+    profileId: string,
+    bindingId: string,
+  ): Promise<ContextManagerClientProfileMutationResult>
 }
