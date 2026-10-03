@@ -25,7 +25,7 @@ function contextManagerRemoteFace() {
     runtime: 1,
   })
   return {
-    async protocol() { return { ok: true, value: { apiVersion: 1 } } },
+    async protocol() { return { ok: true, value: { apiVersion: 2 } } },
     async changes() { return { ok: true, value: change } },
     async profiles() {
       return {
