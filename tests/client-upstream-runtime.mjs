@@ -22,7 +22,7 @@ function contextManagerRemoteFace() {
     runtime: 1,
   })
   return {
-    async protocol() { return { ok: true, value: { apiVersion: 1 } } },
+    async protocol() { return { ok: true, value: { apiVersion: 2 } } },
     async changes() { return { ok: true, value: change } },
     async profiles() {
       return {
@@ -206,7 +206,39 @@ assert.equal(footer[0].options.id, 'context-manager')
 assert.equal(footer[0].options.order, 100)
 assert.equal(overlay[0].options.id, 'context-manager-drawer')
 assert.equal(footer[0].inject, undefined)
-assert.equal(overlay[0].inject, undefined)
+assert.equal(typeof overlay[0].inject, 'function')
+const businessFace = overlay[0].inject()
+assert.deepEqual(Object.keys(businessFace).sort(), [
+  'captureProfileMutationBasis',
+  'hooks',
+  'profileMutations',
+  'refresh',
+])
+assert.deepEqual(Object.keys(businessFace.hooks).sort(), [
+  'contextManager',
+  'profileMutation',
+])
+assert.deepEqual(Object.keys(businessFace.profileMutations).sort(), [
+  'addPromptBinding',
+  'createProfile',
+  'deleteProfile',
+  'removePromptBinding',
+  'removeSkillBinding',
+  'setDefaultProfile',
+  'setProfileBasePreset',
+  'setProfileDescription',
+  'setProfileName',
+  'setPromptBindingEnabled',
+  'setPromptBindingOrder',
+  'setPromptBindingPlacement',
+  'setPromptBindingResourceId',
+  'setSkillMode',
+])
+assert.equal(typeof businessFace.hooks.contextManager.getSnapshot, 'function')
+assert.equal(typeof businessFace.hooks.contextManager.subscribe, 'function')
+assert.equal(typeof businessFace.hooks.profileMutation.getSnapshot, 'function')
+assert.equal(typeof businessFace.hooks.profileMutation.subscribe, 'function')
+assert.equal('state' in businessFace.profileMutations, false)
 assert.equal(footer[0].store, overlay[0].store)
 assert.equal(footer[0].locale, 'context-manager')
 assert.equal(overlay[0].locale, 'context-manager')
@@ -274,6 +306,8 @@ assert.equal(restoredOverlay.length, 1)
 assert.equal(restoredFooter[0].options.id, 'context-manager')
 assert.equal(restoredOverlay[0].options.id, 'context-manager-drawer')
 assert.equal(restoredFooter[0].store, restoredOverlay[0].store)
+assert.equal(typeof restoredOverlay[0].inject, 'function')
+assert.equal(restoredOverlay[0].inject(), businessFace)
 
 // A newly resolved root instance starts from the store's declared initial state.
 const restoredInstance = restoredFooter[0].store.create()

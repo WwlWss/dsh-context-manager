@@ -1,6 +1,6 @@
 # M7B2-A — Profile Mutation Controller Foundation
 
-**Status:** implementation in progress.
+**Status:** complete in merged PR #29.
 
 ## Goal
 
@@ -16,7 +16,7 @@ strict generated Remote
 B1-1 authoritative Client model
         ↓
 M7B2-A profile mutation controller
-        ↓ later B1-2 hook bridge
+        ↓ B1-2 retained Slot inject/hooks bridge
 M7C Profile Drawer
 ```
 

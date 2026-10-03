@@ -4,6 +4,7 @@ export default defineConfig({
   tsconfig: 'tsconfig.client-model-test.json',
   entry: {
     'client-model-runtime.test': 'tests/client-model-runtime.test.ts',
+    'client-business-face.test': 'tests/client-business-face.test.ts',
   },
   outDir: '.artifacts/client-model-tests',
   format: 'esm',

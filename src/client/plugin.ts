@@ -21,6 +21,10 @@ import {
 } from './presentation-store.js'
 import { createContextManagerClientModel } from './model.js'
 import type { ContextManagerClientBusinessRemote } from './remote-port.js'
+import {
+  createContextManagerClientBusinessFace,
+  type ContextManagerClientBusinessFace,
+} from './business-face.js'
 import styles from './plugin.module.css'
 
 type TriggerProps = ComposedProps<
@@ -38,7 +42,7 @@ type DrawerProps = ComposedProps<
   string,
   never,
   ContextManagerPresentationStoreHandle,
-  object,
+  ContextManagerClientBusinessFace,
   never,
   typeof CONTEXT_MANAGER_LOCALE
 >
@@ -113,6 +117,8 @@ export function createContextManagerClientPlugin(contribution: ContextManagerRem
 
       try {
         const nextModel = createContextManagerClientModel()
+        const businessFace = createContextManagerClientBusinessFace(nextModel)
+        const injectBusinessFace = () => businessFace
         model = nextModel
         modelFiber = ctx.plugin({
           name: 'dsh-context-manager-client-model',
@@ -149,6 +155,7 @@ export function createContextManagerClientPlugin(contribution: ContextManagerRem
             name: 'shell.overlay',
             id: 'context-manager-drawer',
             store: presentationStore,
+            inject: injectBusinessFace,
             locale: CONTEXT_MANAGER_LOCALE,
           }, ContextManagerDrawer),
         ))
