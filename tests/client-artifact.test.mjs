@@ -181,7 +181,15 @@ test('M7B0 loader artifact mounts Remote and locale before registering two addit
   assert.equal(entries[1].options.id, 'context-manager-drawer')
 
   assert.equal(entries[0].options.inject, undefined)
-  assert.equal(entries[1].options.inject, undefined)
+  assert.equal(typeof entries[1].options.inject, 'function')
+  const businessFace = entries[1].options.inject()
+  assert.deepEqual(Object.keys(businessFace).sort(), [
+    'captureProfileMutationBasis',
+    'hooks',
+    'profileMutations',
+    'refresh',
+  ])
+  assert.equal('state' in businessFace.profileMutations, false)
   assert.equal(entries[0].options.store, entries[1].options.store)
   assert.equal(entries[0].options.locale, 'context-manager')
   assert.equal(entries[1].options.locale, 'context-manager')
@@ -203,6 +211,13 @@ test('M7B0 loader artifact mounts Remote and locale before registering two addit
   assert.equal(openDrawer.props['data-context-manager-backdrop'], '')
 
   await dispose()
+  assert.equal(businessFace.captureProfileMutationBasis(), undefined)
+  assert.equal((await businessFace.refresh()).status, 'disposed')
+  assert.equal((await businessFace.profileMutations.setProfileName(
+    { instanceId: 'stale-host', revision: 1 },
+    'main',
+    'Changed',
+  )).status, 'disposed')
   assert.deepEqual(lifecycle.slice(-6), [
     'slot:inject-dispose:shell.overlay',
     'slot:register-dispose:shell.overlay',
