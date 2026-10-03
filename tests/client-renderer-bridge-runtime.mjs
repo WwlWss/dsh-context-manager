@@ -1,14 +1,58 @@
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 
-import { Context } from '@deepseek-ai/cordis'
-import { SlotCore } from '@deepseek-ai/dsh-client-ui-slots'
-import * as UiRenderer from '@deepseek-ai/dsh-client-ui-renderer/client'
+import * as Cordis from '@deepseek-ai/cordis'
+import * as ClientStore from '@deepseek-ai/dsh-client-store'
+import * as ClientSlots from '@deepseek-ai/dsh-client-ui-slots'
 import * as React from 'react'
+import * as ReactDOM from 'react-dom'
+import * as ReactDOMClient from 'react-dom/client'
+import * as ReactJsxRuntime from 'react/jsx-runtime'
 import TestRenderer from 'react-test-renderer'
 
+const { Context } = Cordis
+const { SlotCore } = ClientSlots
+
 const { act } = TestRenderer
+
+async function loadRendererClientPlugin() {
+  let registration
+  const rendererPath = fileURLToPath(
+    import.meta.resolve('@deepseek-ai/dsh-client-ui-renderer/client'),
+  )
+  const source = await readFile(rendererPath, 'utf8')
+  const loaderWindow = {
+    __ModuleLoader__: {
+      load(value) { registration = value },
+    },
+  }
+  new Function('window', source)(loaderWindow)
+
+  assert.ok(registration)
+  assert.equal(registration.id, '@deepseek-ai/dsh-client-ui-renderer')
+
+  const externals = new Map([
+    ['react', React],
+    ['react/jsx-runtime', ReactJsxRuntime],
+    ['react-dom', ReactDOM],
+    ['react-dom/client', ReactDOMClient],
+    ['@deepseek-ai/cordis', Cordis],
+    ['@deepseek-ai/dsh-client-store', ClientStore],
+    ['@deepseek-ai/dsh-client-ui-slots', ClientSlots],
+  ])
+
+  return registration.factory((specifier) => {
+    const resolved = externals.get(specifier)
+    if (resolved === undefined) {
+      throw new Error(
+        `unexpected retained ui-renderer module-table request: ${specifier}`,
+      )
+    }
+    return resolved
+  })
+}
 
 function fakeReact() {
   return {
@@ -198,11 +242,14 @@ assert.equal(businessSnapshot.attachment, 'attached')
 assert.equal(businessSnapshot.protocol.status, 'compatible')
 assert.equal(businessFace.hooks.profileMutation.getSnapshot().profile.status, 'idle')
 
+const rendererPlugin = await loadRendererClientPlugin()
+assert.deepEqual(rendererPlugin.inject, [])
+
 const rendererCtx = new Context()
 const rendererFiber = rendererCtx.plugin({
   name: 'm7b1-2-real-renderer-probe',
-  inject: [...UiRenderer.inject],
-  apply: UiRenderer.apply,
+  inject: [...rendererPlugin.inject],
+  apply: rendererPlugin.apply,
 })
 await rendererFiber.await()
 const slots = rendererCtx.get('slots')
