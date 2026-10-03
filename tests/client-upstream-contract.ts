@@ -8,6 +8,9 @@ import type {
   ContextManagerClientSlots,
   ContextManagerRemoteContribution,
 } from '../src/client/context.js'
+import type { ContextManagerClientBusinessFace } from '../src/client/business-face.js'
+import type { ContextManagerClientSnapshot } from '../src/client/model-types.js'
+import type { ContextManagerClientMutationSnapshot } from '../src/client/mutation-types.js'
 import {
   CONTEXT_MANAGER_LOCALE,
   CONTEXT_MANAGER_LOCALES,
@@ -98,7 +101,7 @@ type OverlayProps = ComposedProps<
   string,
   never,
   typeof store,
-  object,
+  ContextManagerClientBusinessFace,
   never,
   typeof CONTEXT_MANAGER_LOCALE
 >
@@ -110,6 +113,18 @@ footerProps.actions.open()
 footerProps.actions.close()
 footerProps.actions.toggle()
 const _title: string = footerProps.t('title')
+
+declare const overlayProps: OverlayProps
+const _attachment: ContextManagerClientSnapshot['attachment'] =
+  overlayProps.useContextManager(snapshot => snapshot.attachment)
+const _mutationStatus: ContextManagerClientMutationSnapshot['profile']['status'] =
+  overlayProps.useProfileMutation(snapshot => snapshot.profile.status)
+void overlayProps.refresh()
+const _basis = overlayProps.captureProfileMutationBasis()
+if (_basis !== undefined) {
+  void overlayProps.profileMutations.setProfileName(_basis, 'main', 'Main')
+}
+declare const businessFace: ContextManagerClientBusinessFace
 
 const core = new SlotCore()
 
@@ -125,6 +140,7 @@ const disposeOverlay = core.register({
   name: 'shell.overlay',
   id: 'context-manager-drawer',
   store,
+  inject: () => businessFace,
   locale: CONTEXT_MANAGER_LOCALE,
 }, (_props: OverlayProps) => null)
 

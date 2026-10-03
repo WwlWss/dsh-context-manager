@@ -7,6 +7,7 @@
     "src/client/**/*.ts",
     "src/client/**/*.d.ts",
     "src/remote/types.ts",
-    "tests/client-model-runtime.test.ts"
+    "tests/client-model-runtime.test.ts",
+    "tests/client-business-face.test.ts"
   ]
 }
