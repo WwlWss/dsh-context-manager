@@ -4,7 +4,6 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import * as Cordis from '@deepseek-ai/cordis'
-import * as ClientStore from '@deepseek-ai/dsh-client-store'
 import * as ClientSlots from '@deepseek-ai/dsh-client-ui-slots'
 import * as React from 'react'
 import * as ReactDOM from 'react-dom'
@@ -39,7 +38,6 @@ async function loadRendererClientPlugin() {
     ['react-dom', ReactDOM],
     ['react-dom/client', ReactDOMClient],
     ['@deepseek-ai/cordis', Cordis],
-    ['@deepseek-ai/dsh-client-store', ClientStore],
     ['@deepseek-ai/dsh-client-ui-slots', ClientSlots],
   ])
 
@@ -51,6 +49,28 @@ async function loadRendererClientPlugin() {
       )
     }
     return resolved
+  })
+}
+
+function createAbsentSessionAdapter() {
+  const absentBinding = Object.freeze({
+    key: undefined,
+    hooks: Object.freeze({}),
+    keyedHooks: Object.freeze({}),
+    props: Object.freeze({}),
+  })
+  const current = Object.freeze({
+    getSnapshot: () => absentBinding,
+    subscribe: () => () => {},
+  })
+  return Object.freeze({
+    current,
+
+    // Retained 0.1.2/0.1.5 SlotScopeAdapter contract.
+    resolve: () => undefined,
+
+    // Retained 0.1.6+ SlotScopeAdapter contract.
+    bindingSource: () => current,
   })
 }
 
@@ -255,6 +275,15 @@ await rendererFiber.await()
 const slots = rendererCtx.get('slots')
 assert.ok(slots)
 
+const sessionScopeFiber = rendererCtx.plugin({
+  name: 'm7b1-2-session-scope-probe',
+  inject: ['slots'],
+  apply(ctx) {
+    ctx.slots.installScope('session', createAbsentSessionAdapter())
+  },
+})
+await sessionScopeFiber.await()
+
 let latestProbe
 function Probe(props) {
   const attachment = props.useContextManager(snapshot => snapshot.attachment)
@@ -317,5 +346,6 @@ await act(async () => {
 })
 disposeProbe()
 disposeRoot()
+await sessionScopeFiber.dispose()
 await rendererFiber.dispose()
 disposeExtractionRoot()
