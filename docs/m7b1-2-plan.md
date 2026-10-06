@@ -1,6 +1,6 @@
 # M7B1-2 — Stable Slot Business Bridge
 
-**Status:** current implementation slice.
+**Status:** complete in PR #30.
 
 ## Goal
 
