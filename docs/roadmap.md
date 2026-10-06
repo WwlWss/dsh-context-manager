@@ -513,9 +513,9 @@ The retained five-generation runtime matrix remains deliberately narrow SlotCore
 
 B1-1 is complete in merged PR #27: the Client now owns a React-free authoritative baseline model for profiles, presets, and prompt-placement capability with protocol/Host-authority guards, cursor-stable reconciliation, freshness invalidation, and persistence revision access.
 
-**B1-2 is the current implementation slice.** It bridges that stable business model plus the merged profile mutation controller through the retained Slot/renderer `inject.hooks` boundary without copying authoritative data into presentation state or reintroducing package-owned React subscription machinery. See [m7b1-2-plan.md](m7b1-2-plan.md).
+**B1-2 is complete in PR #30.** It bridges that stable business model plus the merged profile mutation controller through the retained Slot/renderer `inject.hooks` boundary without copying authoritative data into presentation state or reintroducing package-owned React subscription machinery. See [m7b1-2-plan.md](m7b1-2-plan.md).
 
-Remaining Client-model slices are explicit:
+**B1-3 is the next Client-model slice.** Remaining Client-model work is explicit:
 
 - **B1-3** — add separately invalidated/lazy PromptResource state plus keyed Session/Agent diagnostics and their revision ownership;
 - polling/focus/reconnect refresh remains a later lifecycle slice and must keep change cursors as invalidation hints only.
