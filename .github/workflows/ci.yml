@@ -642,7 +642,7 @@ jobs:
         run: node ./tests/client-upstream-runtime.mjs
 
   client-presentation-contract:
-    name: M7B2A Client model/mutation contract (${{ matrix.version }})
+    name: M7B1-2 Client business bridge contract (${{ matrix.version }})
     needs: remote-foundation-artifact
     strategy:
       fail-fast: false
@@ -671,6 +671,7 @@ jobs:
         run: |
           pnpm add --ignore-scripts --save-dev --save-exact \
             @deepseek-ai/cordis@4.0.2 \
+            @deepseek-ai/dsh-invariants@${{ matrix.version }} \
             @deepseek-ai/dsh-client-store@${{ matrix.version }} \
             @deepseek-ai/dsh-client-locale@${{ matrix.version }} \
             @deepseek-ai/dsh-client-ui-slots@${{ matrix.version }} \
@@ -679,16 +680,20 @@ jobs:
             @deepseek-ai/dsh-client-ui-layout@${{ matrix.version }} \
             @deepseek-ai/dsh-typert-protocol@${{ matrix.version }} \
             @types/react@18.3.31 \
-            react@18.3.1
-      - name: Compile M7B2A Client model/mutation contract
+            react@18.3.1 \
+            react-dom@18.3.1 \
+            react-test-renderer@18.3.1
+      - name: Compile M7B1-2 Client model/mutation/Slot bridge contract
         run: |
           pnpm exec tsc --ignoreConfig --noEmit --strict --skipLibCheck \
             --module NodeNext --moduleResolution NodeNext --target ES2024 \
             src/client/css-modules.d.ts \
             src/client/context.ts src/client-contract.ts \
             src/client/model-types.ts src/client/mutation-types.ts src/client/remote-port.ts \
-            src/client/mutation-controller.ts src/client/model.ts src/client/plugin.ts \
+            src/client/mutation-controller.ts src/client/model.ts src/client/business-face.ts src/client/plugin.ts \
             tests/client-upstream-contract.ts tests/client-generated-remote-contract.ts
+      - name: Execute M7B1-2 real retained renderer bridge contract
+        run: node ./tests/client-renderer-bridge-runtime.mjs
 
   package:
     name: verify packed bundle
