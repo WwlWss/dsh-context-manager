@@ -36,6 +36,8 @@ A capability preflight must record:
 - the evidence class each planned test can honestly establish;
 - the exact compatibility claim the PR intends to make.
 
+**Executable preflight gate (required for a new or changed DSH seam):** before writing production integration code, record a reproducible command, its exact published package version and artifact digest/commit, and the result of a small independent probe. Inspect the packed manifest and exported declarations, then test loading through the *intended environment*: Node for Host services, the DSH browser module loader for Client artifacts. If an operation depends on a lifecycle, run at least one genuine public-service invocation and teardown—not a copied implementation or private monorepo test helper. A missing or renamed seam is a **U** finding and blocks implementation of that seam until the adapter/capability policy is approved. A source-only observation is E1, not installability or runtime support. Archive the commands and results in the scoped PR or a version-intake document. Do not run a 70+ job matrix to discover an initial missing import.
+
 A helper, type, or test utility visible in the DSH monorepo is **not** a published integration seam merely because source inspection can see it. If a retained generation does not publish or load the proposed package, use a retained public seam, a narrow version adapter, or a package-owned structural bridge only after a preflight proves the contract. Do not widen peer ranges first and discover runtime loadability later.
 
 For the corresponding feature, read these upstream areas before implementation:
@@ -578,79 +580,79 @@ A source-forward review of DSH `master` is design evidence, not a support claim.
 
 ## 18. PR workflow
 
-Feature work follows an explicit state machine:
+Feature work uses five distinct gates and **one active branch/PR per slice**:
 
 ```text
-PLAN
-  -> UPSTREAM PREFLIGHT
-  -> DRAFT IMPLEMENTATION
-  -> TARGETED TESTS
-  -> CI STABILIZATION
-  -> STRICT SOURCE REVIEW
-  -> FIX / CI LOOP
-  -> FINAL REVIEW
-  -> READY
-  -> MERGE
-  -> POST-MERGE CLOSEOUT
+CAPABILITY PLAN
+  -> EXECUTABLE UPSTREAM PREFLIGHT
+  -> DRAFT PR + FOCUSED IMPLEMENTATION + QUICK TESTS
+  -> FOCUSED SOURCE REVIEW
+  -> READY FOR REVIEW + FULL QUALIFICATION
+  -> EXACT-HEAD FINAL REVIEW
+  -> MERGE + CLOSEOUT
 ```
 
-### PLAN gate
+### 18.1 Capability plan
 
-Record the user-visible capability, ownership layers, exact public seam, non-goals, compatibility hypothesis, evidence plan, failure semantics, unload/HMR behavior, and acceptance criteria. New persisted fields require a real runtime owner; do not persist knobs for future semantics.
+Record the user-facing result, authority/owner, non-goals, lossless-storage rules, mutation/revision semantics, affected published versions, fallback/refusal rules, unload/HMR behavior, and the strongest evidence needed. Do not create a new subsystem or persisted field without an actual owner and a current use case.
 
-### UPSTREAM PREFLIGHT gate
+### 18.2 Executable upstream preflight (before production code)
 
-Verify exports, packed files, loadability, lifecycle, minimum retained line, newest tested line, current source-forward behavior, and upstream non-negotiable rules. Resolve cross-generation seam questions before implementation.
+Use the published artifacts, not only upstream GitHub source. The evidence must include:
 
-### DRAFT IMPLEMENTATION and TARGETED TESTS
+1. exact npm package/version(s), install or pack commands, exported `./client` or Host entry points, and any public types used;
+2. minimal compilable consumer demonstrating the intended public types and package boundaries;
+3. a *real* minimal load/invocation for the affected host or Client loader seam, including required public runtime adapters and cleanup; runtime proof may be deferred only when explicitly recorded as unverified;
+4. a record of both supported-old and candidate-new behavior, including whether a missing capability is truly absent or merely renamed;
+5. a versioned conclusion **supported / candidate / incompatible / unknown**, with an E1–E6 evidence label per claim.
 
-Feature PRs stay Draft by default. Keep changes narrow. Add focused failure-path and compatibility-branch tests alongside the implementation; do not use a broad CI matrix as the first debugger.
+Failing this gate means resolve the upstream contract or defer the capability; it is **not** a reason to rewrite the production model from an assumption. Do not widen peer ranges or support claims during preflight.
 
-### CI STABILIZATION
+### 18.3 Draft PR + focused implementation + Quick CI
 
-Classify failures before changing production code:
+Open exactly one Draft PR for the slice; reuse its branch through repair iterations. Before asking the whole matrix to diagnose an issue, run `pnpm run check`, then the smallest direct tests and one relevant published-runtime probe. The Draft PR workflow runs just **one Ubuntu/Node 22 verify lane**, including typecheck, clean build, all local contract tests, and the git-install prepare test. All other compatibility/packaging jobs are intentionally skipped during Draft; a green Draft run is **not merge qualification**.
 
-- **P — production defect:** implementation violates the intended contract;
-- **H — harness defect:** test/CI wiring does not execute the intended contract correctly;
-- **U — upstream publication/compatibility defect:** the assumed public package/export/runtime seam is absent or changed;
-- **I — infrastructure/transient defect:** runner/network/cache/tooling failure unrelated to product semantics.
+Before changing production in response to CI, classify the *actual* failure:
 
-Do not "fix CI" by weakening production behavior when the failure is H/U/I.
+- **P — production defect:** intended behavior or ownership is wrong. Fix production and add a regression.
+- **H — harness defect:** loader/module-table, scope, fixture, or test assembly is wrong. Fix only the harness; keep a real public runtime in the proof.
+- **U — upstream incompatibility:** required published API, meaning, or version is absent/changed. Perform a version intake and choose a narrow adapter, explicit degradation, or unsupported-version decision.
+- **I — infrastructure/transient:** runner, registry/network, toolchain, or cache unrelated to semantics. Retry only with recorded evidence; do not change correctness code.
 
-### STRICT SOURCE REVIEW
+Avoid repeated CI pushes for documentation wording. Stage closeout documentation in **one** commit before Ready when possible.
 
-Review the complete intended diff after the latest intended functional change and after targeted/CI evidence is green. Check ownership, lifecycle, compatibility branches, failure semantics, performance, package artifacts, and whether the tests prove the claims.
+### 18.4 Focused source review, then full qualification
 
-### FIX / CI LOOP
+Once the focused tests pass, review the actual diff for authority leakage, race/disposal semantics, stale writes, compatibility claims, dependency/artifact leakage, performance, and whether tests genuinely exercise the shipped seam. Resolve all P1/P2 findings.
 
-Any functional fix returns to targeted tests and CI. If the fix changes reviewed behavior materially, repeat strict source review.
+Then mark the Draft PR **Ready for review**. The `ready_for_review` event runs the complete retained compatibility matrix (including packed artifact and DSH composition). Any subsequent `synchronize` on a Ready PR reruns full qualification; `main` pushes and explicit `workflow_dispatch` also run full qualification. Do not confuse a Draft green run or a manually executed narrow canary with this gate.
 
-### FINAL REVIEW -> READY gate
+Do not rename existing CI job IDs or silently drop a required matrix; `package` must continue to depend on the complete authoritative set of verification jobs. Source-forward candidate tests are separately labeled **canary/intake** and do not automatically enlarge the production peer range.
 
-Before marking Ready, record:
+### 18.5 Exact-head final review and merge
 
-- exact head SHA reviewed;
-- latest green required CI run for that SHA;
-- evidence classes actually achieved;
-- known unsupported cases or deferred debt;
-- confirmation that no functional commit landed after final review.
+Final review follows—not precedes—the complete green Ready-PR qualification. Record:
 
-No P1/P2 source-review finding may remain open. Documentation-only PRs may skip Draft when they have no executable artifact, but they still require exact-head review.
+- exact PR head SHA and matching complete workflow run;
+- unskipped success of all required compatibility, package, and composition jobs;
+- evidence classes actually established and unsupported cases;
+- final diff and confirmation that no functional commit landed after review;
+- no remaining P1/P2 findings.
 
-### MERGE and POST-MERGE CLOSEOUT
+If new functional code lands, rerun affected focused tests and the Ready-PR full matrix; repeat only the affected review scope. Merge only the exact reviewed green head. The PR must not remain Draft at merge. A new upstream release cannot be declared supported merely because its source appears compatible.
 
-Merge only the reviewed green head. After merge, update milestone status/closeout documentation when needed and verify that the next slice starts from the merged contract rather than an earlier plan.
+### 18.6 Closeout and next-slice handoff
 
-Before merge, also verify:
+Update milestone/roadmap status using one closeout commit before Ready where feasible, without prematurely saying "merged" while the PR is still open. After merge, verify the real main SHA and record any actual post-merge CI outcome separately. Avoid duplicate same-purpose PRs, orphan branches, and repackaging a previous unmerged branch as a new slice.
 
-- no shipped DSH preset/provider/file is rewritten;
-- hot unload restores stock behavior through documented native cleanup;
-- unknown user data survives unrelated edits;
-- stale writes fail rather than retry silently;
-- Host-only values cannot leak over the wire;
-- the feature does not claim semantics stronger than its evidence;
-- every production compatibility branch is executed by at least one focused lane;
-- package exports and packed artifacts match the manifest.
+Before merge, additionally verify:
+
+- no shipped DSH preset/provider/file is rewritten and unload restores stock behavior;
+- unknown user data survives unrelated edits; unsafe/unsupported writes fail explicitly;
+- stale writes fail rather than silently rebasing or retrying;
+- Host-only values and secrets cannot cross Remote projections;
+- every production compatibility branch has an appropriate focused execution lane;
+- package exports, peer claims, packed artifacts, and actual evidence agree.
 
 
 ## 19. Local development
