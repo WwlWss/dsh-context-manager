@@ -627,7 +627,7 @@ Once the focused tests pass, review the actual diff for authority leakage, race/
 
 Then mark the Draft PR **Ready for review**. The `ready_for_review` event runs the complete retained compatibility matrix (including packed artifact and DSH composition). Any subsequent `synchronize` on a Ready PR reruns full qualification; `main` pushes and explicit `workflow_dispatch` also run full qualification. Do not confuse a Draft green run or a manually executed narrow canary with this gate.
 
-Do not rename existing CI job IDs or silently drop a required matrix; `package` must continue to depend on the complete authoritative set of verification jobs. Source-forward candidate tests are separately labeled **canary/intake** and do not automatically enlarge the production peer range.
+Do not rename existing CI job IDs or silently drop a required matrix; `package` must continue to depend on the complete authoritative set of verification jobs. For DSH composition smoke, the `package` job uploads **the packed tarball it just tested**, and all retained DSH smoke versions install that exact artifact; rebuilding the repository in each smoke consumer would *not* satisfy the same-built-artifact claim. Remote/Client artifact lanes retain their own build-once-and-consume-many owner. Source-forward candidate tests are separately labeled **canary/intake** and do not automatically enlarge the production peer range.
 
 ### 18.5 Exact-head final review and merge
 

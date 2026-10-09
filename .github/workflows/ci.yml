@@ -797,6 +797,13 @@ jobs:
             pnpm exec tsc --ignoreConfig --noEmit --strict --skipLibCheck \
               --module NodeNext --moduleResolution NodeNext --target ES2024 consumer.ts
           done
+      - name: Upload exact packed artifact for downstream DSH smoke
+        uses: actions/upload-artifact@v4
+        with:
+          name: context-manager-packed
+          path: .artifacts/*.tgz
+          if-no-files-found: error
+          retention-days: 3
 
   dsh-smoke:
     name: published DSH bundle smoke (${{ matrix.version }})
@@ -819,12 +826,18 @@ jobs:
         run: |
           corepack enable
           corepack prepare pnpm@11.7.0 --activate
-      - name: Install and build this plugin
+      - name: Download the single packed candidate built by the package job
+        uses: actions/download-artifact@v4
+        with:
+          name: context-manager-packed
+          path: .artifacts
+      - name: Install exact packed artifact into a temporary DSH profile
         run: |
-          pnpm install --frozen-lockfile
-          pnpm run build
-      - name: Install bundle into a temporary DSH profile
-        run: pnpm dlx @deepseek-ai/dsh@${{ matrix.version }} plugin --profile context-manager-ci add "$GITHUB_WORKSPACE"
+          shopt -s nullglob
+          tarballs=("$GITHUB_WORKSPACE"/.artifacts/*.tgz)
+          test "${#tarballs[@]}" -eq 1
+          sha256sum "${tarballs[0]}"
+          pnpm dlx @deepseek-ai/dsh@${{ matrix.version }} plugin --profile context-manager-ci add "${tarballs[0]}"
       - name: Verify DSH composed configuration
         run: |
           pnpm dlx @deepseek-ai/dsh@${{ matrix.version }} --profile context-manager-ci --dump-config > .dsh-composed.yml

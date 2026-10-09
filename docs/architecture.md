@@ -223,7 +223,7 @@ DSH Settings' in-process revision queue is not a cross-process transaction proto
 
 M6 begins by adding a dedicated Host Remote projection layer rather than decorating the existing Domain/runtime services directly. The Remote owner may call those services, but browser transport shape, redaction, revision tokens, and machine-readable failures remain boundary concerns.
 
-M6A publishes only the strict generated Typert contract for `contextManager.protocol()`. The package opts into `./typert` and `./remote`, but still publishes no `./client` face. Generated descriptors are part of the package contract; Gateway SRC fallback is development compatibility only and is not accepted as proof that a shipped endpoint has a stable browser contract.
+At the historical M6A boundary, the package published only the strict generated Typert contract for `contextManager.protocol()` and the `./typert` / `./remote` faces, not a `./client` face. **M7A has since added the real `./client` export, and M6B/M6C expanded the Host Remote contract.** Generated descriptors are part of the package contract; Gateway SRC fallback is development compatibility only and is not proof that a shipped endpoint has a stable browser contract.
 
 The authoring baseline is the oldest retained Typert generation. The same generated artifact is runtime-tested against every retained DSH generation so later Hosts cannot silently require a different package artifact.
 

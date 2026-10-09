@@ -1,6 +1,6 @@
 # DSH 0.1.7+/0.2.x public-capability feasibility intake
 
-**Status:** E1 upstream source review complete. Published artifact E2/E6 probe is introduced in this branch, with results to be taken from its CI run. **This is not a support claim.** Production adapters, storage data, and peer ranges remain unchanged.
+**Status (2026-10-10):** E1 upstream source review complete. E2/published-artifact structural E6 candidate intake passed for all three explicitly pinned candidates in [GitHub Actions #37948993328](https://github.com/WwlWss/dsh-context-manager/actions/runs/37948993328), against PR #31 head `75035939f37a44b6bfca816a2549046ab15a92bb`; each lane produced a machine-readable artifact. This is **not** E4 Host load/operation or E5 service/lifecycle proof, and it does **not** qualify 0.1.7+/0.2.x support. Production adapters, stored data, and peer ranges remain unchanged.
 
 ## Provenance and evidence boundary
 
@@ -8,7 +8,7 @@
 - Host breaking generation: at least as early as dsh-v0.1.7-alpha.1, when SettingsForms and AgentPresetRegistry replace the old public services.
 - New version intake target: dsh-v0.2.0-rc.2. Forward-only exploratory candidate: dsh-v0.2.1-alpha.2.
 - Official master observed 2026-10-09 at d743267388641bc76f17c45ce8b4c231aed1d32c. A source SHA does not qualify a published artifact.
-- Executable artifact probe: scripts/probe-dsh-published-artifacts.mjs and .github/workflows/upstream-intake.yml. It uses npm pack on exact published versions, extracts the real public declarations, confirms export files, and saves the npm tarball integrity. It establishes only E2/E6 package structure, not E4/E5 runtime semantics.
+- Executable artifact probe: scripts/probe-dsh-published-artifacts.mjs and .github/workflows/upstream-intake.yml. It uses npm pack on exact published versions, extracts the real public declarations, confirms export files, and saves the npm tarball integrity. Passed for `0.1.6-alpha.2`, `0.2.0-rc.2`, and `0.2.1-alpha.2`. It establishes only E2 and E6 *package structure*, not E6 Host composition, E4 service operation or E5 runtime semantics. Re-run if this probe or the pinned candidates change.
 
 Primary upstream sources:
 
