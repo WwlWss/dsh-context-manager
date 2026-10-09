@@ -11,11 +11,11 @@ DeepSeek Harness evolves quickly. Context Manager separates **installable/tested
 | 0.1.5 published regression | `dsh-v0.1.5-rc.1` | Retained because it remains an important published/default-install line. CI reruns modern Settings, AgentPreset M3A/M3C checks, M3B Session runtime, M4C1 placement, M4C2 Agent/SystemPrompt smoke, M5A Skill/Scope contract, and full bundle composition smoke against it. |
 | Current stable regression | `dsh-v0.1.5-rc.2` | Install-tested published line retained as the stable regression anchor. CI runs modern Settings, M3A/M3C, M3B projection/runtime, M4A Storage, M4C1 placement, M4C2 Agent/SystemPrompt smoke, the M5A Skill/Scope contract, strict packed-package peer installation, and full DSH bundle composition. |
 | Install-tested forward alpha | `dsh-v0.1.6-alpha.2` | Published forward-compatibility line validated by CI across modern Settings, AgentPreset, Session projection/runtime, Prompt Library Storage, M4C1 placement, M4C2 Agent/SystemPrompt, and the M5A Skill/Scope contract. A real 0.1.6 AgentLoop recording-adapter E2E proves the modern model-visible Surface/runtime-context path, dynamic profile/resource resolution, native suppression, and unload/reload behavior. Strict packed-package and bundle composition lanes remain in place. |
-| Latest official repository | `master` / `46a7f68b...` | Source-forward architecture target. The current official head is the 2026-09-23 merge for `0.1.7-rc.1`. Source review remains distinct from package/runtime evidence and does **not** make `0.1.7-rc.1` a supported Context Manager line. |
+| Latest official repository | `master` / `d743267388641bc76f17c45ce8b4c231aed1d32c` (observed 2026-10-09) | Source-forward review only, not an install-test result. The [0.2.x feasibility intake](dsh-v02-feasibility.md) records the incompatible new Host seams. |
 
 Support claims must name what was actually tested. A GitHub source tree and an installable npm package remain distinct evidence even when their package version currently matches.
 
-DSH `0.1.7-rc.1` is a **published compatibility-intake candidate**, not an install-tested supported line in this repository yet. Do not add its prerelease tuple to peer ranges or describe it as supported until the dedicated intake slice passes the affected package, same-artifact Remote/Client, install, and composition evidence.
+DSH `0.1.7-alpha.1` already introduces breaking Settings and AgentPreset Host contract changes. `0.1.7-rc.2`, `0.2.0-rc.2` and `0.2.1-alpha.2` are **unqualified candidates**, not supported Host lines. Read [0.2.x feasibility intake](dsh-v02-feasibility.md) before any peer-range expansion; source or tarball export evidence alone is insufficient.
 
 The modern published lines used by CI ship `@deepseek-ai/cordis@4.0.2` and `@deepseek-ai/schemastery@3.18.2`. Host-facing development dependencies remain on the retained 0.1.1 generation where possible, while the M7 browser toolchain is intentionally pinned to the first standalone Client-store generation, `0.1.2-rc.1`. This is a split minimum: it does not raise the Host compatibility floor.
 
@@ -26,7 +26,7 @@ Context Manager owns the `dsh-context-manager` Settings namespace and never read
 The Settings public surface changed between the legacy and modern lines:
 
 - `0.1.1-rc.2` exported `settingsNamespace()` and a module-level `installSettingsSection()` helper.
-- `0.1.2-rc.1+`, including `0.1.5-rc.1`, `0.1.5-rc.2`, `0.1.6-alpha.2`, and current source, validates namespace strings in the Settings service and exposes the optional-consumer lifecycle as `settings.installSection(owner, ns, schema, entry, hooks)`.
+- The retained `0.1.2-rc.1`, `0.1.5-rc.1`, `0.1.5-rc.2` and `0.1.6-alpha.2` generations expose `settings.installSection(owner, ns, schema, entry, hooks)`. **This does not extend to 0.1.7+**, which uses SettingsForms over plugin-entry Config rather than independently registered Settings sections.
 
 `src/adapters/settings.ts` owns the narrow version seam:
 
@@ -58,7 +58,7 @@ The package peer declaration explicitly opts into each tested prerelease tuple r
 
 Milestones 3A and 3C consume the optional public Host capability exposed as `ctx.agentPresets`. Production does **not** import or bundle `@deepseek-ai/dsh-agent-presets`.
 
-The stable Host-service intersection shared by all supported published lines and current official source contains the M3A roster reads:
+The stable Host-service intersection shared by the retained **0.1.1–0.1.6 published generations only** contains the M3A roster reads:
 
 - `defaultId` — current native default id;
 - `authorable` — whether the deployment has a user-authorable preset root;
@@ -489,4 +489,4 @@ Production still derives its Slot service face from the real renderer-owned `Slo
 
 Packed package checks and published DSH composition smoke remain part of the closeout gate.
 
-The separately published DSH `0.1.7-rc.1` line is not included in the matrix above yet. Its intake must first run the relevant published Client/Remote/package preflight and same-artifact compatibility lanes; only a passing intake may update peer tuples and supported-version language.
+DSH `0.1.7+` belongs to a separate generation-aware intake. The SettingsForms and AgentPresetRegistry changes must first satisfy the persisted-data and Host-service requirements in [dsh-v02-feasibility.md](dsh-v02-feasibility.md); passing Client/Remote artifact probes alone must **not** expand Host peer tuples or support claims.
