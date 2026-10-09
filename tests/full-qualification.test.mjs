@@ -44,7 +44,7 @@ test('rejects missing result and non-object input', () => {
 })
 
 test('CI aggregation has exactly the reviewed dependencies and always executes', () => {
-  const yaml = readFileSync(new URL('../.github/workflows/ci.yml', import.meta.url), 'utf8')
+  const yaml = readFileSync(new URL('../.github/workflows/ci.yml', import.meta.url), 'utf8').replace(/\r\n/g, '\n')
   const parts = yaml.split('\n  full-qualification:\n')
   assert.equal(parts.length, 2)
   const needs = parts[1].match(/^    needs: \[([^\]\r\n]+)\]/m)
