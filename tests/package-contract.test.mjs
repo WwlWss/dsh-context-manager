@@ -48,11 +48,11 @@ test('package manifest points at real build, types, and bundle artifacts', async
   assert.equal(packageJson.dependencies?.zod, '^4.4.3')
   assert.equal(
     packageJson.peerDependencies?.['@deepseek-ai/dsh-client-locale'],
-    '^0.1.2-rc.1 || ^0.1.5-rc.1 || ^0.1.6-alpha.2',
+    '0.1.2-rc.1 || 0.1.5-rc.1 || 0.1.5-rc.2 || 0.1.6-alpha.2',
   )
   assert.equal(
     packageJson.peerDependencies?.['@deepseek-ai/dsh-client-ui-renderer'],
-    '^0.1.2-rc.1 || ^0.1.5-rc.1 || ^0.1.6-alpha.2',
+    '0.1.2-rc.1 || 0.1.5-rc.1 || 0.1.5-rc.2 || 0.1.6-alpha.2',
   )
   assert.deepEqual(
     packageJson.peerDependenciesMeta?.['@deepseek-ai/dsh-client-locale'],
