@@ -804,6 +804,8 @@ jobs:
           path: .artifacts/*.tgz
           if-no-files-found: error
           retention-days: 3
+          # The explicit .tgz glob is stored under a hidden .artifacts directory.
+          include-hidden-files: true
 
   dsh-smoke:
     name: published DSH bundle smoke (${{ matrix.version }})
