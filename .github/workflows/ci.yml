@@ -5,6 +5,8 @@ on:
     branches:
       - main
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -18,9 +20,10 @@ jobs:
     name: verify (${{ matrix.os }}, node ${{ matrix.node }})
     strategy:
       fail-fast: false
+      # Draft PRs run a single fast verification lane. Ready PRs, main and
+      # manual dispatches retain all four OS/Node lanes.
       matrix:
-        os: [ubuntu-latest, windows-latest]
-        node: [22.20.0, 24.11.0]
+        include: ${{ fromJSON(github.event_name == 'pull_request' && github.event.pull_request.draft && '[{"os":"ubuntu-latest","node":"22.20.0"}]' || '[{"os":"ubuntu-latest","node":"22.20.0"},{"os":"ubuntu-latest","node":"24.11.0"},{"os":"windows-latest","node":"22.20.0"},{"os":"windows-latest","node":"24.11.0"}]') }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 15
     steps:
@@ -43,6 +46,7 @@ jobs:
 
   settings-modern:
     name: modern Settings runtime (${{ matrix.version }})
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.draft == false }}
     strategy:
       fail-fast: false
       matrix:
@@ -73,6 +77,7 @@ jobs:
 
   agent-presets-contract:
     name: AgentPreset Host contract (${{ matrix.version }})
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.draft == false }}
     strategy:
       fail-fast: false
       matrix:
@@ -115,6 +120,7 @@ jobs:
 
   session-preset-contract:
     name: Session preset Host contract (${{ matrix.version }})
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.draft == false }}
     strategy:
       fail-fast: false
       matrix:
@@ -155,6 +161,7 @@ jobs:
 
   prompt-library-contract:
     name: Prompt Library storage contract (${{ matrix.version }})
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.draft == false }}
     strategy:
       fail-fast: false
       matrix:
@@ -195,6 +202,7 @@ jobs:
 
   prompt-placement-contract:
     name: Prompt placement Host contract (${{ matrix.version }})
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.draft == false }}
     strategy:
       fail-fast: false
       matrix:
@@ -235,6 +243,7 @@ jobs:
 
   prompt-runtime-contract:
     name: Prompt runtime Host contract (${{ matrix.version }})
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.draft == false }}
     strategy:
       fail-fast: false
       matrix:
@@ -276,6 +285,7 @@ jobs:
 
   prompt-runtime-agent-loop:
     name: Prompt runtime AgentLoop E2E (${{ matrix.version }})
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.draft == false }}
     strategy:
       fail-fast: false
       matrix:
@@ -321,6 +331,7 @@ jobs:
 
   skill-runtime-contract:
     name: Skill runtime Host contract (${{ matrix.version }})
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.draft == false }}
     strategy:
       fail-fast: false
       matrix:
@@ -361,6 +372,7 @@ jobs:
 
   skill-policy-runtime-contract:
     name: M5B Skill policy runtime (${{ matrix.version }})
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.draft == false }}
     strategy:
       fail-fast: false
       matrix:
@@ -403,6 +415,7 @@ jobs:
 
   pinned-skill-runtime-contract:
     name: M5C Pinned Skill runtime (${{ matrix.version }})
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.draft == false }}
     strategy:
       fail-fast: false
       matrix:
@@ -446,6 +459,7 @@ jobs:
 
   skill-policy-agent-loop:
     name: M5B ToolSkill AgentLoop E2E (${{ matrix.version }})
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.draft == false }}
     strategy:
       fail-fast: false
       matrix:
@@ -491,6 +505,7 @@ jobs:
 
   pinned-skill-agent-loop:
     name: M5C Pinned Skill AgentLoop E2E (${{ matrix.version }})
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.draft == false }}
     strategy:
       fail-fast: false
       matrix:
@@ -538,6 +553,7 @@ jobs:
 
   remote-foundation-artifact:
     name: oldest-built package artifact
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.draft == false }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -561,6 +577,7 @@ jobs:
 
   remote-foundation-contract:
     name: M6C preset/runtime Remote (${{ matrix.version }})
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.draft == false }}
     needs: remote-foundation-artifact
     strategy:
       fail-fast: false
@@ -603,6 +620,7 @@ jobs:
 
   client-foundation-contract:
     name: M7B0 retained Client SlotCore artifact contract (${{ matrix.version }})
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.draft == false }}
     needs: remote-foundation-artifact
     strategy:
       fail-fast: false
@@ -643,6 +661,7 @@ jobs:
 
   client-presentation-contract:
     name: M7B1-2 Client business bridge contract (${{ matrix.version }})
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.draft == false }}
     needs: remote-foundation-artifact
     strategy:
       fail-fast: false
@@ -697,6 +716,7 @@ jobs:
 
   package:
     name: verify packed bundle
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.draft == false }}
     needs: [verify, settings-modern, agent-presets-contract, session-preset-contract, prompt-library-contract, prompt-placement-contract, prompt-runtime-contract, prompt-runtime-agent-loop, skill-runtime-contract, skill-policy-runtime-contract, skill-policy-agent-loop, pinned-skill-runtime-contract, pinned-skill-agent-loop, remote-foundation-contract, client-foundation-contract, client-presentation-contract]
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -777,9 +797,19 @@ jobs:
             pnpm exec tsc --ignoreConfig --noEmit --strict --skipLibCheck \
               --module NodeNext --moduleResolution NodeNext --target ES2024 consumer.ts
           done
+      - name: Upload exact packed artifact for downstream DSH smoke
+        uses: actions/upload-artifact@v4
+        with:
+          name: context-manager-packed
+          path: .artifacts/*.tgz
+          if-no-files-found: error
+          retention-days: 3
+          # The explicit .tgz glob is stored under a hidden .artifacts directory.
+          include-hidden-files: true
 
   dsh-smoke:
     name: published DSH bundle smoke (${{ matrix.version }})
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.draft == false }}
     needs: package
     strategy:
       fail-fast: false
@@ -798,13 +828,33 @@ jobs:
         run: |
           corepack enable
           corepack prepare pnpm@11.7.0 --activate
-      - name: Install and build this plugin
+      - name: Download the single packed candidate built by the package job
+        uses: actions/download-artifact@v4
+        with:
+          name: context-manager-packed
+          path: .artifacts
+      - name: Install exact packed artifact into a temporary DSH profile
         run: |
-          pnpm install --frozen-lockfile
-          pnpm run build
-      - name: Install bundle into a temporary DSH profile
-        run: pnpm dlx @deepseek-ai/dsh@${{ matrix.version }} plugin --profile context-manager-ci add "$GITHUB_WORKSPACE"
+          shopt -s nullglob
+          tarballs=("$GITHUB_WORKSPACE"/.artifacts/*.tgz)
+          test "${#tarballs[@]}" -eq 1
+          sha256sum "${tarballs[0]}"
+          pnpm dlx @deepseek-ai/dsh@${{ matrix.version }} plugin --profile context-manager-ci add "${tarballs[0]}"
       - name: Verify DSH composed configuration
         run: |
           pnpm dlx @deepseek-ai/dsh@${{ matrix.version }} --profile context-manager-ci --dump-config > .dsh-composed.yml
           grep -F 'dsh-context-manager' .dsh-composed.yml
+
+  full-qualification:
+    name: dsh-context-manager / full qualification
+    # A skipped/failed/cancelled matrix must not satisfy the protected check.
+    if: ${{ always() && (github.event_name != 'pull_request' || github.event.pull_request.draft == false) }}
+    needs: [verify, settings-modern, agent-presets-contract, session-preset-contract, prompt-library-contract, prompt-placement-contract, prompt-runtime-contract, prompt-runtime-agent-loop, skill-runtime-contract, skill-policy-runtime-contract, pinned-skill-runtime-contract, skill-policy-agent-loop, pinned-skill-agent-loop, remote-foundation-artifact, remote-foundation-contract, client-foundation-contract, client-presentation-contract, package, dsh-smoke]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - name: Enforce success of every upstream Full CI job
+        env:
+          QUALIFICATION_NEEDS_JSON: ${{ toJSON(needs) }}
+        run: node ./scripts/verify-full-qualification.mjs

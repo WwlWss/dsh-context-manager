@@ -1,6 +1,6 @@
 # M7B1 — Authoritative Client Model
 
-**Status:** B1-1 is complete in merged PR #27. B1-2 Slot business bridging is complete in PR #30 and is specified separately in [m7b1-2-plan.md](m7b1-2-plan.md); B1-3 PromptResource/keyed lazy Client surfaces are the next Client-model slice.
+**Status:** B1-1 is complete in merged PR #27. B1-2 Slot business bridging is complete in PR #30 and is specified separately in [m7b1-2-plan.md](m7b1-2-plan.md); B1-3 PromptResource/keyed lazy Client surfaces remain the next **model-expansion** slice, but do not block the narrower, now-next M7C Profile-only Drawer vertical slice.
 
 ## Goal
 
