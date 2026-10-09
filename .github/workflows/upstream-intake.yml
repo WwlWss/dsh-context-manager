@@ -35,9 +35,29 @@ jobs:
           node-version: 22.20.0
       - name: Probe exact npm-published exports and types
         run: node ./scripts/probe-dsh-published-artifacts.mjs "${{ matrix.version }}"
+      - name: Validate emitted structural evidence
+        env:
+          INTAKE_VERSION: ${{ matrix.version }}
+        run: |
+          test -s ".artifacts/dsh-intake-${INTAKE_VERSION}.json"
+          node --input-type=module - <<'NODE'
+          import assert from 'node:assert/strict'
+          import { readFileSync } from 'node:fs'
+          const version = process.env.INTAKE_VERSION
+          const evidence = JSON.parse(readFileSync(`.artifacts/dsh-intake-${version}.json`, 'utf8'))
+          assert.equal(evidence.version, version)
+          assert.equal(evidence.kind, 'published-artifact-structural-preflight')
+          assert.equal(evidence.packages.length, 5)
+          for (const pkg of evidence.packages) {
+            assert.equal(pkg.version, version)
+            assert.ok(typeof pkg.tarballIntegrity === 'string' && pkg.tarballIntegrity.length > 0)
+            assert.ok(typeof pkg.rootTypes === 'string' && pkg.rootTypes.length > 0)
+          }
+          NODE
       - uses: actions/upload-artifact@v4
-        if: always()
+        if: success()
         with:
           name: dsh-public-artifact-intake-${{ matrix.version }}
           path: .artifacts/dsh-intake-${{ matrix.version }}.json
-          if-no-files-found: ignore
+          if-no-files-found: error
+          include-hidden-files: true

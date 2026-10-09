@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Published-tarball structural preflight only: E2/E6, NOT Host runtime support.
+ * Published-tarball structural preflight only: NOT E2 consumer compilation,\n * E4/E5 service runtime or E6 Host composition.
  * Usage: node scripts/probe-dsh-published-artifacts.mjs 0.2.0-rc.2
  */
 import assert from 'node:assert/strict'
@@ -25,7 +25,9 @@ const packages = [
 const tmp = await mkdtemp(path.join(os.tmpdir(), 'dsh-public-intake-'))
 const evidence = {
   version,
-  kind: 'E2/E6 published artifact preflight; not Host runtime support',
+  kind: 'published-artifact-structural-preflight',
+  verified: ['published package identity', 'public export target-file presence', 'declaration token presence'],
+  notVerified: ['E2 consumer compilation', 'E4/E5 service and lifecycle', 'E6 Host composition'],
   packages: [],
 }
 function hasClass(declaration, name) {
@@ -89,7 +91,7 @@ try {
     evidence.packages.push(entry)
     process.stdout.write(JSON.stringify(entry) + '\n')
   }
-  evidence.conclusion = 'published exports/types verified; Host and product behavior unqualified'
+  evidence.conclusion = 'published artifact structure verified only; TypeScript compile and Host runtime unqualified'
   await mkdir('.artifacts', { recursive: true })
   await writeFile(
     path.join('.artifacts', 'dsh-intake-' + version + '.json'),
@@ -98,13 +100,13 @@ try {
   if (process.env.GITHUB_STEP_SUMMARY) {
     await appendFile(
       process.env.GITHUB_STEP_SUMMARY,
-      '### DSH ' + version + ' published artifact preflight (not support)\n\n' +
+      '### DSH ' + version + ' structural artifact preflight (not compile/runtime support)\n\n' +
       '| Package | Version | Root types | Client export |\n| --- | --- | --- | --- |\n' +
       evidence.packages.map(p =>
         '| ' + p.name + ' | ' + p.version + ' | ' + p.rootTypes + ' | ' +
         (p.publicClientExport ? 'yes' : 'n/a') + ' |',
       ).join('\n') +
-      '\n\nHost runtime, persistence migration, and native authoring are unqualified.\n',
+      '\n\nOnly package structure and declaration tokens were checked. E2 consumer compile, E4/E5 service/runtime, E6 Host composition, persistence migration and native authoring are unqualified.\n',
     )
   }
 } finally {

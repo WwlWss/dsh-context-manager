@@ -8,7 +8,7 @@ This is an evidence-bounded checkpoint, not a feature-completion claim or a repl
 - [PR #31](https://github.com/WwlWss/dsh-context-manager/pull/31) introduces Quick/Full qualification and the candidate artifact intake; prior candidate-artifact [run #37948993328](https://github.com/WwlWss/dsh-context-manager/actions/runs/37948993328) succeeded on its three explicitly pinned published versions.
 - The previously green full [run #37949176452](https://github.com/WwlWss/dsh-context-manager/actions/runs/37949176452) applies to PR #31 **before this smoke/roadmap follow-up change**. It cannot qualify a later head. A fresh exact-head full Ready-PR run is mandatory.
 - Current production `src/client/plugin.ts` renders only the `foundationMessage` in the Drawer; it has not delivered Profile list/edit UX.
-- [0.2.x feasibility intake](dsh-v02-feasibility.md) establishes E1 and structural E2/E6 only. E4/E5 SettingsForms persistence, AgentPreset Registry operation, migration and lifecycle are **not yet proven**.
+- [0.2.x feasibility intake](dsh-v02-feasibility.md) establishes E1 and published-artifact structure only (not E2 consumer compilation or E6 Host composition). E4/E5 SettingsForms persistence, AgentPreset Registry operation, migration and lifecycle are **not yet proven**.
 
 ## Completion and gaps
 

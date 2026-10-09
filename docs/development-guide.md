@@ -627,14 +627,14 @@ Once the focused tests pass, review the actual diff for authority leakage, race/
 
 Then mark the Draft PR **Ready for review**. The `ready_for_review` event runs the complete retained compatibility matrix (including packed artifact and DSH composition). Any subsequent `synchronize` on a Ready PR reruns full qualification; `main` pushes and explicit `workflow_dispatch` also run full qualification. Do not confuse a Draft green run or a manually executed narrow canary with this gate.
 
-Do not rename existing CI job IDs or silently drop a required matrix; `package` must continue to depend on the complete authoritative set of verification jobs. For DSH composition smoke, the `package` job uploads **the packed tarball it just tested**, and all retained DSH smoke versions install that exact artifact; rebuilding the repository in each smoke consumer would *not* satisfy the same-built-artifact claim. Remote/Client artifact lanes retain their own build-once-and-consume-many owner. Source-forward candidate tests are separately labeled **canary/intake** and do not automatically enlarge the production peer range.
+Do not rename existing CI job IDs or silently drop a required matrix; `package` must continue to depend on the complete authoritative set of verification jobs. For DSH composition smoke, the `package` job uploads **the packed tarball it just tested**, and all retained DSH smoke versions install that exact artifact; rebuilding the repository in each smoke consumer would *not* satisfy the same-built-artifact claim. Remote/Client artifact lanes retain their own build-once-and-consume-many owner. Source-forward candidate tests are separately labeled **canary/intake** and do not automatically enlarge the production peer range. A structural tarball export check alone is not E2 consumer compilation or E6 Host composition. The stable `dsh-context-manager / full qualification` check depends on **every** top-level Full CI job and uses `always()` to classify failures, cancellations and skips as failures. Protect `main` with that check, not with skipped downstream matrices or a path-filtered upstream-intake job.
 
 ### 18.5 Exact-head final review and merge
 
 Final review follows—not precedes—the complete green Ready-PR qualification. Record:
 
 - exact PR head SHA and matching complete workflow run;
-- unskipped success of all required compatibility, package, and composition jobs;
+- unskipped success of all required compatibility, package, and composition jobs plus the fail-closed `dsh-context-manager / full qualification` aggregate;
 - evidence classes actually established and unsupported cases;
 - final diff and confirmation that no functional commit landed after review;
 - no remaining P1/P2 findings.

@@ -844,3 +844,17 @@ jobs:
         run: |
           pnpm dlx @deepseek-ai/dsh@${{ matrix.version }} --profile context-manager-ci --dump-config > .dsh-composed.yml
           grep -F 'dsh-context-manager' .dsh-composed.yml
+
+  full-qualification:
+    name: dsh-context-manager / full qualification
+    # A skipped/failed/cancelled matrix must not satisfy the protected check.
+    if: ${{ always() && (github.event_name != 'pull_request' || github.event.pull_request.draft == false) }}
+    needs: [verify, settings-modern, agent-presets-contract, session-preset-contract, prompt-library-contract, prompt-placement-contract, prompt-runtime-contract, prompt-runtime-agent-loop, skill-runtime-contract, skill-policy-runtime-contract, pinned-skill-runtime-contract, skill-policy-agent-loop, pinned-skill-agent-loop, remote-foundation-artifact, remote-foundation-contract, client-foundation-contract, client-presentation-contract, package, dsh-smoke]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - name: Enforce success of every upstream Full CI job
+        env:
+          QUALIFICATION_NEEDS_JSON: ${{ toJSON(needs) }}
+        run: node ./scripts/verify-full-qualification.mjs
