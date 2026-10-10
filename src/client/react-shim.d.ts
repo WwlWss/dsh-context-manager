@@ -1,7 +1,7 @@
 declare module 'react' {
   export function createElement(
     type: unknown,
-    props?: Record<string, unknown> | null,
+    props?: object | null,
     ...children: unknown[]
   ): unknown
 

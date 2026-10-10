@@ -10,30 +10,30 @@ export type ProfileEditField = 'name' | 'description' | 'basePreset'
 export type ProfileDraftBlock = 'stale' | 'conflict' | 'unknown'
 
 interface DraftBase {
-  readonly token: number
+  token: number
   readonly basis: ContextManagerClientProfileMutationBasis
-  readonly blocked?: ProfileDraftBlock
+  blocked?: ProfileDraftBlock
 }
 
 export type ProfileDraft =
   | (DraftBase & {
-      readonly kind: 'create'
-      readonly id: string
-      readonly name: string
-      readonly description: string
-      readonly basePreset: string
+      kind: 'create'
+      id: string
+      name: string
+      description: string
+      basePreset: string
     })
   | (DraftBase & {
-      readonly kind: 'edit-field'
-      readonly profileId: string
-      readonly field: ProfileEditField
-      readonly original: string | undefined
-      readonly value: string
-      readonly removeDescription: boolean
+      kind: 'edit-field'
+      profileId: string
+      field: ProfileEditField
+      original: string | undefined
+      value: string
+      removeDescription: boolean
     })
   | (DraftBase & {
-      readonly kind: 'confirm-delete'
-      readonly profileId: string
+      kind: 'confirm-delete'
+      profileId: string
     })
 
 export type ProfileNoticeCode =
@@ -54,12 +54,12 @@ export type ProfileNoticeCode =
 
 export interface ProfileNotice {
   readonly code: ProfileNoticeCode
-  readonly kind: 'success' | 'warning' | 'error'
+  kind: 'success' | 'warning' | 'error'
   readonly detail?: string
 }
 
 export function validateCreateDraft(
-  draft: Extract<ProfileDraft, { readonly kind: 'create' }>,
+  draft: Extract<ProfileDraft, { kind: 'create' }>,
   reservedIds: ReadonlySet<string>,
 ): 'valid' | 'missing-id' | 'unsafe-id' | 'exists' {
   if (draft.id.trim().length === 0) return 'missing-id'
@@ -69,7 +69,7 @@ export function validateCreateDraft(
 }
 
 export function createdProfileInput(
-  draft: Extract<ProfileDraft, { readonly kind: 'create' }>,
+  draft: Extract<ProfileDraft, { kind: 'create' }>,
 ): ContextManagerRemoteProfileInput {
   return {
     name: draft.name,
@@ -81,7 +81,7 @@ export function createdProfileInput(
 }
 
 export function editValueChanged(
-  draft: Extract<ProfileDraft, { readonly kind: 'edit-field' }>,
+  draft: Extract<ProfileDraft, { kind: 'edit-field' }>,
 ): boolean {
   if (draft.field === 'description' && draft.removeDescription) {
     return draft.original !== undefined

@@ -713,6 +713,8 @@ jobs:
             tests/client-upstream-contract.ts tests/client-generated-remote-contract.ts
       - name: Execute M7B1-2 real retained renderer bridge contract
         run: node ./tests/client-renderer-bridge-runtime.mjs
+      - name: Execute M7C real retained Profile Drawer interactions
+        run: node ./tests/client-profile-drawer-runtime.mjs
 
   package:
     name: verify packed bundle
