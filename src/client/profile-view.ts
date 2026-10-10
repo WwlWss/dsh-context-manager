@@ -40,7 +40,7 @@ export function deriveProfileView(
   const data = snapshot.profiles.data
   const rows: ProfileListRow[] = []
 
-  if (ready && data !== undefined) {
+  if (ready && data !== undefined && data.schemaCompatible) {
     for (const [id, profile] of Object.entries(data.profiles)) {
       rows.push({
         id,
