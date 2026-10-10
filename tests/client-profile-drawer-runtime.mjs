@@ -232,6 +232,13 @@ function createWritableRemoteFixture() {
     face, profiles, writes,
     getDefault: () => defaultId,
     makeUnknownNextWrite() { unknownNextWrite = true },
+    externalRename(id, name) {
+      // A distinct Settings writer updates the authoritative revision
+      // after the UI captured its immutable edit basis.
+      profiles[id].name = name
+      revision += 1
+      change += 1
+    },
     setReadOnly(value) { readOnly = value; change += 1 },
   }
 }
@@ -454,6 +461,28 @@ await act(async () => { trigger().props.onClick() })
 assert.ok(buttonByLabel(tree, 'Discard draft'))
 assert.equal(buttonByLabel(tree, 'Save').props.disabled, true)
 assert.equal(remoteFixture.writes.length, writeCount + 1)
+await act(async () => { buttonByLabel(tree, 'Discard draft').props.onClick() })
+
+// A real concurrent Settings writer wins over an old edit basis. The Host
+// rejects the original revision, the controller only rehydrates, and the
+// Drawer keeps the old draft blocked until the user explicitly discards it.
+await act(async () => { buttonByLabel(tree, 'Edit', 0).props.onClick() })
+await act(async () => {
+  tree.root.findByProps({ id: 'cm-edit-name' }).props.onChange({
+    currentTarget: { value: 'Stale local overwrite' },
+  })
+})
+remoteFixture.externalRename('main', 'External writer won')
+const conflictCount = remoteFixture.writes.length
+await act(async () => {
+  tree.root.findAllByType('form')[0].props.onSubmit({ preventDefault() {} })
+  for (let i = 0; i < 20; i += 1) await Promise.resolve()
+})
+await settleUI()
+assert.equal(remoteFixture.writes.length, conflictCount + 1)
+assert.equal(remoteFixture.profiles.main.name, 'External writer won')
+assert.equal(buttonByLabel(tree, 'Save').props.disabled, true)
+assert.ok(renderedText(tree.root).includes('Profile write conflict'))
 await act(async () => { buttonByLabel(tree, 'Discard draft').props.onClick() })
 
 remoteFixture.setReadOnly(true)
