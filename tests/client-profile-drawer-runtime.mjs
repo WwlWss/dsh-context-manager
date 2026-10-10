@@ -289,8 +289,15 @@ const remote = {
   contextManager: remoteFixture.face,
   async $mount() { return async () => {} },
 }
+const slotFace = createSlotsFace(slots)
+const register = slotFace.register
+let injectedBusiness
+slotFace.register = (options, component) => {
+  if (options.name === 'shell.overlay') injectedBusiness = options.inject
+  return register(options, component)
+}
 const disposePlugin = await clientPlugin.apply(pluginCapableContext({
-  remote, slots: createSlotsFace(slots), locale: createLocale(),
+  remote, slots: slotFace, locale: createLocale(),
 }))
 
 const disposeRoot = slots.register({
@@ -367,7 +374,7 @@ assert.ok(tree.root.findAll(node => typeof node.props?.children === 'string' && 
 // Invalid stored rows are visible, but have no ordinary form editor.
 const invalidRow = tree.root.findAll(node =>
   node.type === 'button'
-  && node.props['aria-current'] !== undefined
+  && Object.hasOwn(node.props, 'aria-current')
   && JSON.stringify(node.props.children).includes('malformed'),
 )[0]
 assert.ok(invalidRow)
@@ -377,7 +384,7 @@ assert.equal(tree.root.findAllByProps({ id: 'cm-edit-name' }).length, 0)
 // An uncertain write is attempted exactly once and retains a blocked draft through close/reopen.
 const mainRow = tree.root.findAll(node =>
   node.type === 'button'
-  && node.props['aria-current'] !== undefined
+  && Object.hasOwn(node.props, 'aria-current')
   && JSON.stringify(node.props.children).includes('Main'),
 )[0]
 assert.ok(mainRow)
@@ -404,7 +411,7 @@ assert.equal(remoteFixture.writes.length, writeCount + 1)
 await act(async () => { buttonByLabel(tree, 'Discard draft').props.onClick() })
 
 remoteFixture.setReadOnly(true)
-const overlayFace = slots.entriesOfSlot('shell.overlay')[0]?.inject?.()
+const overlayFace = injectedBusiness?.()
 assert.ok(overlayFace)
 await act(async () => {
   await overlayFace.refresh()
