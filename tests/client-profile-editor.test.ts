@@ -120,6 +120,29 @@ test('stale, mismatched authority, unavailable persistence and incompatible sche
   }, 'main'), 'unverified')
 })
 
+test('failed, stale and loading surfaces retain cached rows only for read-only inspection', () => {
+  const original = exampleSnapshot()
+  const states = [
+    { status: 'error' as const, stale: true, data: original.profiles.data,
+      error: { kind: 'remote' as const, code: 'TEMPORARY', message: 'read failed' } },
+    { status: 'loading' as const, stale: true, data: original.profiles.data },
+    { status: 'ready' as const, stale: true, data: original.profiles.data },
+  ]
+  for (const profiles of states) {
+    const view = deriveProfileView({ ...original, profiles }, null)
+    assert.deepEqual(view.rows.map(row => row.id), ['main', 'broken', 'other'])
+    assert.equal(view.canRead, true)
+    assert.equal(view.writable, false)
+    assert.equal(view.selectedId, 'main')
+  }
+  const detached = deriveProfileView({
+    ...original, attachment: 'detached',
+    profiles: states[0],
+  }, null)
+  assert.equal(detached.rows.length, 3)
+  assert.equal(detached.writable, false)
+})
+
 test('basis is the captured instanceId and Settings revision, not the change cursor', () => {
   const draft: ProfileDraft = {
     kind: 'edit-field', token: 12, profileId: 'main',

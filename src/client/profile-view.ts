@@ -36,11 +36,14 @@ export function deriveProfileView(
   snapshot: ContextManagerClientSnapshot,
   requestedId: string | null,
 ): ProfileView {
-  const ready = snapshot.profiles.status === 'ready' && snapshot.profiles.data !== undefined
   const data = snapshot.profiles.data
+  const hasData = data !== undefined
+  const fresh = snapshot.profiles.status === 'ready' && !snapshot.profiles.stale && hasData
   const rows: ProfileListRow[] = []
 
-  if (ready && data !== undefined && data.schemaCompatible) {
+  // A transient read error/loading state retains last-good B1 snapshot data.
+  // Preserve those rows for read-only inspection; never grant write access.
+  if (hasData && data.schemaCompatible) {
     for (const [id, profile] of Object.entries(data.profiles)) {
       rows.push({
         id,
@@ -79,8 +82,7 @@ export function deriveProfileView(
 
   const validAuthority = snapshot.instanceId !== undefined
     && snapshot.instanceId === snapshot.changes?.instanceId
-  const writable = ready
-    && !snapshot.profiles.stale
+  const writable = fresh
     && snapshot.attachment === 'attached'
     && snapshot.protocol.status === 'compatible'
     && validAuthority
@@ -91,7 +93,7 @@ export function deriveProfileView(
     && data.persistence.revision !== undefined
 
   let persistence: ProfileView['persistence'] = 'not-ready'
-  if (ready && data !== undefined) {
+  if (hasData) {
     persistence = !data.persistence.available || !data.persistence.registered
       ? 'unavailable'
       : data.persistence.writable ? 'writable' : 'read-only'
@@ -107,7 +109,7 @@ export function deriveProfileView(
     selectedId,
     selected,
     writable,
-    canRead: ready,
+    canRead: hasData,
     schemaCompatible: data?.schemaCompatible === true,
     configuredDefaultProfileId: data?.configuredDefaultProfileId,
     diagnostics: data?.diagnostics ?? [],
