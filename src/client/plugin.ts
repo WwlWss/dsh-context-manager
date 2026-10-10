@@ -1,7 +1,5 @@
 import { createElement } from 'react'
-import type {
-  ComposedProps,
-} from '@deepseek-ai/dsh-client-ui-slots'
+import type { ComposedProps } from '@deepseek-ai/dsh-client-ui-slots'
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
 
@@ -25,6 +23,10 @@ import {
   createContextManagerClientBusinessFace,
   type ContextManagerClientBusinessFace,
 } from './business-face.js'
+import {
+  ContextManagerProfileDrawerContent,
+  type ContextManagerDrawerProps,
+} from './profile-drawer.js'
 import styles from './plugin.module.css'
 
 type TriggerProps = ComposedProps<
@@ -33,16 +35,6 @@ type TriggerProps = ComposedProps<
   never,
   ContextManagerPresentationStoreHandle,
   object,
-  never,
-  typeof CONTEXT_MANAGER_LOCALE
->
-
-type DrawerProps = ComposedProps<
-  'shell.overlay',
-  string,
-  never,
-  ContextManagerPresentationStoreHandle,
-  ContextManagerClientBusinessFace,
   never,
   typeof CONTEXT_MANAGER_LOCALE
 >
@@ -60,7 +52,7 @@ function ContextManagerTrigger(props: TriggerProps) {
   }, wide ? t('title') : t('compactTitle'))
 }
 
-function ContextManagerDrawer(props: DrawerProps) {
+function ContextManagerDrawer(props: ContextManagerDrawerProps) {
   const { useStore, actions, t } = props
   const open = useStore(state => state.open)
   if (!open) return null
@@ -80,7 +72,41 @@ function ContextManagerDrawer(props: DrawerProps) {
         'aria-label': t('title'),
         className: styles.drawer,
         'data-context-manager-drawer': '',
+        tabIndex: -1,
         onClick: (event: { stopPropagation(): void }) => { event.stopPropagation() },
+        onKeyDown: (event: {
+          key: string
+          shiftKey: boolean
+          target: EventTarget | null
+          currentTarget: HTMLElement
+          preventDefault(): void
+          stopPropagation(): void
+        }) => {
+          if (event.key === 'Escape') {
+            event.preventDefault()
+            event.stopPropagation()
+            actions.close()
+            return
+          }
+          if (event.key !== 'Tab') return
+          const focusable = Array.from(event.currentTarget.querySelectorAll<HTMLElement>(
+            'button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), a[href]',
+          )).filter(element => element.getClientRects().length > 0)
+          if (focusable.length === 0) {
+            event.preventDefault()
+            event.currentTarget.focus()
+            return
+          }
+          const first = focusable[0]
+          const last = focusable[focusable.length - 1]
+          if (event.shiftKey && (document.activeElement === first || document.activeElement === event.currentTarget)) {
+            event.preventDefault()
+            last.focus()
+          } else if (!event.shiftKey && document.activeElement === last) {
+            event.preventDefault()
+            first.focus()
+          }
+        },
       },
       createElement('div', { className: styles.header },
         createElement('strong', null, t('title')),
@@ -91,7 +117,7 @@ function ContextManagerDrawer(props: DrawerProps) {
           onClick: actions.close,
         }, t('close')),
       ),
-      createElement('p', { className: styles.message }, t('foundationMessage')),
+      createElement(ContextManagerProfileDrawerContent, props),
     ),
   )
 }
