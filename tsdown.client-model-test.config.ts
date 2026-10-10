@@ -5,6 +5,7 @@ export default defineConfig({
   entry: {
     'client-model-runtime.test': 'tests/client-model-runtime.test.ts',
     'client-business-face.test': 'tests/client-business-face.test.ts',
+    'client-profile-editor.test': 'tests/client-profile-editor.test.ts',
   },
   outDir: '.artifacts/client-model-tests',
   format: 'esm',

@@ -51,7 +51,7 @@
     "build:client": "tsdown --config tsdown.client.config.ts",
     "typecheck:host": "tsc -p tsconfig.json --noEmit",
     "typecheck:client": "tsc -p tsconfig.client.json --noEmit",
-    "test:client-model": "tsdown --config tsdown.client-model-test.config.ts && node --test ./.artifacts/client-model-tests/client-model-runtime.test.mjs ./.artifacts/client-model-tests/client-business-face.test.mjs"
+    "test:client-model": "tsdown --config tsdown.client-model-test.config.ts && node --test ./.artifacts/client-model-tests/client-model-runtime.test.mjs ./.artifacts/client-model-tests/client-business-face.test.mjs ./.artifacts/client-model-tests/client-profile-editor.test.mjs"
   },
   "engines": {
     "node": "^22.19.0 || >=24.0.0"
