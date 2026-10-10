@@ -370,6 +370,41 @@ await settleUI()
 assert.equal(remoteFixture.profiles.new.name, 'Renamed')
 assert.equal(remoteFixture.writes.length, 2)
 
+// Absent description and an explicit empty string are different stored values.
+await act(async () => { buttonByLabel(tree, 'Edit', 1).props.onClick() })
+await act(async () => {
+  tree.root.findAllByType('form')[0].props.onSubmit({ preventDefault() {} })
+  for (let i = 0; i < 20; i += 1) await Promise.resolve()
+})
+await settleUI()
+assert.equal(Object.hasOwn(remoteFixture.profiles.new, 'description'), true)
+assert.equal(remoteFixture.profiles.new.description, '')
+
+// Explicit field removal must send null instead of storing an empty string.
+await act(async () => { buttonByLabel(tree, 'Edit', 1).props.onClick() })
+await act(async () => { buttonByLabel(tree, 'Remove description field').props.onClick() })
+await act(async () => {
+  tree.root.findAllByType('form')[0].props.onSubmit({ preventDefault() {} })
+  for (let i = 0; i < 20; i += 1) await Promise.resolve()
+})
+await settleUI()
+assert.equal(Object.hasOwn(remoteFixture.profiles.new, 'description'), false)
+
+// Declarative missing native preset ids must be preserved, not silently fixed.
+await act(async () => { buttonByLabel(tree, 'Edit', 2).props.onClick() })
+await act(async () => {
+  tree.root.findByProps({ id: 'cm-edit-basePreset' }).props.onChange({
+    currentTarget: { value: 'missing-native' },
+  })
+})
+await act(async () => {
+  tree.root.findAllByType('form')[0].props.onSubmit({ preventDefault() {} })
+  for (let i = 0; i < 20; i += 1) await Promise.resolve()
+})
+await settleUI()
+assert.equal(remoteFixture.profiles.new.basePreset, 'missing-native')
+assert.ok(renderedText(tree.root).includes('Missing preset'))
+
 // Set default is an independent mutation. Deleting it leaves the declared dangling reference.
 await act(async () => { buttonByLabel(tree, 'Set as default').props.onClick() })
 await settleUI()
