@@ -236,6 +236,12 @@ function createWritableRemoteFixture() {
   }
 }
 
+function renderedText(node) {
+  if (typeof node === 'string' || typeof node === 'number') return String(node)
+  if (node === null || !Array.isArray(node.children)) return ''
+  return node.children.map(renderedText).join('')
+}
+
 function buttonByLabel(tree, text, index = 0) {
   const matches = tree.root.findAll(node => node.type === 'button' && node.props.children === text)
   assert.ok(matches.length > index, 'Missing button ' + JSON.stringify(text))
@@ -380,7 +386,7 @@ assert.ok(tree.root.findAll(node => typeof node.props?.children === 'string' && 
 const invalidRow = tree.root.findAll(node =>
   node.type === 'button'
   && Object.hasOwn(node.props, 'aria-current')
-  && JSON.stringify(node.props.children).includes('malformed'),
+  && renderedText(node).includes('malformed'),
 )[0]
 assert.ok(invalidRow)
 await act(async () => { invalidRow.props.onClick() })
@@ -390,7 +396,7 @@ assert.equal(tree.root.findAllByProps({ id: 'cm-edit-name' }).length, 0)
 const mainRow = tree.root.findAll(node =>
   node.type === 'button'
   && Object.hasOwn(node.props, 'aria-current')
-  && JSON.stringify(node.props.children).includes('Main'),
+  && renderedText(node).includes('Main'),
 )[0]
 assert.ok(mainRow)
 await act(async () => { mainRow.props.onClick() })
