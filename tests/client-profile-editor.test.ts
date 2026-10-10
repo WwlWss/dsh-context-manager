@@ -170,6 +170,7 @@ test('edit field checks one write only and preserves empty-string versus absence
   assert.equal(editValueChanged({ ...base, value: 'Hello' }), false)
   assert.equal(editValueChanged({ ...base, removeDescription: true }), true)
   assert.equal(editValueChanged({ ...base, original: undefined, removeDescription: true }), false)
+  assert.equal(editValueChanged({ ...base, original: undefined, removeDescription: false }), true)
 })
 
 test('classifies success, conflict, precondition, uncertain transport and obsolete lifecycle separately', () => {

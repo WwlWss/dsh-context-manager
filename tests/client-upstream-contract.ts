@@ -15,6 +15,7 @@ import {
   CONTEXT_MANAGER_LOCALE,
   CONTEXT_MANAGER_LOCALES,
 } from '../src/client/locales.js'
+import type { ContextManagerLocaleKey } from '../src/client/locales.js'
 import {
   createContextManagerPresentationStore,
   type ContextManagerPresentationState,
@@ -31,19 +32,7 @@ import {
   type StoreHandle,
 } from '@deepseek-ai/dsh-client-ui-slots'
 
-type ContextManagerLocaleKey =
-  | 'title'
-  | 'compactTitle'
-  | 'close'
-  | 'closeAria'
-  | 'foundationMessage'
-
-declare module '@deepseek-ai/dsh-client-ui-slots' {
-  interface LocaleNamespaceMap {
-    'context-manager': ContextManagerLocaleKey
-  }
-}
-
+type LocaleContractUsesProductionKeys = ContextManagerLocaleKey
 type Assert<T extends true> = T
 type Equal<A, B> =
   (<T>() => T extends A ? 1 : 2) extends

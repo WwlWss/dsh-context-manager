@@ -83,8 +83,11 @@ export function createdProfileInput(
 export function editValueChanged(
   draft: Extract<ProfileDraft, { kind: 'edit-field' }>,
 ): boolean {
-  if (draft.field === 'description' && draft.removeDescription) {
-    return draft.original !== undefined
+  if (draft.field === 'description') {
+    if (draft.removeDescription) return draft.original !== undefined
+    // An explicit Save of an absent description as '' creates an empty string;
+    // it is NOT the same operation as removing the optional field.
+    if (draft.original === undefined) return true
   }
   return draft.value !== (draft.original ?? '')
 }
