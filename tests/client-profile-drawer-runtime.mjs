@@ -48,29 +48,12 @@ function createAbsentSessionAdapter() {
 function createSlotsFace(core) {
   return {
     inject(name, factory) {
-      let active
-      let epoch = -1
-      const reconcile = () => {
-        const spec = core.specDynamic(name)
-        const next = core.declarationEpoch(name)
-        if (active !== undefined && epoch === next) return
-        const previous = active
-        active = undefined
-        epoch = -1
-        previous?.()
-        if (spec === undefined) return
-        active = factory()
-        epoch = next
-      }
-      const unsubscribe = core.subscribeDeclaration(name, reconcile)
-      reconcile()
-      return () => {
-        unsubscribe()
-        const previous = active
-        active = undefined
-        epoch = -1
-        previous?.()
-      }
+      // The renderer's published SlotRegistry is not the SlotCore used by
+      // the legacy declaration-lifecycle harness. Prefer its native inject;
+      // otherwise register into the already-declared root for this UI probe.
+      return typeof core.inject === 'function'
+        ? core.inject(name, factory)
+        : factory()
     },
     register(options, component) {
       return core.register(options, component)
@@ -289,6 +272,17 @@ const remote = {
   contextManager: remoteFixture.face,
   async $mount() { return async () => {} },
 }
+const disposeRoot = slots.register({
+  name: 'root',
+  children: {
+    'sidebar.footer.action': { kind: 'list', scope: 'root' },
+    'shell.overlay': { kind: 'list', scope: 'root' },
+  },
+}, props => React.createElement('section', null,
+  props.renderSlot('sidebar.footer.action', {}),
+  props.renderSlot('shell.overlay', {}),
+))
+
 const slotFace = createSlotsFace(slots)
 const register = slotFace.register
 let injectedBusiness
@@ -300,16 +294,6 @@ const disposePlugin = await clientPlugin.apply(pluginCapableContext({
   remote, slots: slotFace, locale: createLocale(),
 }))
 
-const disposeRoot = slots.register({
-  name: 'root',
-  children: {
-    'sidebar.footer.action': { kind: 'list', scope: 'root' },
-    'shell.overlay': { kind: 'list', scope: 'root' },
-  },
-}, props => React.createElement('section', null,
-  props.renderSlot('sidebar.footer.action', {}),
-  props.renderSlot('shell.overlay', {}),
-))
 
 let tree
 await act(async () => { tree = TestRenderer.create(slots.renderSlot('root', {})) })
