@@ -86,10 +86,25 @@ function pluginCapableContext(base) {
 
 function createLocale() {
   const dictionaries = new Map()
+  const subscribers = new Set()
+  let snapshot = Object.freeze({ revision: 0 })
+  function publish() {
+    snapshot = Object.freeze({ revision: snapshot.revision + 1 })
+    for (const listener of subscribers) listener()
+  }
   return {
+    getSnapshot() { return snapshot },
+    subscribe(listener) {
+      subscribers.add(listener)
+      return () => { subscribers.delete(listener) }
+    },
     register(ns, all) {
       dictionaries.set(ns, all)
-      return () => { dictionaries.delete(ns) }
+      publish()
+      return () => {
+        dictionaries.delete(ns)
+        publish()
+      }
     },
     bind(ns) {
       return key => dictionaries.get(ns)?.en?.[key] ?? key
@@ -267,6 +282,12 @@ const sessionFiber = rendererContext.plugin({
 })
 await sessionFiber.await()
 
+// The published Renderer requires a LocaleFace on its own SlotRegistry; a
+// separate fake ctx.locale only satisfies plugin apply, not the renderer seat.
+const locale = createLocale()
+assert.equal(typeof slots.installLocale, 'function')
+slots.installLocale(locale)
+
 const remoteFixture = createWritableRemoteFixture()
 const remote = {
   contextManager: remoteFixture.face,
@@ -291,7 +312,7 @@ slotFace.register = (options, component) => {
   return register(options, component)
 }
 const disposePlugin = await clientPlugin.apply(pluginCapableContext({
-  remote, slots: slotFace, locale: createLocale(),
+  remote, slots: slotFace, locale,
 }))
 
 
