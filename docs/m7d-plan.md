@@ -18,7 +18,7 @@ Build once in the existing `package` job, upload the one tarball plus SHA-256 ev
 
 ## D2 — lifecycle and HMR
 
-Verify ordinary Drawer close/reopen (draft preserved), plugin graph disable/re-enable (new presentation lifetime), repeated mount/unmount and removal of plugin-owned style tags. Keep code hot replacement separate from npm package replacement: development rebuild may use an explicitly mutable temporary copy, not the immutable candidate tarball. Do not simulate the production loader by calling its private methods. Ensure obsolete in-flight outcomes never affect a new lifetime.
+Verify ordinary Drawer close/reopen (draft preserved), plugin graph disable/re-enable (new presentation lifetime), repeated mount/unmount and removal of plugin-owned style tags. The published Web Plugins manager UI is present on the retained `0.1.6-alpha.2` line but absent in the `0.1.2`/`0.1.5` source trees; run that UI graph scenario only on 0.1.6, investigate an independent public config-HMR probe for older versions, and never silently skip it while claiming older graph-HMR support. Keep code hot replacement separate from npm package replacement: development rebuild may use an explicitly mutable temporary copy, not the immutable candidate tarball. Do not simulate the production loader by calling its private methods. Ensure obsolete in-flight outcomes never affect a new lifetime.
 
 ## D3 — CI ownership
 
