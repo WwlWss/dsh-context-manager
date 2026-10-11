@@ -104,5 +104,39 @@ await runPackedWeb(async ({ page, context, restartHost, record }) => {
   drawer = await openDrawer(page)
   await selectProfile(drawer, externalName)
   record('restart actual Host process with same isolated profile; persisted concurrent winner remains')
+
+  // Exercise public DSH Web plugin management and its real HMR graph
+  // synchronization; these are NOT mocked Slot registry disposal calls.
+  await beginNameEdit(drawer)
+  await drawer.locator('#cm-edit-name').fill('M7D must not survive whole plugin unload')
+  await drawer.getByRole('button', { name: /^(Close|关闭)$/ }).click()
+  await page.getByRole('button', { name: /^(Plugins|插件)$/ }).first().click()
+  const card = page.locator('[data-plugin-package="dsh-context-manager"]')
+  await card.waitFor({ state: 'visible', timeout: 30_000 })
+  const toggle = card.getByRole('switch', {
+    name: /^(Enable dsh-context-manager|启用 dsh-context-manager)$/,
+  })
+  await toggle.waitFor({ state: 'visible' })
+  assert.equal(await toggle.isEnabled(), true, 'installed bundle must be manageable')
+  for (let cycle = 0; cycle < 5; cycle += 1) {
+    await toggle.click()
+    await page.locator(triggerSelector).waitFor({ state: 'detached', timeout: 45_000 })
+    await page.locator('style[data-plugin="dsh-context-manager"]')
+      .waitFor({ state: 'detached', timeout: 45_000 })
+    assert.equal(await page.locator(triggerSelector).count(), 0)
+    await toggle.click()
+    await page.locator(triggerSelector).waitFor({ state: 'visible', timeout: 45_000 })
+    await page.locator('style[data-plugin="dsh-context-manager"]')
+      .waitFor({ state: 'attached', timeout: 45_000 })
+    assert.equal(await page.locator(triggerSelector).count(), 1)
+    assert.equal(await page.locator('style[data-plugin="dsh-context-manager"]').count(), 1)
+  }
+  record('real native plugin-manager: five graph disable/re-enable cycles; no duplicate Slot or style')
+
+  drawer = await openDrawer(page)
+  assert.equal(await drawer.locator('#cm-edit-name').count(), 0,
+    'a new Client plugin lifetime cannot retain the old unsubmitted draft')
+  await selectProfile(drawer, externalName)
+  record('whole-plugin remount resets view draft but preserves authoritative Settings Profile')
 }, 'packed-web')
 
