@@ -1,7 +1,7 @@
 # M7C — Profile-only Drawer Core
 
 **Baseline:** main `74e6fc5d262ce6852c830160cd9fd6ff1a915eea` (merged PRs #31/#32).
-**Status:** implementation slice; M7D browser/package closeout remains a separate milestone.
+**Status:** M7C Profile-only Core implemented and merged in [PR #33](https://github.com/WwlWss/dsh-context-manager/pull/33). M7D assembled-browser/HMR/package lifecycle closeout remains a separate, uncompleted milestone.
 
 ## Target
 
