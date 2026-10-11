@@ -60,9 +60,11 @@ async function stopProcess(child) {
 }
 
 function startCommand(args, env, cwd) {
-  return spawn('pnpm', args, {
+  const windows = process.platform === 'win32'
+  return spawn(windows ? 'pnpm.cmd' : 'pnpm', args, {
     env, cwd, windowsHide: true,
-    detached: process.platform !== 'win32',
+    shell: windows, // corepack's Windows shim is a .cmd file, not an executable.
+    detached: !windows,
     stdio: ['ignore', 'pipe', 'pipe'],
   })
 }
