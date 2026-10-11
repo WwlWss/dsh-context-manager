@@ -28,7 +28,7 @@ async function beginNameEdit(drawer) {
 }
 
 async function saveField(drawer) {
-  const form = drawer.locator('form').filter({ has: drawer.locator('#cm-edit-name') })
+  const form = drawer.locator('form:has(#cm-edit-name)')
   await form.locator('button[type=submit]').click()
 }
 
@@ -46,7 +46,7 @@ await runPackedWeb(async ({ page, context, restartHost, record, version, rebuild
   await drawer.locator('#cm-create-description').fill('Isolated CI synthetic data')
   // Missing native ids are permitted as declarative references; no implicit fallback.
   await drawer.locator('#cm-create-preset').fill('standard')
-  await drawer.locator('form').filter({ has: drawer.locator('#cm-create-id') })
+  await drawer.locator('form:has(#cm-create-id)')
     .locator('button[type=submit]').click()
   await drawer.locator('nav button').filter({ hasText: firstName }).first()
     .waitFor({ state: 'visible', timeout: 30_000 })
