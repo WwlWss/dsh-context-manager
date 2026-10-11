@@ -211,7 +211,8 @@ export async function runPackedWeb(scenario, kind = 'packed-web') {
       }
     }
     if (web) evidence.hostDiagnosticTail = web.getOutput().slice(-4000)
-    throw error
+    // Playwright failures may embed authenticated URLs; never print one raw.
+    throw new Error(evidence.error)
   } finally {
     await browser?.close().catch(() => {})
     await stopProcess(web?.child)
