@@ -155,7 +155,7 @@ export async function runPackedWeb(scenario, kind = 'packed-web') {
   const outputDir = path.resolve(process.env.M7D_OUTPUT_DIR || path.join('.artifacts', 'm7d-' + version))
   await mkdir(outputDir, { recursive: true })
   const home = await mkdtemp(path.join(tmpdir(), 'dsh-m7d-'))
-  const profile = 'm7d-qualification'
+  const profile = 'web'
   const env = isolatedEnv(home)
   const cwd = process.cwd()
   const evidence = {
@@ -168,7 +168,7 @@ export async function runPackedWeb(scenario, kind = 'packed-web') {
   let browser
   let page
   try {
-    console.log('M7D: initialize isolated DSH Web profile from shipped template (' + version + ')')
+    console.log('M7D: initialize the shipped Web profile inside isolated DSH_HOME (' + version + ')')
     await runCommand(initializeWebProfileArgs(version, profile), env, cwd, INSTALL_TIMEOUT_MS)
     console.log('M7D: installing pinned packed artifact in isolated DSH profile (' + version + ')')
     await runCommand(installArgs(version, profile, tarball), env, cwd, INSTALL_TIMEOUT_MS)

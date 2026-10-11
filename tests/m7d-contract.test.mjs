@@ -16,20 +16,20 @@ test('M7D admits only four retained web client versions', () => {
 })
 
 test('M7D installs an actual tarball in an isolated DSH profile', () => {
-  assert.deepEqual(initializeWebProfileArgs('0.1.5-rc.2', 'm7d-probe'), [
-    'dlx', '@deepseek-ai/dsh@0.1.5-rc.2',
-    '--profile', 'm7d-probe', '--from-default-profile', 'web', '--dump-config',
+  assert.deepEqual(initializeWebProfileArgs('0.1.5-rc.2', 'web'), [
+    'dlx', '@deepseek-ai/dsh@0.1.5-rc.2', 'web', '--dump-config',
   ])
-  assert.deepEqual(installArgs('0.1.5-rc.2', 'm7d-probe', '/tmp/a.tgz'), [
+  assert.deepEqual(installArgs('0.1.5-rc.2', 'web', '/tmp/a.tgz'), [
     'dlx', '@deepseek-ai/dsh@0.1.5-rc.2',
-    'plugin', '--profile', 'm7d-probe', 'add', '/tmp/a.tgz',
+    'plugin', '--profile', 'web', 'add', '/tmp/a.tgz',
   ])
-  assert.deepEqual(webArgs('0.1.5-rc.2', 'm7d-probe'), [
+  assert.deepEqual(webArgs('0.1.5-rc.2', 'web'), [
     'dlx', '@deepseek-ai/dsh@0.1.5-rc.2',
-    '--profile', 'm7d-probe', 'web', '--no-open',
-    '--host', '127.0.0.1', '--port', '0',
+    'web', '--no-open', '--host', '127.0.0.1', '--port', '0',
   ])
   assert.throws(() => installArgs('0.1.5-rc.2', '../real-profile', '/tmp/a.tgz'))
+  assert.throws(() => initializeWebProfileArgs('0.1.5-rc.2', 'm7d-custom'))
+  assert.throws(() => webArgs('0.1.5-rc.2', 'm7d-custom'))
   assert.throws(() => installArgs('0.1.5-rc.2', 'm7d-probe', '/tmp/a.js'))
 })
 

@@ -10,7 +10,7 @@ Qualify the already-built M7C Profile editor in real, installed DSH Web hosts; d
 
 ## D0 — public published preflight
 
-Four approved Client versions: `0.1.2-rc.1`, `0.1.5-rc.1`, `0.1.5-rc.2`, `0.1.6-alpha.2`. `0.1.1-rc.2` remains a Host/narrow SlotCore regression only. Initialize the unique temporary `DSH_HOME` and profile from the shipped `web` template with the public `--from-default-profile web --dump-config` flags **before** installing the exact `.tgz`. The package manager's default base-only profile does not itself supply a Web UI. Install via the published DSH CLI only after that initialization. Start `dsh web --no-open --host 127.0.0.1 --port 0`. Parse the actual readiness URL in memory and redact query tokens from logs. Never touch a user's real DSH profile.
+Four approved Client versions: `0.1.2-rc.1`, `0.1.5-rc.1`, `0.1.5-rc.2`, `0.1.6-alpha.2`. `0.1.1-rc.2` remains a Host/narrow SlotCore regression only. Initialize a **unique temporary `DSH_HOME`** and auto-create its shipped `web` profile through the public `dsh web --dump-config` path **before** installing the exact `.tgz` with `dsh plugin --profile web add`. This is compatible even with retained `0.1.2-rc.1`, which does not yet support the later `--from-default-profile` flag. A custom base-only profile cannot substitute for Web. Install via the published DSH CLI only after Web-profile initialization. Start `dsh web --no-open --host 127.0.0.1 --port 0`. Parse the actual readiness URL in memory and redact query tokens from logs. Never touch a user's real DSH profile.
 
 ## D1 — real packed Web E5/E6
 

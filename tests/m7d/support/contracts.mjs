@@ -12,12 +12,11 @@ export function qualifyVersion(version) {
   return version
 }
 
-/** A base-only "dsh plugin" profile cannot boot Web: clone shipped web first. */
+/** All retained versions auto-initialize the shipped web profile on config dump. */
 export function initializeWebProfileArgs(version, profile) {
   qualifyVersion(version)
-  assert.match(profile, /^[a-z0-9][a-z0-9-]*$/)
-  return ['dlx', '@deepseek-ai/dsh@' + version,
-    '--profile', profile, '--from-default-profile', 'web', '--dump-config']
+  assert.equal(profile, 'web', 'only the shipped web template is qualified')
+  return ['dlx', '@deepseek-ai/dsh@' + version, 'web', '--dump-config']
 }
 
 export function installArgs(version, profile, tarball) {
@@ -31,9 +30,9 @@ export function installArgs(version, profile, tarball) {
 export function webArgs(version, profile) {
   qualifyVersion(version)
   assert.match(profile, /^[a-z0-9][a-z0-9-]*$/)
+  assert.equal(profile, 'web', 'the Web alias must resolve to the isolated shipped profile')
   return ['dlx', '@deepseek-ai/dsh@' + version,
-    '--profile', profile, 'web', '--no-open',
-    '--host', '127.0.0.1', '--port', '0']
+    'web', '--no-open', '--host', '127.0.0.1', '--port', '0']
 }
 
 export function stripAnsi(value) {
