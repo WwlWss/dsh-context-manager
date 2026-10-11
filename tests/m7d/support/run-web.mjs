@@ -167,6 +167,7 @@ export async function runPackedWeb(scenario, kind = 'packed-web') {
   let web
   let browser
   let page
+  let baselineProfilePatch
   try {
     console.log('M7D: initialize the shipped Web profile inside isolated DSH_HOME (' + version + ')')
     await runCommand(initializeWebProfileArgs(version, profile), env, cwd, INSTALL_TIMEOUT_MS)
@@ -197,6 +198,23 @@ export async function runPackedWeb(scenario, kind = 'packed-web') {
         })
       },
       getHostLog() { return web.getOutput() },
+      async setPluginDisabledThroughPublicProfilePatch(disabled) {
+        assert.equal(typeof disabled, 'boolean')
+        const file = path.join(home, 'profiles', profile, 'cordis.patch.yml')
+        if (baselineProfilePatch === undefined) {
+          baselineProfilePatch = await readFile(file, 'utf8')
+          const unconfigured = baselineProfilePatch
+            .replace(/^\s*#[^\n]*(?:\n|$)/gm, '').trim()
+          assert.ok(unconfigured === '' || unconfigured === '[]',
+            'refuse to overwrite a nonempty, user-authored profile patch')
+        }
+        const next = disabled
+          ? '- id: dsh-context-manager\n  disabled: true\n'
+          : baselineProfilePatch
+        const replacementFile = file + '.m7d-override'
+        await writeFile(replacementFile, next)
+        await rename(replacementFile, file)
+      },
       async rebuildInstalledClientForHmr() {
         assert.equal(version, '0.1.6-alpha.2',
           'published rebuild HMR is qualified only on the reviewed generation')

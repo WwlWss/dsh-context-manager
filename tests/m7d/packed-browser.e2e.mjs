@@ -32,7 +32,7 @@ async function saveField(drawer) {
   await form.locator('button[type=submit]').click()
 }
 
-await runPackedWeb(async ({ page, context, restartHost, record, version, rebuildInstalledClientForHmr }) => {
+await runPackedWeb(async ({ page, context, restartHost, record, version, rebuildInstalledClientForHmr, setPluginDisabledThroughPublicProfilePatch }) => {
   const trigger = page.locator(triggerSelector)
   assert.equal(await trigger.count(), 1)
   let drawer = await openDrawer(page)
@@ -163,7 +163,27 @@ await runPackedWeb(async ({ page, context, restartHost, record, version, rebuild
     record('development-only changed client.js: native code HMR preserves page, replaces owned style and remounts UI')
 
   } else {
-    record('Web boot, browser refresh and Host restart only: older published clients have no public Plugins management page')
+    // These published generations do not have the newer Plugins page. All
+    // retained Web profiles expose public live patch-reload instead.
+    await beginNameEdit(drawer)
+    await drawer.locator('#cm-edit-name').fill('M7D old draft must not survive plugin remount')
+    await drawer.getByRole('button', { name: /^(Close|关闭)$/ }).click()
+    for (let cycle = 0; cycle < 5; cycle += 1) {
+      await setPluginDisabledThroughPublicProfilePatch(true)
+      await page.locator(triggerSelector).waitFor({ state: 'detached', timeout: 45_000 })
+      await page.locator('style[data-plugin="dsh-context-manager"]')
+        .waitFor({ state: 'detached', timeout: 45_000 })
+      await setPluginDisabledThroughPublicProfilePatch(false)
+      await page.locator(triggerSelector).waitFor({ state: 'visible', timeout: 45_000 })
+      await page.locator('style[data-plugin="dsh-context-manager"]')
+        .waitFor({ state: 'attached', timeout: 45_000 })
+      assert.equal(await page.locator(triggerSelector).count(), 1)
+      assert.equal(await page.locator('style[data-plugin="dsh-context-manager"]').count(), 1)
+    }
+    drawer = await openDrawer(page)
+    assert.equal(await drawer.locator('#cm-edit-name').count(), 0)
+    await selectProfile(drawer, externalName)
+    record('five public Web profile patch HMR cycles: one restored Slot/style, no stale draft, durable Profile')
   }
 
 }, 'packed-web')
