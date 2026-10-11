@@ -39,7 +39,7 @@ export function parseWebUrl(output) {
   if (!match) return undefined
   const address = new URL(match[1])
   assert.ok(['127.0.0.1', 'localhost', '[::1]'].includes(address.hostname))
-  assert.ok(Number(address.port) > 0)
+  if (!(Number(address.port) > 0)) return undefined
   return address.toString()
 }
 

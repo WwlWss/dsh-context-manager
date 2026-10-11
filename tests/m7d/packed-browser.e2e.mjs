@@ -68,7 +68,7 @@ await runPackedWeb(async ({ page, context, restartHost, record }) => {
 
   await beginNameEdit(drawer)
   await drawer.locator('#cm-edit-name').fill('M7D uncommitted draft')
-  await trigger.click()
+  await drawer.getByRole('button', { name: /^(Close|关闭)$/ }).click()
   assert.equal(await drawer.count(), 0)
   drawer = await openDrawer(page)
   assert.equal(await drawer.locator('#cm-edit-name').inputValue(), 'M7D uncommitted draft')
@@ -91,10 +91,10 @@ await runPackedWeb(async ({ page, context, restartHost, record }) => {
     await otherDrawer.locator('nav button').filter({ hasText: externalName }).first()
       .waitFor({ state: 'visible', timeout: 30_000 })
     await saveField(drawer)
+    await drawer.getByRole('button', { name: /^(Discard draft|放弃草稿)$/ })
+      .waitFor({ state: 'visible', timeout: 30_000 })
     const staleSave = drawer.getByRole('button', { name: /^(Save|保存)$/ })
-    await staleSave.waitFor({ state: 'visible' })
     assert.equal(await staleSave.isDisabled(), true)
-    assert.equal(await drawer.getByRole('button', { name: /^(Discard draft|放弃草稿)$/ }).count(), 1)
   } finally {
     await other.close()
   }
