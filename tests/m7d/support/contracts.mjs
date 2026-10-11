@@ -12,6 +12,14 @@ export function qualifyVersion(version) {
   return version
 }
 
+/** A base-only "dsh plugin" profile cannot boot Web: clone shipped web first. */
+export function initializeWebProfileArgs(version, profile) {
+  qualifyVersion(version)
+  assert.match(profile, /^[a-z0-9][a-z0-9-]*$/)
+  return ['dlx', '@deepseek-ai/dsh@' + version,
+    '--profile', profile, '--from-default-profile', 'web', '--dump-config']
+}
+
 export function installArgs(version, profile, tarball) {
   qualifyVersion(version)
   assert.match(profile, /^[a-z0-9][a-z0-9-]*$/)

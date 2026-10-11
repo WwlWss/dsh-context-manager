@@ -8,7 +8,7 @@ import { createRequire } from 'node:module'
 import { spawn } from 'node:child_process'
 
 import {
-  PLAYWRIGHT_VERSION, qualifyVersion, installArgs, webArgs,
+  PLAYWRIGHT_VERSION, qualifyVersion, initializeWebProfileArgs, installArgs, webArgs,
   parseWebUrl, redactDiagnostic, assertArtifactDigest,
 } from './contracts.mjs'
 
@@ -168,6 +168,8 @@ export async function runPackedWeb(scenario, kind = 'packed-web') {
   let browser
   let page
   try {
+    console.log('M7D: initialize isolated DSH Web profile from shipped template (' + version + ')')
+    await runCommand(initializeWebProfileArgs(version, profile), env, cwd, INSTALL_TIMEOUT_MS)
     console.log('M7D: installing pinned packed artifact in isolated DSH profile (' + version + ')')
     await runCommand(installArgs(version, profile, tarball), env, cwd, INSTALL_TIMEOUT_MS)
     web = await startWeb(version, profile, env, cwd)
