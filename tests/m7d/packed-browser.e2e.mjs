@@ -32,7 +32,7 @@ async function saveField(drawer) {
   await form.locator('button[type=submit]').click()
 }
 
-await runPackedWeb(async ({ page, context, restartHost, record, version }) => {
+await runPackedWeb(async ({ page, context, restartHost, record, version, rebuildInstalledClientForHmr }) => {
   const trigger = page.locator(triggerSelector)
   assert.equal(await trigger.count(), 1)
   let drawer = await openDrawer(page)
@@ -139,6 +139,29 @@ await runPackedWeb(async ({ page, context, restartHost, record, version }) => {
       'a new Client plugin lifetime cannot retain the old unsubmitted draft')
     await selectProfile(drawer, externalName)
     record('whole-plugin remount resets view draft but preserves authoritative Settings Profile')
+
+    // This separate development-HMR probe intentionally alters only a private
+    // temporary installed COPY after the immutable tarball was verified.
+    // The production Client Modules/HMR transport must replace the browser
+    // module and clean its stylesheet without a navigation.
+    await drawer.getByRole('button', { name: /^(Close|关闭)$/ }).click()
+    await page.evaluate(() => {
+      window.__m7dDidNotNavigate = true
+      const owned = document.querySelector('style[data-plugin="dsh-context-manager"]')
+      if (owned) owned.setAttribute('data-m7d-before-rebuild', '')
+    })
+    await rebuildInstalledClientForHmr()
+    await page.waitForFunction(() => {
+      const owned = document.querySelectorAll('style[data-plugin="dsh-context-manager"]')
+      return window.__m7dDidNotNavigate === true && owned.length === 1 &&
+        !owned[0].hasAttribute('data-m7d-before-rebuild')
+    }, null, { timeout: 60_000 })
+    assert.equal(await page.locator(triggerSelector).count(), 1)
+    assert.equal(await page.locator('style[data-plugin="dsh-context-manager"]').count(), 1)
+    drawer = await openDrawer(page)
+    await selectProfile(drawer, externalName)
+    record('development-only changed client.js: native code HMR preserves page, replaces owned style and remounts UI')
+
   } else {
     record('Web boot, browser refresh and Host restart only: older published clients have no public Plugins management page')
   }

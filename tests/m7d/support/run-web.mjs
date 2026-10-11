@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
 import { createReadStream } from 'node:fs'
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { createRequire } from 'node:module'
@@ -197,6 +197,20 @@ export async function runPackedWeb(scenario, kind = 'packed-web') {
         })
       },
       getHostLog() { return web.getOutput() },
+      async rebuildInstalledClientForHmr() {
+        assert.equal(version, '0.1.6-alpha.2',
+          'published rebuild HMR is qualified only on the reviewed generation')
+        const file = path.join(home, 'profiles', profile,
+          'node_modules', 'dsh-context-manager', 'lib', 'client.js')
+        const source = await readFile(file, 'utf8')
+        assert.ok(source.includes('window.__ModuleLoader__.load'),
+          'installed bundle does not expose the expected public loader ABI')
+        // Atomically replace only this disposable profile's installed hardlink;
+        // never write through to pnpm's immutable content-addressed store.
+        const replacementFile = file + '.m7d-rebuild'
+        await writeFile(replacementFile, source + '\n// M7D mutable development rebuild\n')
+        await rename(replacementFile, file)
+      },
     }
     await scenario(contextActions)
     evidence.status = 'passed'
