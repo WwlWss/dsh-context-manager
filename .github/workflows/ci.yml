@@ -799,11 +799,19 @@ jobs:
             pnpm exec tsc --ignoreConfig --noEmit --strict --skipLibCheck \
               --module NodeNext --moduleResolution NodeNext --target ES2024 consumer.ts
           done
+      - name: Record immutable M7D packed artifact SHA-256
+        run: |
+          shopt -s nullglob
+          tarballs=(.artifacts/*.tgz)
+          test "${#tarballs[@]}" -eq 1
+          sha256sum "${tarballs[0]}" > .artifacts/m7d-packed.sha256
       - name: Upload exact packed artifact for downstream DSH smoke
         uses: actions/upload-artifact@v4
         with:
           name: context-manager-packed
-          path: .artifacts/*.tgz
+          path: |
+            .artifacts/*.tgz
+            .artifacts/m7d-packed.sha256
           if-no-files-found: error
           retention-days: 3
           # The explicit .tgz glob is stored under a hidden .artifacts directory.
@@ -847,11 +855,81 @@ jobs:
           pnpm dlx @deepseek-ai/dsh@${{ matrix.version }} --profile context-manager-ci --dump-config > .dsh-composed.yml
           grep -F 'dsh-context-manager' .dsh-composed.yml
 
+  m7d-packed-web:
+    name: M7D packed Chromium Web (${{ matrix.os }} / ${{ matrix.version }})
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.draft == false }}
+    needs: package
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-latest, version: 0.1.2-rc.1 }
+          - { os: ubuntu-latest, version: 0.1.5-rc.1 }
+          - { os: ubuntu-latest, version: 0.1.5-rc.2 }
+          - { os: ubuntu-latest, version: 0.1.6-alpha.2 }
+          - { os: windows-latest, version: 0.1.5-rc.2 }
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22.20.0
+      - name: Enable pinned pnpm
+        shell: bash
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.7.0 --activate
+      - name: Download exact package-job tarball and digest
+        uses: actions/download-artifact@v4
+        with:
+          name: context-manager-packed
+          path: .artifacts
+      - name: Verify package provenance and export browser-runner paths
+        shell: bash
+        run: |
+          shopt -s nullglob
+          tarballs=(.artifacts/*.tgz)
+          test "${#tarballs[@]}" -eq 1
+          test -f .artifacts/m7d-packed.sha256
+          sha256sum --check .artifacts/m7d-packed.sha256
+          echo "M7D_TARBALL=$GITHUB_WORKSPACE/.artifacts/$(basename "${tarballs[0]}")" >> "$GITHUB_ENV"
+          echo "M7D_EXPECTED_SHA256=$(awk '{print $1}' .artifacts/m7d-packed.sha256)" >> "$GITHUB_ENV"
+          echo "M7D_PLAYWRIGHT_ROOT=$GITHUB_WORKSPACE/.artifacts/m7d-playwright" >> "$GITHUB_ENV"
+          echo "M7D_OUTPUT_DIR=$GITHUB_WORKSPACE/.artifacts/m7d-evidence" >> "$GITHUB_ENV"
+      - name: Install pinned browser runner in an isolated test-only directory
+        shell: bash
+        run: |
+          mkdir -p .artifacts/m7d-playwright
+          cd .artifacts/m7d-playwright
+          printf '%s\n' '{"name":"m7d-browser-runtime","private":true,"type":"module"}' > package.json
+          pnpm add --ignore-scripts --save-exact playwright@1.56.1
+          if [[ "$RUNNER_OS" == "Linux" ]]; then
+            pnpm exec playwright install --with-deps chromium
+          else
+            pnpm exec playwright install chromium
+          fi
+      - name: Execute real DSH Host / Remote / Chromium Profile scenario
+        shell: bash
+        env:
+          M7D_DSH_VERSION: ${{ matrix.version }}
+        run: node tests/m7d/packed-browser.e2e.mjs
+      - name: Upload synthetic browser failure evidence only
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: m7d-browser-failure-${{ matrix.os }}-${{ matrix.version }}
+          path: |
+            .artifacts/m7d-evidence/evidence.json
+            .artifacts/m7d-evidence/m7d-failure.png
+          if-no-files-found: ignore
+          retention-days: 3
+
   full-qualification:
     name: dsh-context-manager / full qualification
     # A skipped/failed/cancelled matrix must not satisfy the protected check.
     if: ${{ always() && (github.event_name != 'pull_request' || github.event.pull_request.draft == false) }}
-    needs: [verify, settings-modern, agent-presets-contract, session-preset-contract, prompt-library-contract, prompt-placement-contract, prompt-runtime-contract, prompt-runtime-agent-loop, skill-runtime-contract, skill-policy-runtime-contract, pinned-skill-runtime-contract, skill-policy-agent-loop, pinned-skill-agent-loop, remote-foundation-artifact, remote-foundation-contract, client-foundation-contract, client-presentation-contract, package, dsh-smoke]
+    needs: [verify, settings-modern, agent-presets-contract, session-preset-contract, prompt-library-contract, prompt-placement-contract, prompt-runtime-contract, prompt-runtime-agent-loop, skill-runtime-contract, skill-policy-runtime-contract, pinned-skill-runtime-contract, skill-policy-agent-loop, pinned-skill-agent-loop, remote-foundation-artifact, remote-foundation-contract, client-foundation-contract, client-presentation-contract, package, dsh-smoke, m7d-packed-web]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
