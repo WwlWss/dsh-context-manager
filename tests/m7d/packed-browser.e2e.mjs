@@ -68,7 +68,7 @@ await runPackedWeb(async ({ page, context, restartHost, record, version, rebuild
 
   await beginNameEdit(drawer)
   await drawer.locator('#cm-edit-name').fill('M7D uncommitted draft')
-  await drawer.getByRole('button', { name: /^(Close|关闭)$/ }).click()
+  await drawer.getByRole('button', { name: /^(Close Context Manager|关闭上下文管理器)$/ }).click()
   assert.equal(await drawer.count(), 0)
   drawer = await openDrawer(page)
   assert.equal(await drawer.locator('#cm-edit-name').inputValue(), 'M7D uncommitted draft')
@@ -110,7 +110,7 @@ await runPackedWeb(async ({ page, context, restartHost, record, version, rebuild
     // synchronization; these are NOT mocked Slot registry disposal calls.
     await beginNameEdit(drawer)
     await drawer.locator('#cm-edit-name').fill('M7D must not survive whole plugin unload')
-    await drawer.getByRole('button', { name: /^(Close|关闭)$/ }).click()
+    await drawer.getByRole('button', { name: /^(Close Context Manager|关闭上下文管理器)$/ }).click()
     await page.getByRole('button', { name: /^(Plugins|插件)$/ }).first().click()
     const card = page.locator('[data-plugin-package="dsh-context-manager"]')
     await card.waitFor({ state: 'visible', timeout: 30_000 })
@@ -144,7 +144,7 @@ await runPackedWeb(async ({ page, context, restartHost, record, version, rebuild
     // temporary installed COPY after the immutable tarball was verified.
     // The production Client Modules/HMR transport must replace the browser
     // module and clean its stylesheet without a navigation.
-    await drawer.getByRole('button', { name: /^(Close|关闭)$/ }).click()
+    await drawer.getByRole('button', { name: /^(Close Context Manager|关闭上下文管理器)$/ }).click()
     await page.evaluate(() => {
       window.__m7dDidNotNavigate = true
       const owned = document.querySelector('style[data-plugin="dsh-context-manager"]')
@@ -167,7 +167,7 @@ await runPackedWeb(async ({ page, context, restartHost, record, version, rebuild
     // retained Web profiles expose public live patch-reload instead.
     await beginNameEdit(drawer)
     await drawer.locator('#cm-edit-name').fill('M7D old draft must not survive plugin remount')
-    await drawer.getByRole('button', { name: /^(Close|关闭)$/ }).click()
+    await drawer.getByRole('button', { name: /^(Close Context Manager|关闭上下文管理器)$/ }).click()
     for (let cycle = 0; cycle < 5; cycle += 1) {
       await setPluginDisabledThroughPublicProfilePatch(true)
       await page.locator(triggerSelector).waitFor({ state: 'detached', timeout: 45_000 })
