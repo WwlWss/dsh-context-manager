@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import { acknowledgePublicFirstRunNotice, runPackedWeb } from './support/run-web.mjs'
+import { waitForPublicClientGraphEntry } from './support/client-graph.mjs'
 
 const triggerSelector = '[data-context-manager-trigger]'
 const drawerSelector = '[data-context-manager-drawer]'
@@ -125,10 +126,12 @@ await runPackedWeb(async ({ page, context, restartHost, record, version, rebuild
     await page.getByRole('button', { name: /^(Plugins|插件)$/ }).first().click()
     const card = page.locator('[data-plugin-package="dsh-context-manager"]')
     await card.waitFor({ state: 'visible', timeout: 30_000 })
-    const toggle = card.getByRole('switch', {
-      name: /^(Enable dsh-context-manager|启用 dsh-context-manager)$/,
-    })
+    // The npm package id identifies the card, while the accessible switch
+    // describes the public title ("context-manager"), not the npm name.
+    const toggle = card.getByRole('switch')
     await toggle.waitFor({ state: 'visible' })
+    assert.equal(await toggle.count(), 1, 'expected one official package switch')
+    assert.equal(await toggle.getAttribute('aria-checked'), 'true')
     assert.equal(await toggle.isEnabled(), true, 'installed bundle must be manageable')
     for (let cycle = 0; cycle < 5; cycle += 1) {
       await toggle.click()
@@ -179,22 +182,34 @@ await runPackedWeb(async ({ page, context, restartHost, record, version, rebuild
     await beginNameEdit(drawer)
     await drawer.locator('#cm-edit-name').fill('M7D old draft must not survive plugin remount')
     await drawer.getByRole('button', { name: /^(Close Context Manager|关闭上下文管理器)$/ }).click()
+    // The retained pre-0.1.6 Client HMR handles code-rebuild frames, not
+    // live plugin graph updates. Test live Host changes over a fresh public
+    // SSE connection, then rehydrate the Client through page navigation.
+    await waitForPublicClientGraphEntry(page, 'dsh-context-manager', true)
     for (let cycle = 0; cycle < 5; cycle += 1) {
       await setPluginDisabledThroughPublicProfilePatch(true)
-      await page.locator(triggerSelector).waitFor({ state: 'detached', timeout: 45_000 })
+      await waitForPublicClientGraphEntry(page, 'dsh-context-manager', false)
+      await page.reload({ waitUntil: 'domcontentloaded' })
+      await acknowledgePublicFirstRunNotice(page)
+      await page.locator(triggerSelector).waitFor({ state: 'detached', timeout: 30_000 })
       await page.locator('style[data-plugin="dsh-context-manager"]')
-        .waitFor({ state: 'detached', timeout: 45_000 })
+        .waitFor({ state: 'detached', timeout: 30_000 })
+      assert.equal(await page.locator(triggerSelector).count(), 0)
+      assert.equal(await page.locator('style[data-plugin="dsh-context-manager"]').count(), 0)
       await setPluginDisabledThroughPublicProfilePatch(false)
-      await page.locator(triggerSelector).waitFor({ state: 'visible', timeout: 45_000 })
+      await waitForPublicClientGraphEntry(page, 'dsh-context-manager', true)
+      await page.reload({ waitUntil: 'domcontentloaded' })
+      await acknowledgePublicFirstRunNotice(page)
+      await page.locator(triggerSelector).waitFor({ state: 'visible', timeout: 30_000 })
       await page.locator('style[data-plugin="dsh-context-manager"]')
-        .waitFor({ state: 'attached', timeout: 45_000 })
+        .waitFor({ state: 'attached', timeout: 30_000 })
       assert.equal(await page.locator(triggerSelector).count(), 1)
       assert.equal(await page.locator('style[data-plugin="dsh-context-manager"]').count(), 1)
     }
     drawer = await openDrawer(page)
     assert.equal(await drawer.locator('#cm-edit-name').count(), 0)
     await selectProfile(drawer, externalName)
-    record('five public Web profile patch HMR cycles: one restored Slot/style, no stale draft, durable Profile')
+    record('five live Host patch graph disable/re-enable cycles proven over fresh public SSE; legacy Client graph rehydrates by navigation, with unique Slot/style and no stale draft')
   }
 
   // Test default/deletion through the live Remote, not only the M7C fixture.
