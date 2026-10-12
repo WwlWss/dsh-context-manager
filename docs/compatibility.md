@@ -19,6 +19,19 @@ DSH `0.1.7-alpha.1` already introduces breaking Settings and AgentPreset Host co
 
 The modern published lines used by CI ship `@deepseek-ai/cordis@4.0.2` and `@deepseek-ai/schemastery@3.18.2`. Host-facing development dependencies remain on the retained 0.1.1 generation where possible, while the M7 browser toolchain is intentionally pinned to the first standalone Client-store generation, `0.1.2-rc.1`. This is a split minimum: it does not raise the Host compatibility floor.
 
+## M7D packed Web qualification (candidate, not merged)
+
+The first exact-head browser matrix passed at PR #35 commit `ec35e246873137089e3ea6b0320e1b93677b8759` in [CI run #38279362541](https://github.com/WwlWss/dsh-context-manager/actions/runs/38279362541). This is evidence for the **qualified test configuration**, not for arbitrary upstream/default DSH startup. Follow-up evidence-hardening commits require their own fresh CI before merging.
+
+| Published DSH Web | Chromium proof and limitation |
+| --- | --- |
+| `0.1.2-rc.1` (Ubuntu) | Explicit legacy HMR patch, qualified CLI graph; actual Host graph toggles confirmed through SSE; browser navigation required to rehydrate Client after graph changes. |
+| `0.1.5-rc.1` (Ubuntu) | Same legacy prerequisites and reload boundary. |
+| `0.1.5-rc.2` (Ubuntu and Windows) | Same legacy prerequisites; Windows packed browser coverage. |
+| `0.1.6-alpha.2` (Ubuntu) | Native Web Plugins UI five disable/re-enable cycles without navigation and development-only installed-copy client code HMR. |
+
+The legacy bare/default Web controls have failed due to upstream HMR startup constraints even without Context Manager installed. The qualification runner explicitly enables the missing legacy HMR service, and the CLI dependency resolution in that earlier run was only partially pinned; no universal default-install compatibility is implied. The real browser scenarios cover create/save, authoritative reload/restart, stale two-page conflict, disposal of unsubmitted drafts, default/delete, and narrow-screen keyboard smoke. Outstanding coverage includes a real held-HTTP-response-across-unload scenario. M7C Controller model-level stale-lifetime tests are not equivalent to that browser scenario. A passed CI result alone does not mark Milestone 7 complete.
+
 ## Settings compatibility rule
 
 Context Manager owns the `dsh-context-manager` Settings namespace and never reads or writes DSH settings files directly.

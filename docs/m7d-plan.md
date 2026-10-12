@@ -1,6 +1,6 @@
 # M7D — Packed Web, lifecycle and compatibility closeout
 
-**Status:** implementation under development. **Milestone 7 is not complete.**
+**Status:** packed-Web qualification candidate in PR #35; prior full CI #38279362541 passed at `ec35e246`. Follow-up evidence hardening, full frozen dependencies, pending-RPC browser proof and final exact-head review remain open. **Milestone 7 is not complete.**
 **Baseline:** M7C Core merged in PR #33; M7C docs PR #34 merged into `main` at `8230f3446294d01c02bdae4ac6a3c326a7b058b7`, included as the second parent of M7D's sync commit.
 
 ## Scope
@@ -17,7 +17,7 @@ Build once in the existing `package` job, upload the one tarball plus SHA-256 ev
 
 ## D2 — lifecycle and HMR
 
-Verify ordinary Drawer close/reopen (draft preserved), plugin graph disable/re-enable (new presentation lifetime), repeated mount/unmount and removal of plugin-owned style tags. The published Web Plugins manager UI is present on the retained `0.1.6-alpha.2` line but absent in the `0.1.2`/`0.1.5` source trees; run that UI graph scenario only on 0.1.6. Earlier generations use the shipped public live Web profile patch (`$DSH_HOME/profiles/web/cordis.patch.yml`) for five disabled/enabled cycles while retaining the HMR-enabled prerequisite. A test-owned two-flag renderer creates atomic replacements; no real, preconfigured, or symlinked user Profile Patch may be overwritten. The runner and test home are disposable. Keep code hot replacement separate from npm package replacement: development rebuild may use an explicitly mutable temporary copy, not the immutable candidate tarball. Do not simulate the production loader by calling its private methods. Ensure obsolete in-flight outcomes never affect a new lifetime.
+Verify ordinary Drawer close/reopen (draft preserved), plugin graph disable/re-enable (new presentation lifetime), repeated mount/unmount and removal of plugin-owned style tags. The published Web Plugins manager UI is present on the retained `0.1.6-alpha.2` line but absent in the `0.1.2`/`0.1.5` source trees; run that UI graph scenario only on 0.1.6. Earlier generations use the shipped public live Web profile patch (`$DSH_HOME/profiles/web/cordis.patch.yml`) for five disabled/enabled cycles while retaining the HMR-enabled prerequisite. A test-owned two-flag renderer creates atomic replacements; no real, preconfigured, or symlinked user Profile Patch may be overwritten. The runner and test home are disposable. Keep code hot replacement separate from npm package replacement: development rebuild may use an explicitly mutable temporary copy, not the immutable candidate tarball. Do not simulate the production loader by calling its private methods. The M7C Controller's epoch/operation-id guards cover obsolete in-flight outcomes in deterministic model tests. Current browser E2E covers settled writes, draft disposal and graph reload; it does **not** claim to prove an HTTP response held across unload. Add that scenario through a narrowly identified public transport interception if stable, without production-only RPC hooks or retries.
 
 ## D3 — CI ownership
 
@@ -25,4 +25,4 @@ Keep existing Host, Remote, Renderer and package evidence. Add a matrix of four 
 
 ## D4 — final review gate
 
-Store only synthetic-session screenshots and sanitized CI evidence with version, exact tarball SHA-256, supported scenario and result. No Web tokens, raw traces, personal Profiles or secret values as public artifacts. Require full real-browser and lifecycle results in every claimed version, then exact-head final source review, no P1/blocking P2, and a precise compatibility/roadmap closeout. Until then M7 remains open.
+Store only synthetic-session screenshots and sanitized CI evidence with version, exact tarball SHA-256, supported scenario and result. Retain fixed-schema, sanitized successful qualification manifests separately from failure-only diagnostics. No Web tokens, raw traces, personal Profiles or secret values as public artifacts. Require full real-browser and lifecycle results in every claimed version, then exact-head final source review, no P1/blocking P2, and a precise compatibility/roadmap closeout. Until then M7 remains open.
