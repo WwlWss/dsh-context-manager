@@ -180,6 +180,24 @@ export async function startWeb(version, profile, env, cwd) {
   }
 }
 
+/** Browser console/error text can include an authenticated Web URL. */
+function sanitizeBrowserDiagnostic(value) {
+  return redactDiagnostic(String(value))
+    .replace(/https?:\/\/[^\s"'<>)]*/gi, '[URL REDACTED]')
+    .slice(0, 4000)
+}
+
+async function awaitClientUi(page) {
+  const trigger = page.locator('[data-context-manager-trigger]')
+  await Promise.race([
+    trigger.waitFor({ state: 'visible', timeout: 90_000 }),
+    page.getByText(/Failed to load plugins|插件加载失败/i).first()
+      .waitFor({ state: 'visible', timeout: 90_000 })
+      .then(() => { throw new Error('DSH Client plugin import failed (see browser diagnostics)') }),
+  ])
+  assert.equal(await trigger.count(), 1, 'expected one additive Context Manager trigger')
+}
+
 function playwrightRuntime() {
   const root = process.env.M7D_PLAYWRIGHT_ROOT
   assert.ok(root, 'M7D_PLAYWRIGHT_ROOT must identify the isolated pinned runner package')
@@ -220,6 +238,11 @@ export async function runPackedWeb(scenario, kind = 'packed-web') {
   let browser
   let page
   let testPatch
+  const browserDiagnostics = []
+  const capture = (type, message) => {
+    browserDiagnostics.push({ type, message: sanitizeBrowserDiagnostic(message) })
+    if (browserDiagnostics.length > 50) browserDiagnostics.shift()
+  }
   try {
     console.log('M7D: initialize the shipped Web profile inside isolated DSH_HOME (' + version + ')')
     await runCommand(initializeWebProfileArgs(version, profile), env, cwd, INSTALL_TIMEOUT_MS)
@@ -238,10 +261,19 @@ export async function runPackedWeb(scenario, kind = 'packed-web') {
     })
     const context = await browser.newContext({ viewport: { width: 1280, height: 800 } })
     page = await context.newPage()
+    page.on('console', message => {
+      if (message.type() === 'error') capture('console', message.text())
+    })
+    page.on('pageerror', error => capture('pageerror', error.stack || error.message))
+    page.on('crash', () => capture('crash', 'Chromium page crashed'))
+    page.on('requestfailed', request => {
+      let resourcePath = '[unknown]'
+      try { resourcePath = new URL(request.url()).pathname } catch {}
+      capture('requestfailed', resourcePath + ': ' + (request.failure()?.errorText || 'unknown'))
+    })
     await page.goto(web.url, { waitUntil: 'domcontentloaded', timeout: 90_000 })
-    const trigger = page.locator('[data-context-manager-trigger]')
-    await trigger.waitFor({ state: 'visible', timeout: 90_000 })
-    assert.equal(await trigger.count(), 1, 'expected exactly one additive Context Manager trigger')
+    await awaitClientUi(page)
+    web.assertAlive()
 
     const contextActions = {
       page, context, browser, version, outputDir,
@@ -250,9 +282,8 @@ export async function runPackedWeb(scenario, kind = 'packed-web') {
         await stopProcess(web.child)
         web = await startWeb(version, profile, env, cwd)
         await page.goto(web.url, { waitUntil: 'domcontentloaded', timeout: 90_000 })
-        await page.locator('[data-context-manager-trigger]').waitFor({
-          state: 'visible', timeout: 90_000,
-        })
+        await awaitClientUi(page)
+        web.assertAlive()
       },
       getHostLog() { return web.getOutput() },
       async setPluginDisabledThroughPublicProfilePatch(disabled) {
@@ -279,6 +310,7 @@ export async function runPackedWeb(scenario, kind = 'packed-web') {
       },
     }
     await scenario(contextActions)
+    web.assertAlive()
     evidence.status = 'passed'
     console.log('M7D: ' + kind + ' passed (' + version + ')')
   } catch (error) {
@@ -293,12 +325,15 @@ export async function runPackedWeb(scenario, kind = 'packed-web') {
       }
     }
     if (web) evidence.hostDiagnosticTail = web.getOutput().slice(-4000)
+    if (web?.getExitState()) evidence.hostExit = web.getExitState()
+    evidence.browserDiagnostics = browserDiagnostics
     // Playwright failures may embed authenticated URLs; never print one raw.
     throw new Error(evidence.error)
   } finally {
     await browser?.close().catch(() => {})
     await stopProcess(web?.child)
     await rm(home, { recursive: true, force: true })
+    if (browserDiagnostics.length) evidence.browserDiagnostics = browserDiagnostics
     await writeFile(path.join(outputDir, 'evidence.json'),
       JSON.stringify(evidence, null, 2) + '\n')
   }
