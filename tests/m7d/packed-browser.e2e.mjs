@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { runPackedWeb } from './support/run-web.mjs'
+import { acknowledgePublicFirstRunNotice, runPackedWeb } from './support/run-web.mjs'
 
 const triggerSelector = '[data-context-manager-trigger]'
 const drawerSelector = '[data-context-manager-drawer]'
@@ -83,6 +83,7 @@ await runPackedWeb(async ({ page, context, restartHost, record, version, rebuild
   try {
     await other.goto(page.url(), { waitUntil: 'domcontentloaded', timeout: 90_000 })
     await other.locator(triggerSelector).waitFor({ state: 'visible', timeout: 90_000 })
+    await acknowledgePublicFirstRunNotice(other)
     const otherDrawer = await openDrawer(other)
     await selectProfile(otherDrawer, editedName)
     await beginNameEdit(otherDrawer)
