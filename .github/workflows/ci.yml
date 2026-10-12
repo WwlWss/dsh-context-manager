@@ -799,6 +799,16 @@ jobs:
             pnpm exec tsc --ignoreConfig --noEmit --strict --skipLibCheck \
               --module NodeNext --moduleResolution NodeNext --target ES2024 consumer.ts
           done
+      - name: Prove packed Client factory executes without Node globals
+        shell: bash
+        run: |
+          shopt -s nullglob
+          tarballs=(.artifacts/*.tgz)
+          test "${#tarballs[@]}" -eq 1
+          mkdir -p .artifacts/m7d-packed-check
+          tar -xzf "${tarballs[0]}" -C .artifacts/m7d-packed-check
+          M7D_CLIENT_PATH="$GITHUB_WORKSPACE/.artifacts/m7d-packed-check/package/lib/client.js" \
+            node --test tests/client-browser-factory.test.mjs
       - name: Record immutable M7D packed artifact SHA-256
         run: |
           shopt -s nullglob
