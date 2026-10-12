@@ -919,6 +919,13 @@ jobs:
           else
             pnpm exec playwright install chromium
           fi
+      - name: Legacy published DSH bare-Web and packed Host HMR controls
+        if: ${{ matrix.version != '0.1.6-alpha.2' }}
+        shell: bash
+        env:
+          M7D_DSH_VERSION: ${{ matrix.version }}
+          M7D_EXPANDED_PREFLIGHT: ${{ matrix.os == 'ubuntu-latest' && matrix.version == '0.1.5-rc.2' }}
+        run: node tests/m7d/host-preflight.mjs
       - name: Execute real DSH Host / Remote / Chromium Profile scenario
         shell: bash
         env:
@@ -931,6 +938,7 @@ jobs:
           name: m7d-browser-failure-${{ matrix.os }}-${{ matrix.version }}
           path: |
             .artifacts/m7d-evidence/evidence.json
+            .artifacts/m7d-evidence/host-preflight.json
             .artifacts/m7d-evidence/m7d-failure.png
           if-no-files-found: ignore
           retention-days: 3
