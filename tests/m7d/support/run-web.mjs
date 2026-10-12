@@ -304,3 +304,6 @@ export async function runPackedWeb(scenario, kind = 'packed-web') {
   }
 }
 
+
+// Public qualification helpers; never imported by the shipped Client.
+export { isolatedEnv, runCommand, stopProcess }
