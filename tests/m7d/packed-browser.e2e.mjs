@@ -61,6 +61,7 @@ await runPackedWeb(async ({ page, context, restartHost, record, version, rebuild
 
   await page.reload({ waitUntil: 'domcontentloaded' })
   await page.locator(triggerSelector).waitFor({ state: 'visible', timeout: 90_000 })
+  await acknowledgePublicFirstRunNotice(page)
   drawer = await openDrawer(page)
   await selectProfile(drawer, editedName)
   assert.equal(await drawer.locator('nav button').filter({ hasText: editedName }).count(), 1)
