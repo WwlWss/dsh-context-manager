@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
 import { createReadStream } from 'node:fs'
-import { mkdir, mkdtemp, readFile, rename, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, realpath, rename, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { createRequire } from 'node:module'
@@ -11,6 +11,7 @@ import {
   PLAYWRIGHT_VERSION, qualifyVersion, initializeWebProfileArgs, installArgs, webArgs,
   parseWebUrl, redactDiagnostic, assertArtifactDigest,
 } from './contracts.mjs'
+import { createOwnedWebProfilePatch } from './profile-patch.mjs'
 
 const MAX_OUTPUT = 64 * 1024
 const INSTALL_TIMEOUT_MS = 4 * 60 * 1000
@@ -169,12 +170,17 @@ export async function runPackedWeb(scenario, kind = 'packed-web') {
   let web
   let browser
   let page
-  let baselineProfilePatch
+  let testPatch
   try {
     console.log('M7D: initialize the shipped Web profile inside isolated DSH_HOME (' + version + ')')
     await runCommand(initializeWebProfileArgs(version, profile), env, cwd, INSTALL_TIMEOUT_MS)
     console.log('M7D: installing pinned packed artifact in isolated DSH profile (' + version + ')')
     await runCommand(installArgs(version, profile, tarball), env, cwd, INSTALL_TIMEOUT_MS)
+    testPatch = await createOwnedWebProfilePatch(home)
+    if (version !== '0.1.6-alpha.2') {
+      await testPatch.setLegacyHmrEnabled(true)
+      evidence.legacyHmrPrerequisite = 'explicitly-enabled'
+    }
     web = await startWeb(version, profile, env, cwd)
     const { chromium } = playwrightRuntime()
     browser = await chromium.launch({
@@ -201,27 +207,18 @@ export async function runPackedWeb(scenario, kind = 'packed-web') {
       },
       getHostLog() { return web.getOutput() },
       async setPluginDisabledThroughPublicProfilePatch(disabled) {
-        assert.equal(typeof disabled, 'boolean')
-        const file = path.join(home, 'profiles', profile, 'cordis.patch.yml')
-        if (baselineProfilePatch === undefined) {
-          baselineProfilePatch = await readFile(file, 'utf8')
-          const unconfigured = baselineProfilePatch
-            .replace(/^\s*#[^\n]*(?:\n|$)/gm, '').trim()
-          assert.ok(unconfigured === '' || unconfigured === '[]',
-            'refuse to overwrite a nonempty, user-authored profile patch')
-        }
-        const next = disabled
-          ? '- id: dsh-context-manager\n  disabled: true\n'
-          : baselineProfilePatch
-        const replacementFile = file + '.m7d-override'
-        await writeFile(replacementFile, next)
-        await rename(replacementFile, file)
+        assert.ok(testPatch, 'profile patch controller must be initialized')
+        await testPatch.setContextManagerDisabled(disabled)
       },
       async rebuildInstalledClientForHmr() {
         assert.equal(version, '0.1.6-alpha.2',
           'published rebuild HMR is qualified only on the reviewed generation')
         const file = path.join(home, 'profiles', profile,
           'node_modules', 'dsh-context-manager', 'lib', 'client.js')
+        const realFile = await realpath(file)
+        const relative = path.relative(home, realFile)
+        assert.ok(relative && !relative.startsWith('..') && !path.isAbsolute(relative),
+          'refuse to edit a client bundle outside the temporary DSH_HOME')
         const source = await readFile(file, 'utf8')
         assert.ok(source.includes('window.__ModuleLoader__.load'),
           'installed bundle does not expose the expected public loader ABI')
