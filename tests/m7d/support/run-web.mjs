@@ -201,6 +201,16 @@ function sanitizeBrowserDiagnostic(value) {
     .slice(0, 4000)
 }
 
+/** Follow the shipped DSH first-run notice through its public UI.
+ * Never bypass the real mask by forcing a click on our trigger.
+ */
+export async function acknowledgePublicFirstRunNotice(page) {
+  const notice = page.getByText(/^(Internal Testing Notice|内部测试须知)$/).first()
+  if (!(await notice.isVisible())) return
+  await page.getByRole('button', { name: /^(Continue|继续)$/ }).first().click()
+  await notice.waitFor({ state: 'hidden', timeout: 10_000 })
+}
+
 async function awaitClientUi(page) {
   const trigger = page.locator('[data-context-manager-trigger]')
   await Promise.race([
@@ -210,6 +220,7 @@ async function awaitClientUi(page) {
       .then(() => { throw new Error('DSH Client plugin import failed (see browser diagnostics)') }),
   ])
   assert.equal(await trigger.count(), 1, 'expected one additive Context Manager trigger')
+  await acknowledgePublicFirstRunNotice(page)
 }
 
 function playwrightRuntime() {
