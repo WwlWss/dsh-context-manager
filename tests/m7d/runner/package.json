@@ -1,0 +1,10 @@
+{
+  "name": "dsh-m7d-playwright-runner",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@11.7.0",
+  "devDependencies": {
+    "playwright": "1.56.1"
+  }
+}
