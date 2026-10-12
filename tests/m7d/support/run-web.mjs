@@ -233,13 +233,21 @@ export async function acknowledgePublicFirstRunNotice(page) {
       quietSince = 0
       continue
     }
+    const inert = await root.evaluate(element => element.inert)
     const modal = page.getByRole('dialog').first()
-    if (await modal.isVisible()) {
+    if (inert && await modal.isVisible()) {
       const title = await modal.locator('h2').first().textContent().catch(() => '')
+      if (/^(Internal Testing Notice|内测声明|Add an API key to get started|添加一个 API Key 开始使用)$/.test((title || '').trim())) {
+        // The title and inert mask can mount before its public action button.
+        // Await the matching button in a bounded loop; do not force-click or
+        // classify a recognized onboarding modal as an unexpected dialog.
+        quietSince = 0
+        await page.waitForTimeout(150)
+        continue
+      }
       throw new Error('Unexpected blocking DSH first-run modal: ' +
         sanitizeBrowserDiagnostic(title))
     }
-    const inert = await root.evaluate(element => element.inert)
     if (!inert) {
       if (!quietSince) quietSince = Date.now()
       // Allow both async welcome hydration and the next provider step to
