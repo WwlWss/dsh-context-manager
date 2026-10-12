@@ -12,27 +12,37 @@ export function qualifyVersion(version) {
   return version
 }
 
+/** Explicit version-pinned CLI installation for browser qualification.
+ * The default dlx path remains a separate unpinned upstream diagnostic.
+ */
+export function cliInvocation(version, args, runnerRoot = process.env.M7D_DSH_CLI_ROOT) {
+  qualifyVersion(version)
+  if (runnerRoot) {
+    assert.ok(typeof runnerRoot === 'string' && runnerRoot.length > 0)
+    return ['--dir', runnerRoot, 'exec', 'dsh', ...args]
+  }
+  return ['dlx', '@deepseek-ai/dsh@' + version, ...args]
+}
+
 /** All retained versions auto-initialize the shipped web profile on config dump. */
 export function initializeWebProfileArgs(version, profile) {
   qualifyVersion(version)
   assert.equal(profile, 'web', 'only the shipped web template is qualified')
-  return ['dlx', '@deepseek-ai/dsh@' + version, 'web', '--dump-config']
+  return cliInvocation(version, ['web', '--dump-config'])
 }
 
 export function installArgs(version, profile, tarball) {
   qualifyVersion(version)
   assert.match(profile, /^[a-z0-9][a-z0-9-]*$/)
   assert.ok(typeof tarball === 'string' && tarball.endsWith('.tgz'))
-  return ['dlx', '@deepseek-ai/dsh@' + version,
-    'plugin', '--profile', profile, 'add', tarball]
+  return cliInvocation(version, ['plugin', '--profile', profile, 'add', tarball])
 }
 
 export function webArgs(version, profile) {
   qualifyVersion(version)
   assert.match(profile, /^[a-z0-9][a-z0-9-]*$/)
   assert.equal(profile, 'web', 'the Web alias must resolve to the isolated shipped profile')
-  return ['dlx', '@deepseek-ai/dsh@' + version,
-    'web', '--no-open', '--host', '127.0.0.1', '--port', '0']
+  return cliInvocation(version, ['web', '--no-open', '--host', '127.0.0.1', '--port', '0'])
 }
 
 export function stripAnsi(value) {
