@@ -90,11 +90,20 @@ await runPackedWeb(async ({ page, context, restartHost, record, version, rebuild
     await saveField(otherDrawer)
     await otherDrawer.locator('nav button').filter({ hasText: externalName }).first()
       .waitFor({ state: 'visible', timeout: 30_000 })
-    await saveField(drawer)
+    // Both safe interleavings are valid: push invalidation may disable Save
+    // before a click, or the Host may reject the one stale-basis RPC.
+    const staleSave = drawer.locator('form:has(#cm-edit-name) button[type=submit]')
+    if (!(await staleSave.isDisabled())) {
+      try {
+        await staleSave.click({ timeout: 2000 })
+      } catch (error) {
+        if (!(await staleSave.isDisabled())) throw error
+      }
+    }
     await drawer.getByRole('button', { name: /^(Discard draft|放弃草稿)$/ })
       .waitFor({ state: 'visible', timeout: 30_000 })
-    const staleSave = drawer.getByRole('button', { name: /^(Save|保存)$/ })
     assert.equal(await staleSave.isDisabled(), true)
+    assert.equal(await drawer.locator('#cm-edit-name').inputValue(), 'M7D stale overwrite')
   } finally {
     await other.close()
   }
