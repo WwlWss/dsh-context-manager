@@ -33,6 +33,30 @@ async function saveField(drawer) {
   await form.locator('button[type=submit]').click()
 }
 
+// Public DSH UI is controlled by an async Host mutation. A removed Slot can
+// precede the package manager's acknowledgement, so clicking again before
+// aria-checked and busy settle can dispatch the same stale OFF intent twice.
+async function waitForNativePackageSwitchSettled(page, checked) {
+  const selector = '[data-plugin-package="dsh-context-manager"] [role="switch"]'
+  try {
+    await page.waitForFunction(({ selector, checked }) => {
+      const control = document.querySelector(selector)
+      return control !== null &&
+        control.getAttribute('aria-checked') === String(checked) &&
+        !control.matches(':disabled') &&
+        control.getAttribute('aria-disabled') !== 'true'
+    }, { selector, checked }, { timeout: 45_000 })
+  } catch (error) {
+    const state = await page.locator(selector).evaluate(control => ({
+      checked: control.getAttribute('aria-checked'),
+      ariaDisabled: control.getAttribute('aria-disabled'),
+      disabled: control.matches(':disabled'),
+    })).catch(() => ({ missing: true }))
+    throw new Error('native DSH package switch failed to settle to ' +
+      String(checked) + ': ' + JSON.stringify(state), { cause: error })
+  }
+}
+
 await runPackedWeb(async ({ page, context, restartHost, record, version, rebuildInstalledClientForHmr, setPluginDisabledThroughPublicProfilePatch }) => {
   const trigger = page.locator(triggerSelector)
   assert.equal(await trigger.count(), 1)
@@ -135,16 +159,21 @@ await runPackedWeb(async ({ page, context, restartHost, record, version, rebuild
     assert.equal(await toggle.isEnabled(), true, 'installed bundle must be manageable')
     for (let cycle = 0; cycle < 5; cycle += 1) {
       await toggle.click()
+      await waitForNativePackageSwitchSettled(page, false)
       await page.locator(triggerSelector).waitFor({ state: 'detached', timeout: 45_000 })
       await page.locator('style[data-plugin="dsh-context-manager"]')
         .waitFor({ state: 'detached', timeout: 45_000 })
       assert.equal(await page.locator(triggerSelector).count(), 0)
+      record('native Plugins OFF acknowledged and graph unmounted, cycle ' + (cycle + 1))
+
       await toggle.click()
+      await waitForNativePackageSwitchSettled(page, true)
       await page.locator(triggerSelector).waitFor({ state: 'visible', timeout: 45_000 })
       await page.locator('style[data-plugin="dsh-context-manager"]')
         .waitFor({ state: 'attached', timeout: 45_000 })
       assert.equal(await page.locator(triggerSelector).count(), 1)
       assert.equal(await page.locator('style[data-plugin="dsh-context-manager"]').count(), 1)
+      record('native Plugins ON acknowledged and graph remounted, cycle ' + (cycle + 1))
     }
     record('real native plugin-manager: five graph disable/re-enable cycles; no duplicate Slot or style')
   
