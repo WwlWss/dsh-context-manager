@@ -195,5 +195,48 @@ await runPackedWeb(async ({ page, context, restartHost, record, version, rebuild
     record('five public Web profile patch HMR cycles: one restored Slot/style, no stale draft, durable Profile')
   }
 
+  // Test default/deletion through the live Remote, not only the M7C fixture.
+  const deletionName = 'M7D default and delete'
+  await drawer.locator('[data-context-manager-new-profile]').click()
+  await drawer.locator('#cm-create-id').fill('m7d-delete-e2e')
+  await drawer.locator('#cm-create-name').fill(deletionName)
+  await drawer.locator('#cm-create-description').fill('Transient description')
+  await drawer.locator('#cm-create-preset').fill('standard')
+  await drawer.locator('form:has(#cm-create-id) button[type=submit]').click()
+  await drawer.locator('nav button').filter({ hasText: deletionName }).first()
+    .waitFor({ state: 'visible', timeout: 30_000 })
+  await selectProfile(drawer, deletionName)
+  await drawer.getByRole('button', { name: /^(Set as default|设为默认)$/ }).click()
+  await drawer.locator('nav button').filter({ hasText: deletionName })
+    .getByText(/^(Default|默认)$/).waitFor({ state: 'visible', timeout: 30_000 })
+  record('real Host Profile create and separately configured default')
+
+  await drawer.getByRole('button', { name: /^(Delete profile|删除 Profile)$/ }).click()
+  await drawer.getByRole('button', { name: /^(Confirm delete|确认删除)$/ }).click()
+  await drawer.locator('nav button').filter({ hasText: deletionName })
+    .waitFor({ state: 'detached', timeout: 30_000 })
+  await drawer.getByText(/Invalid or missing default profile reference|无效或缺失的默认 Profile 引用/)
+    .waitFor({ state: 'visible', timeout: 30_000 })
+  await drawer.getByRole('button', { name: /^(Clear default reference|清除默认引用)$/ })
+    .click()
+  await drawer.getByText(/Invalid or missing default profile reference|无效或缺失的默认 Profile 引用/)
+    .waitFor({ state: 'detached', timeout: 30_000 })
+  record('delete retains dangling default until separate explicit clear')
+
+  // Verify real keyboard behavior and one narrow-screen breakpoint.
+  await drawer.press('Escape')
+  await drawer.waitFor({ state: 'detached' })
+  drawer = await openDrawer(page)
+  await page.setViewportSize({ width: 390, height: 740 })
+  const bounds = await drawer.boundingBox()
+  assert.ok(bounds && bounds.x >= -1 && bounds.width <= 391 &&
+    bounds.x + bounds.width <= 391, 'narrow Drawer remains inside viewport')
+  await drawer.focus()
+  await page.keyboard.press('Tab')
+  assert.equal(await drawer.evaluate(element => element.contains(document.activeElement)), true)
+  await page.keyboard.press('Shift+Tab')
+  assert.equal(await drawer.evaluate(element => element.contains(document.activeElement)), true)
+  record('real browser Escape, Tab focus containment and 390px narrow layout')
+
 }, 'packed-web')
 
