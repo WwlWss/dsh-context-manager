@@ -515,7 +515,7 @@ B1-1 is complete in merged PR #27: the Client now owns a React-free authoritativ
 
 **B1-2 is complete in PR #30.** It bridges that stable business model plus the merged profile mutation controller through the retained Slot/renderer `inject.hooks` boundary without copying authoritative data into presentation state or reintroducing package-owned React subscription machinery. See [m7b1-2-plan.md](m7b1-2-plan.md).
 
-**B1-3 remains outstanding, but it is not a dependency for the Profile-only M7C slice.** The next user-visible slice is M7C core, using completed B1-1/B1-2/B2-A Profile state/mutations. Remaining Client-model work is explicit:
+**B1-3 remains outstanding, but was not a dependency for the Profile-only M7C slice.** M7C Core is complete in merged PR #33 using B1-1/B1-2/B2-A Profile state/mutations. Its completion does not imply PromptResource or keyed Session/Agent diagnostic support. Remaining Client-model work is explicit:
 
 - **B1-3** — add separately invalidated/lazy PromptResource state plus keyed Session/Agent diagnostics and their revision ownership;
 - polling/focus/reconnect refresh remains a later lifecycle slice and must keep change cursors as invalidation hints only.
@@ -530,9 +530,9 @@ M7B2 is intentionally split by revision domain.
 
 Native preset copy/remove authoring remains with M8C rather than being pulled forward merely to cover every Host mutation endpoint.
 
-### M7C — Profile Drawer
+### M7C — Profile Drawer — complete in merged PR #33
 
-Build the production Drawer on the cleaned Client contracts. **Deliver the Profile-only M7C core before B1-3**, using already-authoritative profile/preset data and B2-A mutation callbacks. This is a real edit/save/conflict slice, not just a shell mockup. B1-3's PromptResource and keyed Session/Agent diagnostic reads are explicitly deferred, so they cannot become a hidden UI blocker.
+The Profile-only M7C Core uses authoritative B1-1/B1-2 Profile/Preset data and B2-A mutation callbacks. It delivers actual edit/save/conflict UI (not just the previous shell mockup) with immutable edit-time authority/revision basis and native DSH Renderer interactions. B1-3's PromptResource and keyed Session/Agent diagnostic reads remain deferred. [Implementation contract](m7c-plan.md).
 
 - profile list and selection;
 - create/delete and metadata/base-preset editing already supported by Remote;
@@ -542,7 +542,7 @@ Build the production Drawer on the cleaned Client contracts. **Deliver the Profi
 - view-only drafts/selection/tab state owned by the presentation layer;
 - additive right-side shell behavior that does not replace stock DSH occupants.
 
-Do not reimplement Prompt/Skill resource editors here; M8 owns those feature editors. After M7C core, complete B1-3 and the dependent B2-B Resource mutation slice before M8A, and add the deferred Session/Agent diagnostic UI only after its source has actual keyed authoritative state. M7D closeout remains the gate for declaring the whole milestone complete.
+Prompt/Skill resource editors are not part of M7C; M8 owns those feature editors. After the already-merged M7C Core, M7D browser/package/lifecycle closeout remains the gate for declaring the whole Web milestone complete. B1-3 and dependent B2-B must precede M8A resource editing; deferred Session/Agent diagnostic UI must wait for actual keyed authoritative state.
 
 ### M7D — Browser/package/compatibility closeout
 
