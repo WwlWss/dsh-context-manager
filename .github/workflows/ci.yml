@@ -905,15 +905,16 @@ jobs:
           sha256sum --check .artifacts/m7d-packed.sha256
           echo "M7D_TARBALL=$GITHUB_WORKSPACE/.artifacts/$(basename "${tarballs[0]}")" >> "$GITHUB_ENV"
           echo "M7D_EXPECTED_SHA256=$(awk '{print $1}' .artifacts/m7d-packed.sha256)" >> "$GITHUB_ENV"
-          echo "M7D_PLAYWRIGHT_ROOT=$GITHUB_WORKSPACE/.artifacts/m7d-playwright" >> "$GITHUB_ENV"
+          echo "M7D_PLAYWRIGHT_ROOT=$GITHUB_WORKSPACE/tests/m7d/runner" >> "$GITHUB_ENV"
           echo "M7D_OUTPUT_DIR=$GITHUB_WORKSPACE/.artifacts/m7d-evidence" >> "$GITHUB_ENV"
-      - name: Install pinned browser runner in an isolated test-only directory
+      - name: Install isolated pinned browser runner and record test-only dependency lock
         shell: bash
         run: |
-          mkdir -p .artifacts/m7d-playwright
-          cd .artifacts/m7d-playwright
-          printf '%s\n' '{"name":"m7d-browser-runtime","private":true,"type":"module"}' > package.json
-          pnpm add --ignore-scripts --save-exact playwright@1.56.1
+          cd tests/m7d/runner
+          pnpm install --ignore-scripts --no-frozen-lockfile
+          echo 'M7D_BROWSER_LOCK_START'
+          cat pnpm-lock.yaml
+          echo 'M7D_BROWSER_LOCK_END'
           if [[ "$RUNNER_OS" == "Linux" ]]; then
             pnpm exec playwright install --with-deps chromium
           else
