@@ -911,10 +911,7 @@ jobs:
         shell: bash
         run: |
           cd tests/m7d/runner
-          pnpm install --ignore-scripts --no-frozen-lockfile
-          echo 'M7D_BROWSER_LOCK_START'
-          cat pnpm-lock.yaml
-          echo 'M7D_BROWSER_LOCK_END'
+          pnpm install --ignore-scripts --frozen-lockfile
           if [[ "$RUNNER_OS" == "Linux" ]]; then
             pnpm exec playwright install --with-deps chromium
           else
