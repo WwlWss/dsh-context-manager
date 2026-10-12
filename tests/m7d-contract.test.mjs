@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import {
   RETAINED_CLIENT_VERSIONS, PLAYWRIGHT_VERSION, qualifyVersion,
-  initializeWebProfileArgs, installArgs, webArgs, parseWebUrl, redactDiagnostic, assertArtifactDigest,
+  cliInvocation, initializeWebProfileArgs, installArgs, webArgs, parseWebUrl, redactDiagnostic, assertArtifactDigest,
 } from './m7d/support/contracts.mjs'
 
 test('M7D admits only four retained web client versions', () => {
@@ -31,6 +31,13 @@ test('M7D installs an actual tarball in an isolated DSH profile', () => {
   assert.throws(() => initializeWebProfileArgs('0.1.5-rc.2', 'm7d-custom'))
   assert.throws(() => webArgs('0.1.5-rc.2', 'm7d-custom'))
   assert.throws(() => installArgs('0.1.5-rc.2', 'm7d-probe', '/tmp/a.js'))
+})
+
+test('M7D can select a version-pinned, isolated DSH CLI runner', () => {
+  assert.deepEqual(cliInvocation('0.1.5-rc.1', ['web'], '/tmp/m7d-cli'),
+    ['--dir', '/tmp/m7d-cli', 'exec', 'dsh', 'web'])
+  assert.deepEqual(cliInvocation('0.1.5-rc.1', ['web'], ''),
+    ['dlx', '@deepseek-ai/dsh@0.1.5-rc.1', 'web'])
 })
 
 test('M7D parses only loopback Web readiness URLs', () => {
