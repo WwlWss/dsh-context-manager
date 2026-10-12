@@ -8,7 +8,7 @@ import {
   initializeWebProfileArgs, installArgs, qualifyVersion, redactDiagnostic,
 } from './support/contracts.mjs'
 import { createOwnedWebProfilePatch } from './support/profile-patch.mjs'
-import { isolatedEnv, runCommand, startWeb, stopProcess } from './support/run-web.mjs'
+import { assertConfiguredCliVersion, isolatedEnv, runCommand, startWeb, stopProcess } from './support/run-web.mjs'
 
 /** Control groups A/B (bare Web) and C/D (same Web with the exact candidate). */
 async function probe({ version, tarball, name, installed, explicitHmr }) {
@@ -42,6 +42,7 @@ async function probe({ version, tarball, name, installed, explicitHmr }) {
 }
 
 const version = qualifyVersion(process.env.M7D_DSH_VERSION)
+await assertConfiguredCliVersion(version)
 assert.notEqual(version, '0.1.6-alpha.2',
   'the 0.1.6 generation uses a different built-in Host HMR provider')
 const tarball = process.env.M7D_TARBALL && path.resolve(process.env.M7D_TARBALL)
