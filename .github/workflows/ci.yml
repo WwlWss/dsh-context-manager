@@ -907,6 +907,23 @@ jobs:
           echo "M7D_EXPECTED_SHA256=$(awk '{print $1}' .artifacts/m7d-packed.sha256)" >> "$GITHUB_ENV"
           echo "M7D_PLAYWRIGHT_ROOT=$GITHUB_WORKSPACE/tests/m7d/runner" >> "$GITHUB_ENV"
           echo "M7D_OUTPUT_DIR=$GITHUB_WORKSPACE/.artifacts/m7d-evidence" >> "$GITHUB_ENV"
+      - name: Install exact-version DSH CLI graph in disposable runner
+        shell: bash
+        env:
+          M7D_DSH_VERSION: ${{ matrix.version }}
+        run: |
+          cli_dir="$GITHUB_WORKSPACE/.artifacts/m7d-cli"
+          mkdir -p "$cli_dir"
+          printf '{"name":"m7d-dsh-cli","private":true,"version":"0.0.0","dependencies":{"@deepseek-ai/dsh":"%s"}}\n' "$M7D_DSH_VERSION" > "$cli_dir/package.json"
+          printf 'packages:\n  - .\noverrides:\n  "@deepseek-ai/dsh-app-boot": "%s"\n' "$M7D_DSH_VERSION" > "$cli_dir/pnpm-workspace.yaml"
+          if [[ "$M7D_DSH_VERSION" != 0.1.6-* ]]; then
+            printf '  "@deepseek-ai/cordis-plugin-hmr": "1.0.17"\n' >> "$cli_dir/pnpm-workspace.yaml"
+          fi
+          cd "$cli_dir"
+          pnpm install --ignore-scripts --no-frozen-lockfile
+          pnpm list --depth 0
+          pnpm why @deepseek-ai/dsh-app-boot
+          echo "M7D_DSH_CLI_ROOT=$cli_dir" >> "$GITHUB_ENV"
       - name: Install isolated pinned browser runner and record test-only dependency lock
         shell: bash
         run: |
