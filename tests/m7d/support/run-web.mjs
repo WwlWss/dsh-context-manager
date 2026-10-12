@@ -34,6 +34,17 @@ function isolatedEnv(home) {
   return env
 }
 
+export async function assertConfiguredCliVersion(version) {
+  const root = process.env.M7D_DSH_CLI_ROOT
+  if (!root) return
+  const manifest = JSON.parse(await readFile(
+    path.join(path.resolve(root), 'node_modules', '@deepseek-ai', 'dsh', 'package.json'),
+    'utf8',
+  ))
+  assert.equal(manifest.version, version,
+    'M7D CLI must be the exact retained DSH version, not a newer resolved CLI')
+}
+
 async function sha256(file) {
   const hash = createHash('sha256')
   for await (const chunk of createReadStream(file)) hash.update(chunk)
@@ -217,6 +228,7 @@ function playwrightRuntime() {
  */
 export async function runPackedWeb(scenario, kind = 'packed-web') {
   const version = qualifyVersion(process.env.M7D_DSH_VERSION)
+  await assertConfiguredCliVersion(version)
   const tarball = path.resolve(process.env.M7D_TARBALL || '')
   assert.ok(process.env.M7D_TARBALL, 'M7D_TARBALL is required')
   assert.ok(tarball.endsWith('.tgz'), 'M7D requires a packed tgz, not repository sources')
