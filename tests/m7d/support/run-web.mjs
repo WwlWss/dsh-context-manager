@@ -201,14 +201,56 @@ function sanitizeBrowserDiagnostic(value) {
     .slice(0, 4000)
 }
 
-/** Follow the shipped DSH first-run notice through its public UI.
- * Never bypass the real mask by forcing a click on our trigger.
+/** Complete DSH's two public first-run dialogs with no model credentials.
+ * Some published clients show notice then provider onboarding asynchronously.
+ * Never force-click through their inert/portal masks.
  */
 export async function acknowledgePublicFirstRunNotice(page) {
-  const notice = page.getByText(/^(Internal Testing Notice|内部测试须知)$/).first()
-  if (!(await notice.isVisible())) return
-  await page.getByRole('button', { name: /^(Continue|继续)$/ }).first().click()
-  await notice.waitFor({ state: 'hidden', timeout: 10_000 })
+  const welcome = page.getByRole('button', { name: /^(Continue|继续)$/ }).first()
+  const deferKey = page.getByRole('button', { name: /^(Configure later|稍后配置)$/ }).first()
+  const root = page.locator('#root')
+  let dismissedWelcome = false
+  let dismissedProvider = false
+
+  // The trigger is installed before the welcome coordinator finishes its
+  // async settings read. Poll boundedly for a known public dialog.
+  const deadline = Date.now() + 20_000
+  let quietSince = 0
+  while (Date.now() < deadline) {
+    if (await welcome.isVisible()) {
+      assert.equal(dismissedWelcome, false, 'welcome dialog appeared twice in one page')
+      await welcome.click()
+      await welcome.waitFor({ state: 'hidden', timeout: 10_000 })
+      dismissedWelcome = true
+      quietSince = 0
+      continue
+    }
+    if (await deferKey.isVisible()) {
+      assert.equal(dismissedProvider, false, 'provider dialog appeared twice in one page')
+      await deferKey.click()
+      await deferKey.waitFor({ state: 'hidden', timeout: 10_000 })
+      dismissedProvider = true
+      quietSince = 0
+      continue
+    }
+    const modal = page.getByRole('dialog').first()
+    if (await modal.isVisible()) {
+      const title = await modal.locator('h2').first().textContent().catch(() => '')
+      throw new Error('Unexpected blocking DSH first-run modal: ' +
+        sanitizeBrowserDiagnostic(title))
+    }
+    const inert = await root.evaluate(element => element.inert)
+    if (!inert) {
+      if (!quietSince) quietSince = Date.now()
+      // Allow both async welcome hydration and the next provider step to
+      // mount before assuming onboarding is complete.
+      if (Date.now() - quietSince >= (dismissedWelcome ? 2500 : 1500)) return
+    } else {
+      quietSince = 0
+    }
+    await page.waitForTimeout(150)
+  }
+  throw new Error('DSH first-run onboarding did not settle without credentials')
 }
 
 async function awaitClientUi(page) {
