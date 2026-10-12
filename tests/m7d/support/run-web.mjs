@@ -135,7 +135,8 @@ export async function startWeb(version, profile, env, cwd) {
       announce,
       exited.then(() => { throw new Error(describeExit()) }),
     ])
-    // Readiness is a real, authenticated read-only GET, never a fixed sleep.
+    // Liveness is a read-only HTTP GET (401 is legitimate pre-auth).
+    // Actual authenticated app readiness is verified by Chromium.
     let httpReady = false
     let lastStatus = 'no response'
     const deadline = Date.now() + WEB_TIMEOUT_MS
@@ -147,11 +148,13 @@ export async function startWeb(version, profile, env, cwd) {
           exited.then(() => { throw new Error(describeExit()) }),
         ])
         lastStatus = String(response.status)
-        if (response.ok) {
+        // A 401/403 is still proof of a live Host: DSH's Web bootstrap
+        // authenticates in the browser. Only Chromium can prove UI readiness.
+        if (response.status >= 200 && response.status < 500) {
           httpReady = true
           break
         }
-        // A real HTTP response on a wrong route is not service readiness.
+        // 5xx is not a healthy startup response.
       } catch (error) {
         if (exitState !== undefined) throw new Error(describeExit())
         lastStatus = redactDiagnostic(error?.message || String(error))
