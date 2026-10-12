@@ -89,45 +89,94 @@ async function runCommand(args, env, cwd, timeoutMs) {
   }
 }
 
-async function startWeb(version, profile, env, cwd) {
+/** A printed URL is not readiness: older DSH publishes it before HMR boots. */
+export async function startWeb(version, profile, env, cwd) {
   const child = startCommand(webArgs(version, profile), env, cwd)
   let output = ''
-  const url = await new Promise((resolve, reject) => {
+  let exitState
+  const exited = new Promise(resolve => {
+    child.once('exit', (code, signal) => {
+      exitState = { code, signal }
+      resolve(exitState)
+    })
+    child.once('error', error => {
+      exitState = { error: error.message }
+      resolve(exitState)
+    })
+  })
+  const describeExit = () =>
+    'DSH Host exited during startup: ' + JSON.stringify(exitState) +
+    '\n' + redactDiagnostic(output).slice(-5000)
+
+  const announce = new Promise((resolve, reject) => {
     let settled = false
-    const settle = (error, value) => {
+    const finish = (error, address) => {
       if (settled) return
       settled = true
       clearTimeout(timer)
       if (error) reject(error)
-      else resolve(value)
+      else resolve(address)
     }
-    const timer = setTimeout(
-      () => settle(new Error('DSH Web did not publish readiness: ' +
-        redactDiagnostic(output).slice(-4000))), WEB_TIMEOUT_MS)
+    const timer = setTimeout(() => finish(new Error('DSH Web URL not announced')), WEB_TIMEOUT_MS)
     const append = bytes => {
       output = keepTail(output + String(bytes))
-      let address
-      try { address = parseWebUrl(output) } catch (error) {
-        settle(error)
-        return
+      try {
+        const address = parseWebUrl(output)
+        if (address) finish(null, address)
+      } catch (error) {
+        finish(error)
       }
-      if (address) settle(null, address)
     }
     child.stdout.on('data', append)
     child.stderr.on('data', append)
-    child.once('error', error => settle(error))
-    child.once('close', (code, signal) =>
-      settle(new Error('DSH Web exited before ready (' + code + ', ' + signal + '): ' +
-        redactDiagnostic(output).slice(-4000))))
-  }).catch(async error => {
-    await stopProcess(child)
-    throw error
   })
-  // Continue collecting sanitized diagnostics after the readiness line.
-  return {
-    child,
-    url,
-    getOutput: () => redactDiagnostic(output),
+  try {
+    const url = await Promise.race([
+      announce,
+      exited.then(() => { throw new Error(describeExit()) }),
+    ])
+    // Readiness is a real, authenticated read-only GET, never a fixed sleep.
+    let httpReady = false
+    let lastStatus = 'no response'
+    const deadline = Date.now() + WEB_TIMEOUT_MS
+    while (Date.now() < deadline && !httpReady) {
+      if (exitState !== undefined) throw new Error(describeExit())
+      try {
+        const response = await Promise.race([
+          fetch(url, { signal: AbortSignal.timeout(2500), redirect: 'follow' }),
+          exited.then(() => { throw new Error(describeExit()) }),
+        ])
+        lastStatus = String(response.status)
+        if (response.ok) {
+          httpReady = true
+          break
+        }
+        // A real HTTP response on a wrong route is not service readiness.
+      } catch (error) {
+        if (exitState !== undefined) throw new Error(describeExit())
+        lastStatus = redactDiagnostic(error?.message || String(error))
+      }
+      await Promise.race([
+        new Promise(resolve => setTimeout(resolve, 200)),
+        exited.then(() => { throw new Error(describeExit()) }),
+      ])
+    }
+    if (!httpReady || exitState !== undefined) {
+      throw new Error(exitState ? describeExit() :
+        'DSH Web HTTP readiness timed out (' + lastStatus + '): ' +
+        redactDiagnostic(output).slice(-5000))
+    }
+    return {
+      child, url,
+      getOutput: () => redactDiagnostic(output),
+      getExitState: () => exitState,
+      assertAlive() {
+        if (exitState !== undefined) throw new Error(describeExit())
+      },
+    }
+  } catch (error) {
+    await stopProcess(child)
+    throw new Error(redactDiagnostic(error?.message || String(error)))
   }
 }
 
