@@ -945,7 +945,16 @@ jobs:
         shell: bash
         env:
           M7D_DSH_VERSION: ${{ matrix.version }}
+          M7D_SOURCE_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
         run: node tests/m7d/packed-browser.e2e.mjs
+      - name: Upload minimal successful qualification evidence
+        if: ${{ success() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: m7d-qualified-${{ matrix.os }}-${{ matrix.version }}
+          path: .artifacts/m7d-evidence/qualification-manifest.json
+          if-no-files-found: error
+          retention-days: 30
       - name: Upload synthetic browser failure evidence only
         if: ${{ failure() }}
         uses: actions/upload-artifact@v4

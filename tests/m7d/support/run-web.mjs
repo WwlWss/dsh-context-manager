@@ -353,7 +353,11 @@ export async function runPackedWeb(scenario, kind = 'packed-web') {
 
     const contextActions = {
       page, context, browser, version, outputDir,
-      record(name) { evidence.scenarios.push(name) },
+      record(name) {
+        // Preserve human-readable scenarios only in failure-only local evidence;
+        // the public successful manifest receives stable synthetic IDs.
+        evidence.scenarios.push(name)
+      },
       async restartHost() {
         await stopProcess(web.child)
         web = await startWeb(version, profile, env, cwd)
