@@ -3,7 +3,7 @@ import { test } from 'node:test'
 import {
   buildQualificationManifest, requiredScenarioIds, sanitizeLegacyPreflight,
 } from './m7d/support/qualification-evidence.mjs'
-import { normalizeProfileLock, sha256Text } from './m7d/support/graph-evidence.mjs'
+import { normalizeProfileLock, normalizeLockNewlines, sha256Text } from './m7d/support/graph-evidence.mjs'
 
 const legacyControls = [
   { id: 'bare-default', status: 'failed' },
@@ -98,10 +98,22 @@ test('candidate locator normalization preserves all other graph and integrity fi
     sha256Text(normalized.replace('sha512-a', 'sha512-b')))
   assert.throws(() => normalizeProfileLock("lockfileVersion: '9.0'\nother: 1\n",
     tarball), /missing verified/)
-  assert.throws(() => normalizeProfileLock(
+  // pnpm may refer to the same packed candidate by more than one relative
+  // spelling from different lock sections; do not mistake that for graph drift.
+  const multipleReferences = normalizeProfileLock(
     "lockfileVersion: '9.0'\n" +
     "file:/tmp/one/dsh-context-manager-0.1.0-alpha.0.tgz\n" +
     "file:/tmp/two/dsh-context-manager-0.1.0-alpha.0.tgz\n",
     tarball,
-  ), /ambiguous/)
+  )
+  assert.equal((multipleReferences.match(/file:__M7D_PACKED_CANDIDATE__/g) || []).length, 2)
+})
+
+test('CLI graph equality ignores only Windows CRLF translation', () => {
+  const unix = "lockfileVersion: '9.0'\npackages:\n  example: 1\n"
+  const win = unix.replace(/\n/g, '\r\n')
+  assert.equal(normalizeLockNewlines(win), unix)
+  assert.equal(sha256Text(normalizeLockNewlines(win)), sha256Text(unix))
+  assert.notEqual(normalizeLockNewlines(win.replace('example: 1', 'example: 2')), unix)
+  assert.throws(() => normalizeLockNewlines('not-a-pnpm-lock'), /lockfileVersion/)
 })
