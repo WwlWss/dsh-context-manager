@@ -21,7 +21,7 @@ The modern published lines used by CI ship `@deepseek-ai/cordis@4.0.2` and `@dee
 
 ## M7D packed Web qualification (candidate, not merged)
 
-The first exact-head browser matrix passed at PR #35 commit `ec35e246873137089e3ea6b0320e1b93677b8759` in [CI run #38279362541](https://github.com/WwlWss/dsh-context-manager/actions/runs/38279362541). This is evidence for the **qualified test configuration**, not for arbitrary upstream/default DSH startup. Follow-up evidence-hardening commits require their own fresh CI before merging.
+The first exact-head browser matrix passed at PR #35 commit `ec35e246873137089e3ea6b0320e1b93677b8759` in [CI run #38279362541](https://github.com/WwlWss/dsh-context-manager/actions/runs/38279362541). This is evidence for the **qualified test configuration**, not for arbitrary upstream/default DSH startup. That baseline is an earlier pass, not a certificate for subsequent commits. PR #35 now requires fresh exact-head full CI and persisted manifests for each qualified lane.
 
 | Published DSH Web | Chromium proof and limitation |
 | --- | --- |
@@ -30,7 +30,9 @@ The first exact-head browser matrix passed at PR #35 commit `ec35e246873137089e3
 | `0.1.5-rc.2` (Ubuntu and Windows) | Same legacy prerequisites; Windows packed browser coverage. |
 | `0.1.6-alpha.2` (Ubuntu) | Native Web Plugins UI five disable/re-enable cycles without navigation and development-only installed-copy client code HMR. |
 
-The legacy bare/default Web controls have failed due to upstream HMR startup constraints even without Context Manager installed. The qualification runner explicitly enables the missing legacy HMR service, and the CLI dependency resolution in that earlier run was only partially pinned; no universal default-install compatibility is implied. The real browser scenarios cover create/save, authoritative reload/restart, stale two-page conflict, disposal of unsubmitted drafts, default/delete, and narrow-screen keyboard smoke. Outstanding coverage includes a real held-HTTP-response-across-unload scenario. M7C Controller model-level stale-lifetime tests are not equivalent to that browser scenario. A passed CI result alone does not mark Milestone 7 complete.
+The four reviewed CLI locks deliberately preserve upstream mixed-generation resolution: DSH 0.1.5-rc.1 and 0.1.5-rc.2 select `@deepseek-ai/dsh-web-app@0.1.5-rc.3` while `dsh-app-boot` remains pinned to the tested CLI generation. These exact combinations were already observed in full browser CI #38279362541; do not blindly override the Web App to the CLI version. The Profile package dependency graph is fingerprinted independently from the CLI lock and must match a reviewed OS/version baseline. The one-shot lock generator has been removed from permanent CI; qualifying jobs use only `pnpm install --frozen-lockfile`.
+
+The legacy bare/default Web controls have failed due to upstream HMR startup constraints even without Context Manager installed. The qualification runner explicitly enables the missing legacy HMR service and is moving to four reviewed, frozen CLI lockfiles plus a distinct Profile graph-drift fingerprint; no universal default-install compatibility is implied. The real browser scenarios cover create/save, authoritative reload/restart, stale two-page conflict, disposal of unsubmitted drafts, default/delete, and narrow-screen keyboard smoke. Outstanding coverage includes a real held-HTTP-response-across-unload scenario. M7C Controller model-level stale-lifetime tests are not equivalent to that browser scenario. A passed CI result alone does not mark Milestone 7 complete.
 
 ## Settings compatibility rule
 

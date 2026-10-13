@@ -546,6 +546,8 @@ Prompt/Skill resource editors are not part of M7C; M8 owns those feature editors
 
 ### M7D — Browser/package/compatibility closeout
 
+PR #35 qualifies the installed M7C editor in retained published DSH Web generations. The test runs require the documented legacy HMR precondition on 0.1.2/0.1.5; only 0.1.6 exposes native no-navigation Plugins lifecycle. Every successful lane retains an exact-commit, tarball, CLI/Profile dependency graph and fixed-scenario evidence manifest. The real response-held-across-unload scenario runs only on the supported native Plugins generation.
+
 Before declaring Milestone 7 complete:
 
 - assembled browser smoke through the real public loader/Remote/Slot composition path where the retained published seams allow it;

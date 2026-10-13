@@ -8,7 +8,7 @@ const workflow = readFileSync(new URL('../.github/workflows/ci.yml', import.meta
 test('M7D end-to-end runner must invoke—not only import—critical evidence gates', () => {
   for (const fragment of [
     "import { createBrowserDiagnostics }",
-    "import { buildQualificationManifest }",
+    "import { buildQualificationManifest",
     "import { readCliGraphEvidence, readProfileGraphEvidence }",
     "readCliGraphEvidence(",
     "readProfileGraphEvidence(",
