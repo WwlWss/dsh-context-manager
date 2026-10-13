@@ -986,7 +986,7 @@ jobs:
   # TEMPORARY, HEAD-LOCKED: reviewed lockfile generation only. Removed by the
   # follow-up implementation commit; never used as a permanent CI permission.
   m7d-one-shot-lockgen:
-    if: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha == 'de128b47b77ac036cee3cd5b507ce68a598a9e12' && github.event.pull_request.head.repo.full_name == github.repository }}
+    if: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
