@@ -52,15 +52,35 @@ export function normalizeProfileLock(lock, tarball) {
   return normalized.replace(matcher, 'file:__M7D_PACKED_CANDIDATE__')
 }
 
-export async function readProfileGraphEvidence(home, profile, tarball, version) {
+/**
+ * A Profile graph necessarily contains the candidate .tgz's integrity.
+ * Bind approved graph snapshots to the *exact* candidate tarball rather than
+ * silently ignoring its integrity or tolerating changes to other packages.
+ */
+export function assertReviewedProfileGraph(baselines, {
+  platform, version, candidateSha256, graphSha256,
+}) {
+  assert.equal(baselines?.schemaVersion, 2, 'unsupported Profile graph baseline schema')
+  assert.match(candidateSha256, /^[a-f0-9]{64}$/, 'candidate SHA-256 required')
+  assert.match(graphSha256, /^[a-f0-9]{64}$/, 'Profile graph SHA-256 required')
+  assert.equal(baselines.candidateSha256, candidateSha256,
+    'packed candidate differs from reviewed Profile graph baseline; requalification required')
+  const key = platform + '/' + version
+  assert.match(baselines.graphs?.[key], /^[a-f0-9]{64}$/,
+    'missing reviewed OS/version Profile graph baseline')
+  assert.equal(graphSha256, baselines.graphs[key],
+    'DSH Profile dependency graph drifted from the reviewed installed-package snapshot')
+}
+
+export async function readProfileGraphEvidence(home, profile, tarball, version, candidateSha256) {
   const lock = await readFile(
     path.join(home, 'profiles', profile, 'pnpm-lock.yaml'), 'utf8')
   const fingerprint = sha256Text(normalizeProfileLock(lock, tarball))
   const baselines = JSON.parse(await readFile(path.join(process.cwd(),
     'tests', 'm7d', 'profile-graph-baselines.json'), 'utf8'))
-  const key = process.platform + '/' + version
-  assert.match(baselines[key], /^[a-f0-9]{64}$/, 'missing reviewed Profile graph baseline')
-  assert.equal(fingerprint, baselines[key],
-    'DSH Profile dependency graph drifted from the reviewed installed-package snapshot')
+  assertReviewedProfileGraph(baselines, {
+    platform: process.platform, version, candidateSha256,
+    graphSha256: fingerprint,
+  })
   return fingerprint
 }

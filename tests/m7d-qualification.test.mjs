@@ -3,7 +3,7 @@ import { test } from 'node:test'
 import {
   buildQualificationManifest, requiredScenarioIds, sanitizeLegacyPreflight,
 } from './m7d/support/qualification-evidence.mjs'
-import { normalizeProfileLock, normalizeLockNewlines, sha256Text } from './m7d/support/graph-evidence.mjs'
+import { normalizeProfileLock, normalizeLockNewlines, sha256Text, assertReviewedProfileGraph } from './m7d/support/graph-evidence.mjs'
 
 const legacyControls = [
   { id: 'bare-default', status: 'failed' },
@@ -116,4 +116,24 @@ test('CLI graph equality ignores only Windows CRLF translation', () => {
   assert.equal(sha256Text(normalizeLockNewlines(win)), sha256Text(unix))
   assert.notEqual(normalizeLockNewlines(win.replace('example: 1', 'example: 2')), unix)
   assert.throws(() => normalizeLockNewlines('not-a-pnpm-lock'), /lockfileVersion/)
+})
+
+test('Profile graph approval is tied to the reviewed packed tarball SHA and OS/version', () => {
+  const sha = 'a'.repeat(64), fingerprint = 'b'.repeat(64)
+  const graph = {
+    schemaVersion: 2,
+    candidateSha256: sha,
+    graphs: { 'linux/0.1.6-alpha.2': fingerprint },
+  }
+  const actual = { platform: 'linux', version: '0.1.6-alpha.2',
+    candidateSha256: sha, graphSha256: fingerprint }
+  assert.doesNotThrow(() => assertReviewedProfileGraph(graph, actual))
+  assert.throws(() => assertReviewedProfileGraph(graph,
+    { ...actual, candidateSha256: 'c'.repeat(64) }), /requalification required/)
+  assert.throws(() => assertReviewedProfileGraph(graph,
+    { ...actual, graphSha256: 'd'.repeat(64) }), /graph drifted/)
+  assert.throws(() => assertReviewedProfileGraph(graph,
+    { ...actual, version: '0.1.5-rc.2' }), /missing reviewed/)
+  assert.throws(() => assertReviewedProfileGraph(graph,
+    { ...actual, platform: 'win32' }), /missing reviewed/)
 })

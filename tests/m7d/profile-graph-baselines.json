@@ -1,8 +1,12 @@
 {
-  "_note": "Approved synthetic packed-profile fingerprints from full CI #38406944388 at de128b47 (all five real packed-Web lanes). Digests normalize only candidate tarball locator; changes require full review, not automatic updating.",
-  "linux/0.1.2-rc.1": "264a5ebcc349c770ea84b876ebf05424ac38c7a5c3b323a14c9728c80e8dfa94",
-  "linux/0.1.5-rc.1": "264a5ebcc349c770ea84b876ebf05424ac38c7a5c3b323a14c9728c80e8dfa94",
-  "linux/0.1.5-rc.2": "264a5ebcc349c770ea84b876ebf05424ac38c7a5c3b323a14c9728c80e8dfa94",
-  "linux/0.1.6-alpha.2": "264a5ebcc349c770ea84b876ebf05424ac38c7a5c3b323a14c9728c80e8dfa94",
-  "win32/0.1.5-rc.2": "5d7e0b48fc0101b2bccf3dae4fd943466e635ee988e6018258718cec76a501e5"
+  "schemaVersion": 2,
+  "candidateSha256": "1b702975f76e45dcff64eb0d43f4da546c7a4bbfc79f8f943fe6d8dcb875794a",
+  "reviewEvidence": "PR #35 CI 38426296266 and 38406944388 packed artifacts compared byte-for-byte: the 17 tarball members are identical except package/README.md. Candidate SHA changes invalidate these approved graph fingerprints; no dependency integrity field is suppressed.",
+  "graphs": {
+    "linux/0.1.2-rc.1": "d10ea835dbf9b774b41be5b50b2a49a9ace64a269d0682bcff822c71706e6073",
+    "linux/0.1.5-rc.1": "d10ea835dbf9b774b41be5b50b2a49a9ace64a269d0682bcff822c71706e6073",
+    "linux/0.1.5-rc.2": "d10ea835dbf9b774b41be5b50b2a49a9ace64a269d0682bcff822c71706e6073",
+    "linux/0.1.6-alpha.2": "d10ea835dbf9b774b41be5b50b2a49a9ace64a269d0682bcff822c71706e6073",
+    "win32/0.1.5-rc.2": "2bf99ac1c9a2299bbaee97e982fd968affe37c5813ecbfff4676cbd34db16175"
+  }
 }
