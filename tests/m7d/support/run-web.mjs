@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
 import { createReadStream } from 'node:fs'
 import { mkdir, mkdtemp, readFile, realpath, rename, rm, writeFile } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
+import { homedir, tmpdir } from 'node:os'
 import path from 'node:path'
 import { createRequire } from 'node:module'
 import { spawn } from 'node:child_process'
@@ -12,6 +12,9 @@ import {
   parseWebUrl, redactDiagnostic, assertArtifactDigest,
 } from './contracts.mjs'
 import { createOwnedWebProfilePatch } from './profile-patch.mjs'
+import { createBrowserDiagnostics } from './browser-diagnostics.mjs'
+import { buildQualificationManifest } from './qualification-evidence.mjs'
+import { readCliGraphEvidence, readProfileGraphEvidence } from './graph-evidence.mjs'
 
 const MAX_OUTPUT = 64 * 1024
 const INSTALL_TIMEOUT_MS = 4 * 60 * 1000
@@ -22,13 +25,35 @@ function keepTail(value) {
   return value.slice(-MAX_OUTPUT)
 }
 
-function isolatedEnv(home) {
-  const env = { ...process.env }
-  // In particular, do not inherit an interactive user's alternate DSH profile.
-  for (const key of Object.keys(env)) {
-    if (key.startsWith('DSH_')) delete env[key]
+function isolatedEnv(home, parent = process.env) {
+  // Only execution-critical OS/Corepack paths cross into the disposable Host.
+  // Do not inherit API credentials, registry auth, proxy identities,
+  // NODE_OPTIONS, or the real DSH/user profile environment.
+  const env = {}
+  const pathKey = Object.keys(parent).find(key => key.toLowerCase() === 'path')
+  if (pathKey && typeof parent[pathKey] === 'string') env[pathKey] = parent[pathKey]
+  for (const key of ['PATHEXT', 'SystemRoot', 'ComSpec',
+    'WINDIR', 'COREPACK_HOME', 'PNPM_HOME']) {
+    if (typeof parent[key] === 'string') env[key] = parent[key]
+  }
+  // The pinned pnpm Corepack shim needs its already prepared binary cache.
+  // Sharing a binary cache path is not sharing the user's config or secrets.
+  if (!env.COREPACK_HOME) {
+    env.COREPACK_HOME = process.platform === 'win32'
+      ? path.join(parent.LOCALAPPDATA || path.join(homedir(), 'AppData', 'Local'), 'node', 'corepack')
+      : path.join(parent.HOME || homedir(), '.cache', 'node', 'corepack')
   }
   env.DSH_HOME = home
+  env.HOME = home
+  env.USERPROFILE = home
+  env.APPDATA = path.join(home, 'AppData', 'Roaming')
+  env.LOCALAPPDATA = path.join(home, 'AppData', 'Local')
+  env.XDG_CONFIG_HOME = path.join(home, '.config')
+  env.XDG_CACHE_HOME = path.join(home, '.cache')
+  env.XDG_DATA_HOME = path.join(home, '.local', 'share')
+  env.TMPDIR = home
+  env.TMP = home
+  env.TEMP = home
   env.CI = 'true'
   env.NO_COLOR = '1'
   return env
@@ -297,6 +322,7 @@ export async function runPackedWeb(scenario, kind = 'packed-web') {
   assertArtifactDigest(expectedDigest)
   const digest = await sha256(tarball)
   assert.equal(digest, expectedDigest, 'M7D packed artifact digest mismatch')
+  const cliGraphSha256 = await readCliGraphEvidence(process.env.M7D_DSH_CLI_ROOT, version)
 
   const outputDir = path.resolve(process.env.M7D_OUTPUT_DIR || path.join('.artifacts', 'm7d-' + version))
   await mkdir(outputDir, { recursive: true })
@@ -314,16 +340,14 @@ export async function runPackedWeb(scenario, kind = 'packed-web') {
   let browser
   let page
   let testPatch
-  const browserDiagnostics = []
-  const capture = (type, message) => {
-    browserDiagnostics.push({ type, message: sanitizeBrowserDiagnostic(message) })
-    if (browserDiagnostics.length > 50) browserDiagnostics.shift()
-  }
+  const diagnostics = createBrowserDiagnostics()
+  let profileGraphSha256
   try {
     console.log('M7D: initialize the shipped Web profile inside isolated DSH_HOME (' + version + ')')
     await runCommand(initializeWebProfileArgs(version, profile), env, cwd, INSTALL_TIMEOUT_MS)
     console.log('M7D: installing pinned packed artifact in isolated DSH profile (' + version + ')')
     await runCommand(installArgs(version, profile, tarball), env, cwd, INSTALL_TIMEOUT_MS)
+    profileGraphSha256 = await readProfileGraphEvidence(home, profile, tarball)
     testPatch = await createOwnedWebProfilePatch(home)
     if (version !== '0.1.6-alpha.2') {
       await testPatch.setLegacyHmrEnabled(true)
@@ -337,27 +361,14 @@ export async function runPackedWeb(scenario, kind = 'packed-web') {
     })
     const context = await browser.newContext({ viewport: { width: 1280, height: 800 } })
     page = await context.newPage()
-    page.on('console', message => {
-      if (message.type() === 'error') capture('console', message.text())
-    })
-    page.on('pageerror', error => capture('pageerror', error.stack || error.message))
-    page.on('crash', () => capture('crash', 'Chromium page crashed'))
-    page.on('requestfailed', request => {
-      let resourcePath = '[unknown]'
-      try { resourcePath = new URL(request.url()).pathname } catch {}
-      capture('requestfailed', resourcePath + ': ' + (request.failure()?.errorText || 'unknown'))
-    })
+    diagnostics.attach(context)
     await page.goto(web.url, { waitUntil: 'domcontentloaded', timeout: 90_000 })
     await awaitClientUi(page)
     web.assertAlive()
 
     const contextActions = {
       page, context, browser, version, outputDir,
-      record(name) {
-        // Preserve human-readable scenarios only in failure-only local evidence;
-        // the public successful manifest receives stable synthetic IDs.
-        evidence.scenarios.push(name)
-      },
+      record(name) { evidence.scenarios.push(name) },
       async restartHost() {
         await stopProcess(web.child)
         web = await startWeb(version, profile, env, cwd)
@@ -391,6 +402,24 @@ export async function runPackedWeb(scenario, kind = 'packed-web') {
     }
     await scenario(contextActions)
     web.assertAlive()
+    diagnostics.assertNoBlockingErrors()
+    const manifest = buildQualificationManifest({
+      sourceCommit: process.env.M7D_SOURCE_COMMIT,
+      testedCommit: process.env.GITHUB_SHA,
+      platform: process.platform,
+      dshVersion: version,
+      tarballSha256: digest,
+      cliGraphSha256,
+      profileGraphSha256,
+      scenarios: evidence.scenarios.map((_, index) =>
+        'scenario-' + String(index + 1).padStart(2, '0')),
+      browserDiagnostics: diagnostics.summary(),
+    })
+    // A missing or invalid manifest is an incomplete qualification, not a pass.
+    const manifestPath = path.join(outputDir, 'qualification-manifest.json')
+    const temporaryManifest = manifestPath + '.tmp'
+    await writeFile(temporaryManifest, JSON.stringify(manifest, null, 2) + '\n', { mode: 0o600 })
+    await rename(temporaryManifest, manifestPath)
     evidence.status = 'passed'
     console.log('M7D: ' + kind + ' passed (' + version + ')')
   } catch (error) {
@@ -406,14 +435,14 @@ export async function runPackedWeb(scenario, kind = 'packed-web') {
     }
     if (web) evidence.hostDiagnosticTail = web.getOutput().slice(-4000)
     if (web?.getExitState()) evidence.hostExit = web.getExitState()
-    evidence.browserDiagnostics = browserDiagnostics
+    evidence.browserDiagnostics = diagnostics.entries
     // Playwright failures may embed authenticated URLs; never print one raw.
     throw new Error(evidence.error)
   } finally {
     await browser?.close().catch(() => {})
     await stopProcess(web?.child)
     await rm(home, { recursive: true, force: true })
-    if (browserDiagnostics.length) evidence.browserDiagnostics = browserDiagnostics
+    if (diagnostics.entries.length) evidence.browserDiagnostics = diagnostics.entries
     await writeFile(path.join(outputDir, 'evidence.json'),
       JSON.stringify(evidence, null, 2) + '\n')
   }

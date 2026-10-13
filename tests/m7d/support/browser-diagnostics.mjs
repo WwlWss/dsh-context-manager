@@ -23,7 +23,9 @@ export function createBrowserDiagnostics() {
   const pages = new WeakSet()
   const contexts = new WeakSet()
   let blockingCount = 0
+  const totals = { pageerror: 0, crash: 0, console: 0, requestfailed: 0 }
   function record(type, value, blocking) {
+    totals[type] += 1
     if (blocking) blockingCount += 1
     if (entries.length >= MAX_RECORDS) entries.shift()
     entries.push({ type, blocking, message: sanitize(value) })
@@ -60,9 +62,7 @@ export function createBrowserDiagnostics() {
     record,
     entries,
     summary() {
-      const counts = { pageerror: 0, crash: 0, console: 0, requestfailed: 0 }
-      for (const item of entries) counts[item.type] += 1
-      return { ...counts, blocking: blockingCount }
+      return { ...totals, blocking: blockingCount }
     },
     assertNoBlockingErrors() {
       assert.equal(blockingCount, 0,

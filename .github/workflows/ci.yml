@@ -954,6 +954,7 @@ jobs:
           name: m7d-qualified-${{ matrix.os }}-${{ matrix.version }}
           path: .artifacts/m7d-evidence/qualification-manifest.json
           if-no-files-found: error
+          include-hidden-files: true
           retention-days: 30
       - name: Upload synthetic browser failure evidence only
         if: ${{ failure() }}
@@ -965,6 +966,7 @@ jobs:
             .artifacts/m7d-evidence/host-preflight.json
             .artifacts/m7d-evidence/m7d-failure.png
           if-no-files-found: ignore
+          include-hidden-files: true
           retention-days: 3
 
   full-qualification:
