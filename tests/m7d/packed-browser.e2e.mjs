@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { acknowledgePublicFirstRunNotice, runPackedWeb } from './support/run-web.mjs'
 import { waitForPublicClientGraphEntry } from './support/client-graph.mjs'
+import { holdRealProfileMutation } from './support/pending-rpc.mjs'
 
 const triggerSelector = '[data-context-manager-trigger]'
 const drawerSelector = '[data-context-manager-drawer]'
@@ -204,6 +205,59 @@ await runPackedWeb(async ({ page, context, restartHost, record, version, rebuild
     drawer = await openDrawer(page)
     await selectProfile(drawer, externalName)
     record('native-code-hmr')
+
+    // A real Host write is already committed, but its HTTP result is held
+    // outside the Client. Unload lifetime A, mount B, write a newer winner,
+    // and release A's obsolete response. Neither a replay nor stale UI state
+    // may cross into B. This uses only Playwright's public HTTP route seam.
+    const oldPendingName = 'M7D held old result'
+    const newLifetimeWinner = 'M7D new lifetime winner'
+    await beginNameEdit(drawer)
+    await drawer.locator('#cm-edit-name').fill(oldPendingName)
+    const pending = await holdRealProfileMutation(context, {
+      profileId, name: oldPendingName,
+    })
+    try {
+      await saveField(drawer)
+      await pending.waitForHostResponse()
+      await drawer.getByRole('button', {
+        name: /^(Close Context Manager|关闭上下文管理器)$/,
+      }).click()
+      if (!(await card.isVisible())) {
+        await page.getByRole('button', { name: /^(Plugins|插件)$/ }).first().click()
+      }
+      const liveSwitch = card.getByRole('switch')
+      await liveSwitch.waitFor({ state: 'visible', timeout: 30_000 })
+      await liveSwitch.click()
+      await waitForNativePackageSwitchSettled(page, false)
+      await page.locator(triggerSelector).waitFor({ state: 'detached', timeout: 45_000 })
+      await liveSwitch.click()
+      await waitForNativePackageSwitchSettled(page, true)
+      await page.locator(triggerSelector).waitFor({ state: 'visible', timeout: 45_000 })
+      drawer = await openDrawer(page)
+      await selectProfile(drawer, oldPendingName)
+      await beginNameEdit(drawer)
+      await drawer.locator('#cm-edit-name').fill(newLifetimeWinner)
+      await saveField(drawer)
+      await drawer.locator('nav button').filter({ hasText: newLifetimeWinner })
+        .first().waitFor({ state: 'visible', timeout: 30_000 })
+      pending.release()
+      await pending.settle()
+      assert.equal(pending.interceptedCount, 1,
+        'only the intended real old-lifetime mutation may be held')
+      await page.waitForTimeout(500)
+      assert.equal(await drawer.locator('nav button')
+        .filter({ hasText: newLifetimeWinner }).count(), 1,
+      'old RPC completion may not overwrite the new lifetime')
+      await page.reload({ waitUntil: 'domcontentloaded' })
+      await page.locator(triggerSelector).waitFor({ state: 'visible', timeout: 90_000 })
+      await acknowledgePublicFirstRunNotice(page)
+      drawer = await openDrawer(page)
+      await selectProfile(drawer, newLifetimeWinner)
+      record('pending-rpc-lifecycle')
+    } finally {
+      await pending.dispose()
+    }
 
   } else {
     // These published generations do not have the newer Plugins page. All
