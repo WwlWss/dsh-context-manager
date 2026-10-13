@@ -1,0 +1,4 @@
+packages:
+  - .
+overrides:
+  "@deepseek-ai/dsh-app-boot": "0.1.6-alpha.2"
