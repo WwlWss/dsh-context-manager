@@ -137,3 +137,19 @@ test('Profile graph approval is tied to the reviewed packed tarball SHA and OS/v
   assert.throws(() => assertReviewedProfileGraph(graph,
     { ...actual, platform: 'win32' }), /missing reviewed/)
 })
+
+test('Profile graph normalization omits only the test-owned temporary home name', () => {
+  const tarball = '/tmp/dsh-context-manager-0.1.0-alpha.0.tgz'
+  const base = "lockfileVersion: '9.0'\n" +
+    "tarball: file:../../dsh-context-manager-0.1.0-alpha.0.tgz\n"
+  const a = normalizeProfileLock(base + "store: C:/Temp/dsh-m7d-syntheticA/node_modules\n",
+    tarball, 'C:/Temp/dsh-m7d-syntheticA')
+  const b = normalizeProfileLock(base + "store: C:/Temp/dsh-m7d-syntheticB/node_modules\n",
+    tarball, 'C:/Temp/dsh-m7d-syntheticB')
+  assert.equal(a, b)
+  assert.match(a, /__M7D_TEMP_HOME__/)
+  assert.notEqual(a, normalizeProfileLock(base + "store: C:/Temp/dsh-m7d-syntheticB/node_modules\n" +
+    "other-integrity: sha512-different\n", tarball, 'C:/Temp/dsh-m7d-syntheticB'))
+  assert.throws(() => normalizeProfileLock(base, tarball, '/real-user-home'),
+    /runner-owned home/)
+})

@@ -34,7 +34,7 @@ export async function readCliGraphEvidence(root, version) {
  * dependencies or package versions. The candidate's unique .tgz basename
  * is checked before normalization.
  */
-export function normalizeProfileLock(lock, tarball) {
+export function normalizeProfileLock(lock, tarball, disposableHome) {
   assert.ok(typeof lock === 'string' && lock.startsWith('lockfileVersion:'))
   const basename = path.basename(tarball)
   assert.match(basename, /^dsh-context-manager-[\w.-]+\.tgz$/)
@@ -49,7 +49,17 @@ export function normalizeProfileLock(lock, tarball) {
   const references = [...normalized.matchAll(matcher)].map(match => match[0])
   assert.ok(references.length > 0, 'profile lock is missing verified packed-candidate locator')
   assert.ok(references.length <= 32, 'unexpected number of candidate references in profile lock')
-  return normalized.replace(matcher, 'file:__M7D_PACKED_CANDIDATE__')
+  let graph = normalized.replace(matcher, 'file:__M7D_PACKED_CANDIDATE__')
+  if (disposableHome !== undefined) {
+    // Only the random leaf of the test-owned mkdtemp home may differ across
+    // otherwise identical OS/DSH installations. Do not mask arbitrary paths,
+    // package versions, URL sources, integrity values or dependency fields.
+    const leaf = path.basename(disposableHome)
+    assert.match(leaf, /^dsh-m7d-[A-Za-z0-9_-]+$/,
+      'disposable profile graph normalization requires a runner-owned home')
+    graph = graph.replaceAll(leaf, '__M7D_TEMP_HOME__')
+  }
+  return graph
 }
 
 /**
@@ -75,9 +85,18 @@ export function assertReviewedProfileGraph(baselines, {
 export async function readProfileGraphEvidence(home, profile, tarball, version, candidateSha256) {
   const lock = await readFile(
     path.join(home, 'profiles', profile, 'pnpm-lock.yaml'), 'utf8')
-  const fingerprint = sha256Text(normalizeProfileLock(lock, tarball))
+  const normalized = normalizeProfileLock(lock, tarball, home)
+  const fingerprint = sha256Text(normalized)
   const baselines = JSON.parse(await readFile(path.join(process.cwd(),
     'tests', 'm7d', 'profile-graph-baselines.json'), 'utf8'))
+  if (fingerprint !== baselines.graphs?.[process.platform + '/' + version]) {
+    const original = normalizeProfileLock(lock, tarball)
+    const leaf = path.basename(home)
+    const occurrences = original.split(leaf).length - 1
+    console.log('M7D Profile graph diagnostic: test-home references=' + occurrences
+      + ', pre-normalization SHA-256=' + sha256Text(original)
+      + ', home-normalized SHA-256=' + fingerprint)
+  }
   assertReviewedProfileGraph(baselines, {
     platform: process.platform, version, candidateSha256,
     graphSha256: fingerprint,
