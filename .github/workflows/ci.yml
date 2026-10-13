@@ -912,15 +912,16 @@ jobs:
         env:
           M7D_DSH_VERSION: ${{ matrix.version }}
         run: |
+          set -euo pipefail
           cli_dir="$GITHUB_WORKSPACE/.artifacts/m7d-cli"
+          reviewed="$GITHUB_WORKSPACE/tests/m7d/cli/$M7D_DSH_VERSION"
+          test -f "$reviewed/package.json"
+          test -f "$reviewed/pnpm-lock.yaml"
+          test -f "$reviewed/pnpm-workspace.yaml"
           mkdir -p "$cli_dir"
-          printf '{"name":"m7d-dsh-cli","private":true,"version":"0.0.0","dependencies":{"@deepseek-ai/dsh":"%s"}}\n' "$M7D_DSH_VERSION" > "$cli_dir/package.json"
-          printf 'packages:\n  - .\noverrides:\n  "@deepseek-ai/dsh-app-boot": "%s"\n' "$M7D_DSH_VERSION" > "$cli_dir/pnpm-workspace.yaml"
-          if [[ "$M7D_DSH_VERSION" != 0.1.6-* ]]; then
-            printf '  "@deepseek-ai/cordis-plugin-hmr": "1.0.17"\n' >> "$cli_dir/pnpm-workspace.yaml"
-          fi
+          cp "$reviewed/package.json" "$reviewed/pnpm-lock.yaml" "$reviewed/pnpm-workspace.yaml" "$cli_dir/"
           cd "$cli_dir"
-          pnpm install --ignore-scripts --no-frozen-lockfile
+          pnpm install --ignore-scripts --frozen-lockfile
           pnpm list --depth 0
           pnpm why @deepseek-ai/dsh-app-boot
           echo "M7D_DSH_CLI_ROOT=$cli_dir" >> "$GITHUB_ENV"
@@ -982,49 +983,3 @@ jobs:
         env:
           QUALIFICATION_NEEDS_JSON: ${{ toJSON(needs) }}
         run: node ./scripts/verify-full-qualification.mjs
-
-  # TEMPORARY, HEAD-LOCKED: reviewed lockfile generation only. Removed by the
-  # follow-up implementation commit; never used as a permanent CI permission.
-  m7d-one-shot-lockgen:
-    if: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          ref: ${{ github.event.pull_request.head.ref }}
-          persist-credentials: true
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 22.20.0
-      - name: Prepare pinned package manager
-        run: |
-          corepack enable
-          corepack prepare pnpm@11.7.0 --activate
-      - name: Generate and verify four independent frozen CLI graphs
-        shell: bash
-        run: |
-          set -euo pipefail
-          for version in 0.1.2-rc.1 0.1.5-rc.1 0.1.5-rc.2 0.1.6-alpha.2; do
-            dir="tests/m7d/cli/$version"
-            mkdir -p "$dir"
-            printf '{"name":"m7d-cli-%s","private":true,"version":"0.0.0","dependencies":{"@deepseek-ai/dsh":"%s"}}\n' "$version" "$version" > "$dir/package.json"
-            printf 'packages:\n  - .\noverrides:\n  "@deepseek-ai/dsh-app-boot": "%s"\n' "$version" > "$dir/pnpm-workspace.yaml"
-            if [[ "$version" != 0.1.6-* ]]; then
-              printf '  "@deepseek-ai/cordis-plugin-hmr": "1.0.17"\n' >> "$dir/pnpm-workspace.yaml"
-            fi
-            (cd "$dir" && pnpm install --ignore-scripts --lockfile-only && pnpm install --ignore-scripts --frozen-lockfile)
-          done
-      - name: Commit generated lockfiles back to this PR branch
-        shell: bash
-        run: |
-          set -euo pipefail
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add tests/m7d/cli
-          if ! git diff --cached --quiet; then
-            git commit -m 'test(m7d): generate four frozen CLI graph snapshots'
-            git push origin HEAD:refs/heads/feat/m7d-browser-package-closeout
-          fi

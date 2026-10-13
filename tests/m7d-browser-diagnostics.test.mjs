@@ -30,3 +30,13 @@ test('plugin errors block, normal navigation abort does not', () => {
   first.emit('console', { type: () => 'error', text: () => 'dsh-context-manager import failed' })
   assert.throws(() => diagnostics.assertNoBlockingErrors(), /import failed/)
 })
+
+test('browser diagnostics count all events after the bounded evidence ring wraps', () => {
+  const { first, diagnostics } = fixture()
+  for (let i = 0; i < 90; i++) first.emit('console', {
+    type: () => 'error', text: () => 'harmless upstream test event ' + i,
+  })
+  assert.equal(diagnostics.entries.length, 60)
+  assert.equal(diagnostics.summary().console, 90)
+  assert.equal(diagnostics.summary().blocking, 0)
+})

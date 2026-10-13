@@ -5,7 +5,7 @@ import { mkdir, mkdtemp, readFile, realpath, rename, rm, writeFile } from 'node:
 import { homedir, tmpdir } from 'node:os'
 import path from 'node:path'
 import { createRequire } from 'node:module'
-import { spawn } from 'node:child_process'
+import { execFileSync, spawn } from 'node:child_process'
 
 import {
   PLAYWRIGHT_VERSION, qualifyVersion, initializeWebProfileArgs, installArgs, webArgs,
@@ -13,7 +13,7 @@ import {
 } from './contracts.mjs'
 import { createOwnedWebProfilePatch } from './profile-patch.mjs'
 import { createBrowserDiagnostics } from './browser-diagnostics.mjs'
-import { buildQualificationManifest } from './qualification-evidence.mjs'
+import { buildQualificationManifest, requiredScenarioIds, sanitizeLegacyPreflight } from './qualification-evidence.mjs'
 import { readCliGraphEvidence, readProfileGraphEvidence } from './graph-evidence.mjs'
 
 const MAX_OUTPUT = 64 * 1024
@@ -61,7 +61,7 @@ function isolatedEnv(home, parent = process.env) {
 
 export async function assertConfiguredCliVersion(version) {
   const root = process.env.M7D_DSH_CLI_ROOT
-  if (!root) return
+  assert.ok(root, 'M7D_DSH_CLI_ROOT is mandatory for all qualified Web and preflight runs')
   const manifest = JSON.parse(await readFile(
     path.join(path.resolve(root), 'node_modules', '@deepseek-ai', 'dsh', 'package.json'),
     'utf8',
@@ -340,6 +340,8 @@ export async function runPackedWeb(scenario, kind = 'packed-web') {
   let browser
   let page
   let testPatch
+  const scenarioSeen = new Set()
+  const allowedScenarios = new Set(requiredScenarioIds(version))
   const diagnostics = createBrowserDiagnostics()
   let profileGraphSha256
   try {
@@ -347,7 +349,7 @@ export async function runPackedWeb(scenario, kind = 'packed-web') {
     await runCommand(initializeWebProfileArgs(version, profile), env, cwd, INSTALL_TIMEOUT_MS)
     console.log('M7D: installing pinned packed artifact in isolated DSH profile (' + version + ')')
     await runCommand(installArgs(version, profile, tarball), env, cwd, INSTALL_TIMEOUT_MS)
-    profileGraphSha256 = await readProfileGraphEvidence(home, profile, tarball)
+    profileGraphSha256 = await readProfileGraphEvidence(home, profile, tarball, version)
     testPatch = await createOwnedWebProfilePatch(home)
     if (version !== '0.1.6-alpha.2') {
       await testPatch.setLegacyHmrEnabled(true)
@@ -368,7 +370,12 @@ export async function runPackedWeb(scenario, kind = 'packed-web') {
 
     const contextActions = {
       page, context, browser, version, outputDir,
-      record(name) { evidence.scenarios.push(name) },
+      record(name) {
+        assert.ok(allowedScenarios.has(name), 'unknown M7D scenario: ' + name)
+        assert.equal(scenarioSeen.has(name), false, 'duplicate M7D scenario: ' + name)
+        scenarioSeen.add(name)
+        evidence.scenarios.push(name)
+      },
       async restartHost() {
         await stopProcess(web.child)
         web = await startWeb(version, profile, env, cwd)
@@ -403,17 +410,24 @@ export async function runPackedWeb(scenario, kind = 'packed-web') {
     await scenario(contextActions)
     web.assertAlive()
     diagnostics.assertNoBlockingErrors()
+    const checkoutCommit = execFileSync('git', ['rev-parse', 'HEAD'],
+      { cwd, encoding: 'utf8' }).trim()
+    if (process.env.GITHUB_SHA) assert.equal(checkoutCommit, process.env.GITHUB_SHA,
+      'qualification tested commit differs from the actual checkout')
+    const legacyControls = version === '0.1.6-alpha.2' ? [] :
+      sanitizeLegacyPreflight(version, JSON.parse(await readFile(
+        path.join(outputDir, 'host-preflight.json'), 'utf8')))
     const manifest = buildQualificationManifest({
       sourceCommit: process.env.M7D_SOURCE_COMMIT,
-      testedCommit: process.env.GITHUB_SHA,
+      testedCommit: checkoutCommit,
       platform: process.platform,
       dshVersion: version,
       tarballSha256: digest,
       cliGraphSha256,
       profileGraphSha256,
-      scenarios: evidence.scenarios.map((_, index) =>
-        'scenario-' + String(index + 1).padStart(2, '0')),
+      scenarios: evidence.scenarios,
       browserDiagnostics: diagnostics.summary(),
+      legacyControls,
     })
     // A missing or invalid manifest is an incomplete qualification, not a pass.
     const manifestPath = path.join(outputDir, 'qualification-manifest.json')

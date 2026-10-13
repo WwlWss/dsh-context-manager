@@ -13,6 +13,9 @@ export async function readCliGraphEvidence(root, version) {
     path.join(root, 'node_modules', '@deepseek-ai', 'dsh', 'package.json'), 'utf8'))
   assert.equal(manifest.version, version)
   const rootLock = await readFile(path.join(root, 'pnpm-lock.yaml'), 'utf8')
+  const approvedLock = await readFile(path.join(process.cwd(),
+    'tests', 'm7d', 'cli', version, 'pnpm-lock.yaml'), 'utf8')
+  assert.equal(rootLock, approvedLock, 'installed CLI root differs from reviewed frozen dependency graph')
   const installedLock = await readFile(path.join(root, 'node_modules', '.pnpm', 'lock.yaml'), 'utf8')
   assert.equal(installedLock, rootLock, 'installed CLI graph must match the lockfile')
   return sha256Text(rootLock)
@@ -27,16 +30,25 @@ export function normalizeProfileLock(lock, tarball) {
   assert.ok(typeof lock === 'string' && lock.startsWith('lockfileVersion:'))
   const basename = path.basename(tarball)
   assert.match(basename, /^dsh-context-manager-[\w.-]+\.tgz$/)
-  const escaped = basename.replaceAll('.', '\\.')
-  const re = new RegExp('file:[^\\s\\x22\\x27,{}()\\[\\]]*' + escaped, 'g')
-  const result = lock.replaceAll('\\', '/').replace(re, 'file:__M7D_PACKED_CANDIDATE__')
-  assert.ok(result.includes('dsh-context-manager') || result.includes('__M7D_PACKED_CANDIDATE__'),
-    'profile lock does not contain the installed candidate')
-  return result
+  const escaped = basename.replaceAll('.', '\\.');
+  // Normalize only the exact candidate locator, not every backslash in the lock.
+  const matcher = new RegExp('file:[^\\s\\x22\\x27,{}()\\[\\]]*' + escaped, 'g')
+  const references = [...lock.matchAll(matcher)].map(match => match[0])
+  assert.ok(references.length > 0, 'profile lock is missing verified packed-candidate locator')
+  assert.equal(new Set(references.map(ref => ref.replaceAll('\\', '/'))).size, 1,
+    'ambiguous packed-candidate locators in profile lock')
+  return lock.replace(matcher, 'file:__M7D_PACKED_CANDIDATE__')
 }
 
-export async function readProfileGraphEvidence(home, profile, tarball) {
+export async function readProfileGraphEvidence(home, profile, tarball, version) {
   const lock = await readFile(
     path.join(home, 'profiles', profile, 'pnpm-lock.yaml'), 'utf8')
-  return sha256Text(normalizeProfileLock(lock, tarball))
+  const fingerprint = sha256Text(normalizeProfileLock(lock, tarball))
+  const baselines = JSON.parse(await readFile(path.join(process.cwd(),
+    'tests', 'm7d', 'profile-graph-baselines.json'), 'utf8'))
+  const key = process.platform + '/' + version
+  assert.match(baselines[key], /^[a-f0-9]{64}$/, 'missing reviewed Profile graph baseline')
+  assert.equal(fingerprint, baselines[key],
+    'DSH Profile dependency graph drifted from the reviewed installed-package snapshot')
+  return fingerprint
 }

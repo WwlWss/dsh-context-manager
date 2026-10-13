@@ -1,0 +1,8 @@
+{
+  "_note": "Approved synthetic packed-profile fingerprints from full CI #38406944388 at de128b47 (all five real packed-Web lanes). Digests normalize only candidate tarball locator; changes require full review, not automatic updating.",
+  "linux/0.1.2-rc.1": "264a5ebcc349c770ea84b876ebf05424ac38c7a5c3b323a14c9728c80e8dfa94",
+  "linux/0.1.5-rc.1": "264a5ebcc349c770ea84b876ebf05424ac38c7a5c3b323a14c9728c80e8dfa94",
+  "linux/0.1.5-rc.2": "264a5ebcc349c770ea84b876ebf05424ac38c7a5c3b323a14c9728c80e8dfa94",
+  "linux/0.1.6-alpha.2": "264a5ebcc349c770ea84b876ebf05424ac38c7a5c3b323a14c9728c80e8dfa94",
+  "win32/0.1.5-rc.2": "5d7e0b48fc0101b2bccf3dae4fd943466e635ee988e6018258718cec76a501e5"
+}

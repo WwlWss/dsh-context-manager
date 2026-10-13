@@ -62,7 +62,7 @@ await runPackedWeb(async ({ page, context, restartHost, record, version, rebuild
   assert.equal(await trigger.count(), 1)
   let drawer = await openDrawer(page)
   assert.equal(await page.locator('style[data-plugin="dsh-context-manager"]').count(), 1)
-  record('actual browser module graph, one additive trigger/Drawer and one owned stylesheet')
+  record('client-mounted')
 
   const create = drawer.locator('[data-context-manager-new-profile]')
   await create.click()
@@ -75,14 +75,14 @@ await runPackedWeb(async ({ page, context, restartHost, record, version, rebuild
     .locator('button[type=submit]').click()
   await drawer.locator('nav button').filter({ hasText: firstName }).first()
     .waitFor({ state: 'visible', timeout: 30_000 })
-  record('real Host Remote v2: one explicit Profile create and authoritative reread')
+  record('profile-created')
 
   await beginNameEdit(drawer)
   await drawer.locator('#cm-edit-name').fill(editedName)
   await saveField(drawer)
   await drawer.locator('nav button').filter({ hasText: editedName }).first()
     .waitFor({ state: 'visible', timeout: 30_000 })
-  record('one explicit leaf save through real Host persistence')
+  record('profile-name-saved')
 
   await page.reload({ waitUntil: 'domcontentloaded' })
   await page.locator(triggerSelector).waitFor({ state: 'visible', timeout: 90_000 })
@@ -90,7 +90,7 @@ await runPackedWeb(async ({ page, context, restartHost, record, version, rebuild
   drawer = await openDrawer(page)
   await selectProfile(drawer, editedName)
   assert.equal(await drawer.locator('nav button').filter({ hasText: editedName }).count(), 1)
-  record('reload browser and reread durable Profile without copied client cache')
+  record('browser-reloaded')
 
   await beginNameEdit(drawer)
   await drawer.locator('#cm-edit-name').fill('M7D uncommitted draft')
@@ -99,7 +99,7 @@ await runPackedWeb(async ({ page, context, restartHost, record, version, rebuild
   drawer = await openDrawer(page)
   assert.equal(await drawer.locator('#cm-edit-name').inputValue(), 'M7D uncommitted draft')
   await drawer.getByRole('button', { name: /^(Cancel|取消)$/ }).click()
-  record('closing overlay preserves draft; explicit cancellation discards it')
+  record('draft-preserved')
 
   // Two distinct Client pages capture independent persistence bases. The later
   // writer is authoritative; the older basis may never be refreshed at Save.
@@ -134,12 +134,12 @@ await runPackedWeb(async ({ page, context, restartHost, record, version, rebuild
   } finally {
     await other.close()
   }
-  record('concurrent browser writer: stale basis blocked without retry/rebase')
+  record('stale-write-blocked')
 
   await restartHost()
   drawer = await openDrawer(page)
   await selectProfile(drawer, externalName)
-  record('restart actual Host process with same isolated profile; persisted concurrent winner remains')
+  record('host-restarted')
 
   if (version === '0.1.6-alpha.2') {
     // Exercise public DSH Web plugin management and its real HMR graph
@@ -164,7 +164,7 @@ await runPackedWeb(async ({ page, context, restartHost, record, version, rebuild
       await page.locator('style[data-plugin="dsh-context-manager"]')
         .waitFor({ state: 'detached', timeout: 45_000 })
       assert.equal(await page.locator(triggerSelector).count(), 0)
-      record('native Plugins OFF acknowledged and graph unmounted, cycle ' + (cycle + 1))
+      record('native-off-' + (cycle + 1))
 
       await toggle.click()
       await waitForNativePackageSwitchSettled(page, true)
@@ -173,15 +173,15 @@ await runPackedWeb(async ({ page, context, restartHost, record, version, rebuild
         .waitFor({ state: 'attached', timeout: 45_000 })
       assert.equal(await page.locator(triggerSelector).count(), 1)
       assert.equal(await page.locator('style[data-plugin="dsh-context-manager"]').count(), 1)
-      record('native Plugins ON acknowledged and graph remounted, cycle ' + (cycle + 1))
+      record('native-on-' + (cycle + 1))
     }
-    record('real native plugin-manager: five graph disable/re-enable cycles; no duplicate Slot or style')
+    record('native-graph-cycles')
   
     drawer = await openDrawer(page)
     assert.equal(await drawer.locator('#cm-edit-name').count(), 0,
       'a new Client plugin lifetime cannot retain the old unsubmitted draft')
     await selectProfile(drawer, externalName)
-    record('whole-plugin remount resets view draft but preserves authoritative Settings Profile')
+    record('native-remount-state')
 
     // This separate development-HMR probe intentionally alters only a private
     // temporary installed COPY after the immutable tarball was verified.
@@ -203,7 +203,7 @@ await runPackedWeb(async ({ page, context, restartHost, record, version, rebuild
     assert.equal(await page.locator('style[data-plugin="dsh-context-manager"]').count(), 1)
     drawer = await openDrawer(page)
     await selectProfile(drawer, externalName)
-    record('development-only changed client.js: native code HMR preserves page, replaces owned style and remounts UI')
+    record('native-code-hmr')
 
   } else {
     // These published generations do not have the newer Plugins page. All
@@ -238,7 +238,7 @@ await runPackedWeb(async ({ page, context, restartHost, record, version, rebuild
     drawer = await openDrawer(page)
     assert.equal(await drawer.locator('#cm-edit-name').count(), 0)
     await selectProfile(drawer, externalName)
-    record('five live Host patch graph disable/re-enable cycles proven over fresh public SSE; legacy Client graph rehydrates by navigation, with unique Slot/style and no stale draft')
+    record('legacy-live-graph-cycles')
   }
 
   // Test default/deletion through the live Remote, not only the M7C fixture.
@@ -255,7 +255,7 @@ await runPackedWeb(async ({ page, context, restartHost, record, version, rebuild
   await drawer.getByRole('button', { name: /^(Set as default|设为默认)$/ }).click()
   await drawer.locator('nav button').filter({ hasText: deletionName })
     .getByText(/^(Default|默认)$/).waitFor({ state: 'visible', timeout: 30_000 })
-  record('real Host Profile create and separately configured default')
+  record('default-created')
 
   await drawer.getByRole('button', { name: /^(Delete profile|删除 Profile)$/ }).click()
   await drawer.getByRole('button', { name: /^(Confirm delete|确认删除)$/ }).click()
@@ -267,7 +267,7 @@ await runPackedWeb(async ({ page, context, restartHost, record, version, rebuild
     .click()
   await drawer.getByText(/Invalid or missing default profile reference|无效或缺失的默认 Profile 引用/)
     .waitFor({ state: 'detached', timeout: 30_000 })
-  record('delete retains dangling default until separate explicit clear')
+  record('default-deleted-cleared')
 
   // Verify real keyboard behavior and one narrow-screen breakpoint.
   await drawer.press('Escape')
@@ -282,7 +282,7 @@ await runPackedWeb(async ({ page, context, restartHost, record, version, rebuild
   assert.equal(await drawer.evaluate(element => element.contains(document.activeElement)), true)
   await page.keyboard.press('Shift+Tab')
   assert.equal(await drawer.evaluate(element => element.contains(document.activeElement)), true)
-  record('real browser Escape, Tab focus containment and 390px narrow layout')
+  record('keyboard-narrow-verified')
 
 }, 'packed-web')
 
