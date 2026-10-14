@@ -992,7 +992,7 @@ jobs:
   m7d-profile-lock-audit:
     if: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.ref == 'fix/m7d-profile-graph-reproducibility' }}
     name: M7D Profile graph audit (${{ matrix.os }} / ${{ matrix.version }})
-    needs: package
+    needs: verify
     strategy:
       fail-fast: false
       matrix:
@@ -1013,11 +1013,15 @@ jobs:
           corepack enable
           corepack prepare pnpm@11.7.0 --activate
           pnpm install --ignore-scripts --frozen-lockfile
-      - name: Download and verify the packed candidate
-        uses: actions/download-artifact@v4
-        with:
-          name: context-manager-packed
-          path: .artifacts
+      - name: Build same checkout and pack local diagnostic candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          pnpm run build
+          mkdir -p .artifacts
+          pnpm pack --pack-destination .artifacts
+          sha256sum .artifacts/*.tgz > .artifacts/m7d-packed.sha256
+          sha256sum --check .artifacts/m7d-packed.sha256
       - name: Prepare frozen CLI and candidate variables
         shell: bash
         env:
