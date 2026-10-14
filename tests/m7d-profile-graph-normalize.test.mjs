@@ -64,7 +64,7 @@ test('external integrity, version, peer dependency and edge changes are fatal dr
 test('candidate locator cannot redirect to a different file or lose its resolution', () => {
   const redirect = template()
   redirect.importers['.'].dependencies['dsh-context-manager'].specifier = 'file:vendor/other.tgz'
-  assert.throws(() => render(redirect), /verified vendor locator/)
+  assert.throws(() => render(redirect), /Profile-owned vendor path/)
   const missing = template()
   delete missing.packages[locator].resolution.integrity
   assert.throws(() => render(missing), /integrity marker/)
