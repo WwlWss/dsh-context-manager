@@ -9,9 +9,10 @@ test('M7D end-to-end runner must invoke—not only import—critical evidence ga
   for (const fragment of [
     "import { createBrowserDiagnostics }",
     "import { buildQualificationManifest",
-    "import { readCliGraphEvidence, readProfileGraphEvidence }",
+    "import { readCliGraphEvidence }",
+    "import { installFrozenWebProfile }",
     "readCliGraphEvidence(",
-    "readProfileGraphEvidence(",
+    "installFrozenWebProfile(",
     "diagnostics.attach(context)",
     "diagnostics.assertNoBlockingErrors()",
     "buildQualificationManifest({",
@@ -19,6 +20,9 @@ test('M7D end-to-end runner must invoke—not only import—critical evidence ga
   ]) assert.ok(runner.includes(fragment), 'missing integration: ' + fragment)
   assert.match(runner, /await scenario\(contextActions\)[\s\S]*?diagnostics\.assertNoBlockingErrors\(\)[\s\S]*?buildQualificationManifest\(/)
   assert.match(runner, /await rename\(temporaryManifest, manifestPath\)/)
+  assert.match(workflow, /node tests\/m7d\/native-add-smoke\.mjs/)
+  assert.match(workflow, /M7D_NATIVE_ADD_VERIFIED=true/)
+  assert.match(workflow, /frozen-graph-evidence\.json/)
 })
 test('success and failure evidence uploads include only explicitly selected hidden-directory files', () => {
   const section = workflow.split('      - name: Upload minimal successful qualification evidence')[1]

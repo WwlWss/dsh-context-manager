@@ -942,6 +942,14 @@ jobs:
           M7D_DSH_VERSION: ${{ matrix.version }}
           M7D_EXPANDED_PREFLIGHT: ${{ matrix.os == 'ubuntu-latest' && matrix.version == '0.1.5-rc.2' }}
         run: node tests/m7d/host-preflight.mjs
+      - name: Independent native DSH plugin-add compatibility smoke
+        shell: bash
+        env:
+          M7D_DSH_VERSION: ${{ matrix.version }}
+        run: |
+          set -euo pipefail
+          node tests/m7d/native-add-smoke.mjs
+          echo "M7D_NATIVE_ADD_VERIFIED=true" >> "$GITHUB_ENV"
       - name: Execute real DSH Host / Remote / Chromium Profile scenario
         shell: bash
         env:
@@ -955,7 +963,7 @@ jobs:
           name: m7d-qualified-${{ matrix.os }}-${{ matrix.version }}
           path: |
             .artifacts/m7d-evidence/qualification-manifest.json
-            .artifacts/m7d-evidence/profile-graph-audit.json
+            .artifacts/m7d-evidence/frozen-graph-evidence.json
           if-no-files-found: error
           include-hidden-files: true
           retention-days: 30
@@ -967,7 +975,7 @@ jobs:
           path: |
             .artifacts/m7d-evidence/evidence.json
             .artifacts/m7d-evidence/host-preflight.json
-            .artifacts/m7d-evidence/profile-graph-audit.json
+            .artifacts/m7d-evidence/frozen-graph-evidence.json
             .artifacts/m7d-evidence/m7d-failure.png
           if-no-files-found: ignore
           include-hidden-files: true

@@ -14,7 +14,8 @@ import {
 import { createOwnedWebProfilePatch } from './profile-patch.mjs'
 import { createBrowserDiagnostics } from './browser-diagnostics.mjs'
 import { buildQualificationManifest, requiredScenarioIds, sanitizeLegacyPreflight } from './qualification-evidence.mjs'
-import { readCliGraphEvidence, readProfileGraphEvidence } from './graph-evidence.mjs'
+import { readCliGraphEvidence } from './graph-evidence.mjs'
+import { installFrozenWebProfile } from './profile-frozen-install.mjs'
 
 const MAX_OUTPUT = 64 * 1024
 const INSTALL_TIMEOUT_MS = 4 * 60 * 1000
@@ -347,9 +348,12 @@ export async function runPackedWeb(scenario, kind = 'packed-web') {
   try {
     console.log('M7D: initialize the shipped Web profile inside isolated DSH_HOME (' + version + ')')
     await runCommand(initializeWebProfileArgs(version, profile), env, cwd, INSTALL_TIMEOUT_MS)
-    console.log('M7D: installing pinned packed artifact in isolated DSH profile (' + version + ')')
-    await runCommand(installArgs(version, profile, tarball), env, cwd, INSTALL_TIMEOUT_MS)
-    profileGraphSha256 = await readProfileGraphEvidence(home, profile, tarball, version, digest, outputDir)
+    console.log('M7D: installing the reviewed frozen Profile graph (' + version + ')')
+    const installed = await installFrozenWebProfile({
+      home, profile, tarball, version, env, cwd, runCommand, evidenceDir: outputDir,
+    })
+    assert.equal(installed.candidateSha256, digest, 'installed candidate provenance drift')
+    profileGraphSha256 = installed.profileGraphSha256
     testPatch = await createOwnedWebProfilePatch(home)
     if (version !== '0.1.6-alpha.2') {
       await testPatch.setLegacyHmrEnabled(true)
@@ -425,6 +429,9 @@ export async function runPackedWeb(scenario, kind = 'packed-web') {
       tarballSha256: digest,
       cliGraphSha256,
       profileGraphSha256,
+      installationMode: 'frozen-public-dsh-plugin-install',
+      nativeAddVerified: process.env.M7D_NATIVE_ADD_VERIFIED === 'true',
+      candidateIntegrityVerified: true,
       scenarios: evidence.scenarios,
       browserDiagnostics: diagnostics.summary(),
       legacyControls,

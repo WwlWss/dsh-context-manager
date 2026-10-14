@@ -67,6 +67,12 @@ export function buildQualificationManifest(input) {
     assert.match(input[key], SHA256, 'invalid ' + key)
   }
   assert.ok(['linux', 'win32'].includes(input.platform))
+  assert.equal(input.installationMode, 'frozen-public-dsh-plugin-install',
+    'full qualification requires the reviewed frozen public install')
+  assert.equal(input.nativeAddVerified, true,
+    'native plugin-add compatibility smoke must pass before qualification')
+  assert.equal(input.candidateIntegrityVerified, true,
+    'frozen candidate SHA-512 must match packed bytes')
   assert.ok(Array.isArray(input.scenarios) && input.scenarios.length > 0)
   assert.ok(input.scenarios.length <= 100)
   for (const item of input.scenarios) assert.match(item, ID, 'scenario must be a fixed ID')
@@ -101,8 +107,12 @@ export function buildQualificationManifest(input) {
       'legacy Host controls were not sanitized or complete')
   }
   return {
-    schemaVersion: 2,
+    schemaVersion: 3,
     scope: 'm7d-packed-web',
+    installationMode: input.installationMode,
+    profileGraphKind: 'full-external-dependency-graph-v1',
+    nativeAddVerified: true,
+    candidateIntegrityVerified: true,
     sourceCommit: input.sourceCommit,
     testedCommit: input.testedCommit,
     platform: input.platform,

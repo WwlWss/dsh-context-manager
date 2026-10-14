@@ -17,6 +17,9 @@ const valid = {
   tarballSha256: 'c'.repeat(64),
   cliGraphSha256: 'd'.repeat(64),
   profileGraphSha256: 'e'.repeat(64),
+  installationMode: 'frozen-public-dsh-plugin-install',
+  nativeAddVerified: true,
+  candidateIntegrityVerified: true,
   scenarios: requiredScenarioIds('0.1.5-rc.2'),
   legacyControls,
   browserDiagnostics: {
@@ -29,7 +32,9 @@ test('public qualification manifest is complete, fixed-schema, and omits unknown
     ...valid, secret: 'NEVER_PUBLISH', hostDiagnosticTail: 'NEVER_PUBLISH',
   })
   assert.equal(manifest.status, 'passed')
-  assert.equal(manifest.schemaVersion, 2)
+  assert.equal(manifest.schemaVersion, 3)
+  assert.equal(manifest.profileGraphKind, 'full-external-dependency-graph-v1')
+  assert.equal(manifest.nativeAddVerified, true)
   assert.equal(JSON.stringify(manifest).includes('NEVER_PUBLISH'), false)
   assert.deepEqual(manifest.scenarios,
     requiredScenarioIds('0.1.5-rc.2').map(id => ({ id, status: 'passed' })))
@@ -152,4 +157,11 @@ test('Profile graph normalization omits only the test-owned temporary home name'
     "other-integrity: sha512-different\n", tarball, 'C:/Temp/dsh-m7d-syntheticB'))
   assert.throws(() => normalizeProfileLock(base, tarball, '/real-user-home'),
     /runner-owned home/)
+})
+
+test('qualification rejects missing native add or candidate-integrity proof', () => {
+  assert.throws(() => buildQualificationManifest({ ...valid, nativeAddVerified: false }),
+    /native plugin-add/)
+  assert.throws(() => buildQualificationManifest({ ...valid, candidateIntegrityVerified: false }),
+    /SHA-512/)
 })
