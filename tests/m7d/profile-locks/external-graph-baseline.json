@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "graphSha256": "f696210109239a31812ac548ac3410687027cb6faf08b85c281d02fb246f47f6",
+  "origin": "native dsh 0.1.6-alpha.2 plugin add, profile-vendored candidate and pnpm 11.7.0",
+  "auditRun": "38640161320",
+  "reviewedExternalDependencies": {
+    "zod": "4.6.7"
+  },
+  "policy": "Fingerprint covers complete importer, package and snapshot semantics except the strictly verified candidate's own archive path and SHA-512; every external package version, integrity and peer dependency is preserved."
+}
