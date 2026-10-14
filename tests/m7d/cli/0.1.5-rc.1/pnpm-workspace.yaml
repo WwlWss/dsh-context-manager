@@ -1,0 +1,5 @@
+packages:
+  - .
+overrides:
+  "@deepseek-ai/dsh-app-boot": "0.1.5-rc.1"
+  "@deepseek-ai/cordis-plugin-hmr": "1.0.17"

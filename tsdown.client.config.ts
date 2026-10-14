@@ -57,6 +57,11 @@ export default defineConfig({
   format: 'cjs',
   platform: 'browser',
   target: 'es2024',
+  // Third-party browser dependencies inspect NODE_ENV when DSH materializes
+  // its lazy-CJS factory; never require a Node process global in Chromium.
+  define: {
+    'process.env.NODE_ENV': JSON.stringify('production'),
+  },
   fixedExtension: false,
   dts: false,
   sourcemap: true,

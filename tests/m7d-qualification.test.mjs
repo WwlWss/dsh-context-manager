@@ -1,0 +1,155 @@
+import assert from 'node:assert/strict'
+import { test } from 'node:test'
+import {
+  buildQualificationManifest, requiredScenarioIds, sanitizeLegacyPreflight,
+} from './m7d/support/qualification-evidence.mjs'
+import { normalizeProfileLock, normalizeLockNewlines, sha256Text, assertReviewedProfileGraph } from './m7d/support/graph-evidence.mjs'
+
+const legacyControls = [
+  { id: 'bare-default', status: 'failed' },
+  { id: 'bare-explicit-hmr', status: 'passed' },
+]
+const valid = {
+  dshVersion: '0.1.5-rc.2',
+  sourceCommit: 'a'.repeat(40),
+  testedCommit: 'b'.repeat(40),
+  platform: 'linux',
+  tarballSha256: 'c'.repeat(64),
+  cliGraphSha256: 'd'.repeat(64),
+  profileGraphSha256: 'e'.repeat(64),
+  scenarios: requiredScenarioIds('0.1.5-rc.2'),
+  legacyControls,
+  browserDiagnostics: {
+    pageerror: 0, crash: 0, console: 0, requestfailed: 1, blocking: 0,
+  },
+}
+
+test('public qualification manifest is complete, fixed-schema, and omits unknown secrets', () => {
+  const manifest = buildQualificationManifest({
+    ...valid, secret: 'NEVER_PUBLISH', hostDiagnosticTail: 'NEVER_PUBLISH',
+  })
+  assert.equal(manifest.status, 'passed')
+  assert.equal(manifest.schemaVersion, 2)
+  assert.equal(JSON.stringify(manifest).includes('NEVER_PUBLISH'), false)
+  assert.deepEqual(manifest.scenarios,
+    requiredScenarioIds('0.1.5-rc.2').map(id => ({ id, status: 'passed' })))
+  assert.deepEqual(manifest.legacyControls, legacyControls)
+})
+
+test('missing, unexpected and duplicate scenarios never qualify', () => {
+  for (const scenarios of [
+    valid.scenarios.slice(1),
+    [...valid.scenarios, 'unknown-but-well-formed'],
+    [...valid.scenarios, valid.scenarios[0]],
+    ['loose human prose'],
+  ]) {
+    assert.throws(() => buildQualificationManifest({ ...valid, scenarios }))
+  }
+  assert.throws(() => buildQualificationManifest({
+    ...valid, browserDiagnostics: { ...valid.browserDiagnostics, blocking: 1 },
+  }), /blocking/)
+})
+
+test('native lifecycle has a distinct required roster including pending RPC', () => {
+  const native = requiredScenarioIds('0.1.6-alpha.2')
+  assert.ok(native.includes('pending-rpc-lifecycle'))
+  assert.ok(native.includes('native-code-hmr'))
+  assert.ok(!native.includes('legacy-live-graph-cycles'))
+  assert.equal(native.length, new Set(native).size)
+  assert.throws(() => buildQualificationManifest({
+    ...valid, dshVersion: '0.1.6-alpha.2', legacyControls: [],
+  }), /complete version-specific/)
+})
+
+test('legacy Host controls are sanitized and explicit HMR failures block evidence', () => {
+  const document = {
+    version: '0.1.5-rc.2',
+    results: [
+      { name: 'A: bare-default', status: 'failed', explicitHmr: false, diagnostic: 'PRIVATE' },
+      { name: 'B: bare-explicit-hmr', status: 'passed', explicitHmr: true, hostTail: 'PRIVATE' },
+    ],
+  }
+  assert.deepEqual(sanitizeLegacyPreflight('0.1.5-rc.2', document), legacyControls)
+  assert.equal(JSON.stringify(sanitizeLegacyPreflight('0.1.5-rc.2', document))
+    .includes('PRIVATE'), false)
+  assert.throws(() => sanitizeLegacyPreflight('0.1.5-rc.2', {
+    ...document, results: document.results.slice(0, 1),
+  }), /roster/)
+  assert.throws(() => sanitizeLegacyPreflight('0.1.5-rc.2', {
+    ...document,
+    results: [{ ...document.results[0] },
+      { ...document.results[1], status: 'failed' }],
+  }), /must pass/)
+  assert.throws(() => buildQualificationManifest({
+    ...valid, legacyControls: legacyControls.slice(0, 1),
+  }))
+})
+
+test('candidate locator normalization preserves all other graph and integrity fields', () => {
+  const tarball = '/tmp/dsh-context-manager-0.1.0-alpha.0.tgz'
+  const lock = "lockfileVersion: '9.0'\n" +
+    "file:../../.artifacts/dsh-context-manager-0.1.0-alpha.0.tgz\n" +
+    "other: 1\nintegrity: sha512-a\n"
+  const normalized = normalizeProfileLock(lock, tarball)
+  assert.match(normalized, /__M7D_PACKED_CANDIDATE__/)
+  assert.notEqual(sha256Text(normalized),
+    sha256Text(normalized.replace('other: 1', 'other: 2')))
+  assert.notEqual(sha256Text(normalized),
+    sha256Text(normalized.replace('sha512-a', 'sha512-b')))
+  assert.throws(() => normalizeProfileLock("lockfileVersion: '9.0'\nother: 1\n",
+    tarball), /missing verified/)
+  // pnpm may refer to the same packed candidate by more than one relative
+  // spelling from different lock sections; do not mistake that for graph drift.
+  const multipleReferences = normalizeProfileLock(
+    "lockfileVersion: '9.0'\n" +
+    "file:/tmp/one/dsh-context-manager-0.1.0-alpha.0.tgz\n" +
+    "file:/tmp/two/dsh-context-manager-0.1.0-alpha.0.tgz\n",
+    tarball,
+  )
+  assert.equal((multipleReferences.match(/file:__M7D_PACKED_CANDIDATE__/g) || []).length, 2)
+})
+
+test('CLI graph equality ignores only Windows CRLF translation', () => {
+  const unix = "lockfileVersion: '9.0'\npackages:\n  example: 1\n"
+  const win = unix.replace(/\n/g, '\r\n')
+  assert.equal(normalizeLockNewlines(win), unix)
+  assert.equal(sha256Text(normalizeLockNewlines(win)), sha256Text(unix))
+  assert.notEqual(normalizeLockNewlines(win.replace('example: 1', 'example: 2')), unix)
+  assert.throws(() => normalizeLockNewlines('not-a-pnpm-lock'), /lockfileVersion/)
+})
+
+test('Profile graph approval is tied to the reviewed packed tarball SHA and OS/version', () => {
+  const sha = 'a'.repeat(64), fingerprint = 'b'.repeat(64)
+  const graph = {
+    schemaVersion: 2,
+    candidateSha256: sha,
+    graphs: { 'linux/0.1.6-alpha.2': fingerprint },
+  }
+  const actual = { platform: 'linux', version: '0.1.6-alpha.2',
+    candidateSha256: sha, graphSha256: fingerprint }
+  assert.doesNotThrow(() => assertReviewedProfileGraph(graph, actual))
+  assert.throws(() => assertReviewedProfileGraph(graph,
+    { ...actual, candidateSha256: 'c'.repeat(64) }), /requalification required/)
+  assert.throws(() => assertReviewedProfileGraph(graph,
+    { ...actual, graphSha256: 'd'.repeat(64) }), /graph drifted/)
+  assert.throws(() => assertReviewedProfileGraph(graph,
+    { ...actual, version: '0.1.5-rc.2' }), /missing reviewed/)
+  assert.throws(() => assertReviewedProfileGraph(graph,
+    { ...actual, platform: 'win32' }), /missing reviewed/)
+})
+
+test('Profile graph normalization omits only the test-owned temporary home name', () => {
+  const tarball = '/tmp/dsh-context-manager-0.1.0-alpha.0.tgz'
+  const base = "lockfileVersion: '9.0'\n" +
+    "tarball: file:../../dsh-context-manager-0.1.0-alpha.0.tgz\n"
+  const a = normalizeProfileLock(base + "store: C:/Temp/dsh-m7d-syntheticA/node_modules\n",
+    tarball, 'C:/Temp/dsh-m7d-syntheticA')
+  const b = normalizeProfileLock(base + "store: C:/Temp/dsh-m7d-syntheticB/node_modules\n",
+    tarball, 'C:/Temp/dsh-m7d-syntheticB')
+  assert.equal(a, b)
+  assert.match(a, /__M7D_TEMP_HOME__/)
+  assert.notEqual(a, normalizeProfileLock(base + "store: C:/Temp/dsh-m7d-syntheticB/node_modules\n" +
+    "other-integrity: sha512-different\n", tarball, 'C:/Temp/dsh-m7d-syntheticB'))
+  assert.throws(() => normalizeProfileLock(base, tarball, '/real-user-home'),
+    /runner-owned home/)
+})
