@@ -30,7 +30,9 @@ export async function generateReviewedProfileTemplate(tarball, outputDirectory) 
     await mkdir(vendor, { recursive: true })
     const installedCandidate = path.join(vendor, path.basename(tarball))
     await copyFile(tarball, installedCandidate)
-    await runCommand(installArgs(VERSION, 'web', installedCandidate), env,
+    // 'file:vendor/...' is relative to the DSH Profile cwd. Passing the
+    // absolute temporary Home path would poison every lockfile locator.
+    await runCommand(installArgs(VERSION, 'web', 'file:vendor/' + path.basename(tarball)), env,
       process.cwd(), TIMEOUT)
 
     const lockText = await readFile(path.join(dir, 'pnpm-lock.yaml'), 'utf8')
