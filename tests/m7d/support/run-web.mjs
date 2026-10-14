@@ -349,7 +349,7 @@ export async function runPackedWeb(scenario, kind = 'packed-web') {
     await runCommand(initializeWebProfileArgs(version, profile), env, cwd, INSTALL_TIMEOUT_MS)
     console.log('M7D: installing pinned packed artifact in isolated DSH profile (' + version + ')')
     await runCommand(installArgs(version, profile, tarball), env, cwd, INSTALL_TIMEOUT_MS)
-    profileGraphSha256 = await readProfileGraphEvidence(home, profile, tarball, version, digest)
+    profileGraphSha256 = await readProfileGraphEvidence(home, profile, tarball, version, digest, outputDir)
     testPatch = await createOwnedWebProfilePatch(home)
     if (version !== '0.1.6-alpha.2') {
       await testPatch.setLegacyHmrEnabled(true)

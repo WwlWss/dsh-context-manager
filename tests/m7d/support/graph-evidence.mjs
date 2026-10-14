@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
-import { readFile } from 'node:fs/promises'
+import { readFile, writeFile } from 'node:fs/promises'
+import { summarizeProfileLock } from './profile-graph-audit.mjs'
 import path from 'node:path'
 
 export function sha256Text(text) {
@@ -82,13 +83,24 @@ export function assertReviewedProfileGraph(baselines, {
     'DSH Profile dependency graph drifted from the reviewed installed-package snapshot')
 }
 
-export async function readProfileGraphEvidence(home, profile, tarball, version, candidateSha256) {
+export async function readProfileGraphEvidence(home, profile, tarball, version, candidateSha256, evidenceDir) {
   const lock = await readFile(
     path.join(home, 'profiles', profile, 'pnpm-lock.yaml'), 'utf8')
   const normalized = normalizeProfileLock(lock, tarball, home)
   const fingerprint = sha256Text(normalized)
   const baselines = JSON.parse(await readFile(path.join(process.cwd(),
     'tests', 'm7d', 'profile-graph-baselines.json'), 'utf8'))
+  // Diagnostic only: never approve a changed graph automatically. The
+  // structured audit contains package identities, versions and integrity,
+  // but neither raw registry URLs nor any live filesystem path.
+  const audit = summarizeProfileLock(lock, { version, platform: process.platform })
+  if (evidenceDir) {
+    await writeFile(path.join(evidenceDir, 'profile-graph-audit.json'),
+      JSON.stringify({
+        ...audit, fingerprint, reviewedFingerprint: baselines.graphs?.[process.platform + '/' + version] ?? null,
+        candidateSha256,
+      }, null, 2) + '\n', { mode: 0o600 })
+  }
   if (fingerprint !== baselines.graphs?.[process.platform + '/' + version]) {
     const original = normalizeProfileLock(lock, tarball)
     const leaf = path.basename(home)

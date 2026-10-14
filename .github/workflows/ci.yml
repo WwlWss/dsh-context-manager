@@ -953,7 +953,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: m7d-qualified-${{ matrix.os }}-${{ matrix.version }}
-          path: .artifacts/m7d-evidence/qualification-manifest.json
+          path: |
+            .artifacts/m7d-evidence/qualification-manifest.json
+            .artifacts/m7d-evidence/profile-graph-audit.json
           if-no-files-found: error
           include-hidden-files: true
           retention-days: 30
@@ -965,6 +967,7 @@ jobs:
           path: |
             .artifacts/m7d-evidence/evidence.json
             .artifacts/m7d-evidence/host-preflight.json
+            .artifacts/m7d-evidence/profile-graph-audit.json
             .artifacts/m7d-evidence/m7d-failure.png
           if-no-files-found: ignore
           include-hidden-files: true
