@@ -30,9 +30,9 @@ const inspect = text => summarizeProfileLock(text, {
 test('the real pnpm v9 structural parser rejects ambiguous YAML', () => {
   assert.equal(parseProfileLock(base).lockfileVersion, '9.0')
   assert.throws(() => parseProfileLock(base.replace('snapshots:',
-    'snapshots:\n  zod@4.6.4: {}\n  zod@4.6.4: {}\n'), /duplicate/)
+    'snapshots:\n  zod@4.6.4: {}\n  zod@4.6.4: {}\n')), /duplicate/)
   assert.throws(() => parseProfileLock(base.replace('lockfileVersion: \'9.0\'',
-    "lockfileVersion: '8.0'"), /unsupported/)
+    "lockfileVersion: '8.0'")), /unsupported/)
   assert.throws(() => parseProfileLock('not: a lockfile\n'), /unsupported/)
 })
 
