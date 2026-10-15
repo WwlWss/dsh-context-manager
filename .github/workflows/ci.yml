@@ -890,6 +890,12 @@ jobs:
         run: |
           corepack enable
           corepack prepare pnpm@11.7.0 --activate
+      - name: Install frozen M7D audit parser from repository dev dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          pnpm install --ignore-scripts --frozen-lockfile
+          node -e "import('yaml').then(y => { if (!y.parseDocument) process.exit(1) })"
       - name: Download exact package-job tarball and digest
         uses: actions/download-artifact@v4
         with:
