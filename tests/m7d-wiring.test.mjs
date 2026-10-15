@@ -4,6 +4,7 @@ import { test } from 'node:test'
 
 const runner = readFileSync(new URL('./m7d/support/run-web.mjs', import.meta.url), 'utf8')
 const workflow = readFileSync(new URL('../.github/workflows/ci.yml', import.meta.url), 'utf8')
+  .replace(/\r\n/g, '\n')
 
 test('M7D end-to-end runner must invoke—not only import—critical evidence gates', () => {
   for (const fragment of [
