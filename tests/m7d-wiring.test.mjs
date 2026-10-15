@@ -34,3 +34,25 @@ test('success and failure evidence uploads include only explicitly selected hidd
   assert.doesNotMatch(success, /path: \.artifacts\/\s*$/m)
   assert.doesNotMatch(failure, /path: \.artifacts\/\s*$/m)
 })
+
+test('packed browser lanes install the audited YAML parser before Host preflight', () => {
+  const browser = workflow.split('\n  m7d-packed-web:\n')[1]
+  assert.ok(browser, 'missing real packed-Web qualification job')
+  const before = browser.indexOf('Install frozen M7D audit parser')
+  const preflight = browser.indexOf('Legacy published DSH bare-Web')
+  assert.ok(before > 0 && preflight > before,
+    'pinned root YAML parser must be installed before the native DSH control')
+  assert.match(browser.slice(before, preflight),
+    /pnpm install --ignore-scripts --frozen-lockfile/)
+  assert.match(browser, /node tests\/m7d\/packed-browser\.e2e\.mjs/)
+})
+
+test('independent repeatability is wired into full qualification on both OSes', () => {
+  const repeat = workflow.split('\n  m7d-frozen-repeatability:\n')[1]
+  assert.ok(repeat, 'missing frozen Profile repeatability job')
+  const beforeFull = repeat.split('\n  full-qualification:\n')[0]
+  assert.match(beforeFull, /os: \[ubuntu-latest, windows-latest\]/)
+  assert.match(beforeFull, /attempt: \[1, 2\]/)
+  assert.match(beforeFull, /node tests\/m7d\/frozen-profile-repeatability\.mjs/)
+  assert.match(workflow, /m7d-packed-web, m7d-frozen-repeatability\]/)
+})

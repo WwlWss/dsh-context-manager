@@ -1,6 +1,5 @@
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
-import path from 'node:path'
 import YAML from 'yaml'
 import { parseProfileLock } from './profile-graph-audit.mjs'
 
@@ -17,7 +16,6 @@ function sorted(value) {
     return Object.fromEntries(Object.keys(value).sort().map(k => [k, sorted(value[k])]))
   return value
 }
-const digest = value => sha(Buffer.from(JSON.stringify(sorted(value))), 'sha256')
 const clone = value => structuredClone(value)
 
 function candidateShape(lock, tarballName) {
