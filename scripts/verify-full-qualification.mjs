@@ -22,7 +22,8 @@ export const REQUIRED_FULL_JOB_IDS = Object.freeze([
   "client-presentation-contract",
   "package",
   "dsh-smoke",
-  "m7d-packed-web"
+  "m7d-packed-web",
+  "m7d-frozen-repeatability"
 ])
 
 export function assessFullQualification(needs) {
