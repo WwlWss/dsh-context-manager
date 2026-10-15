@@ -987,11 +987,60 @@ jobs:
           include-hidden-files: true
           retention-days: 3
 
+  m7d-frozen-repeatability:
+    name: M7D frozen Profile repeatability (${{ matrix.os }})
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.draft == false }}
+    needs: package
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22.20.0
+      - name: Prepare fixed pnpm and audit dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          corepack enable
+          corepack prepare pnpm@11.7.0 --activate
+          pnpm install --ignore-scripts --frozen-lockfile
+      - name: Download packed candidate
+        uses: actions/download-artifact@v4
+        with:
+          name: context-manager-packed
+          path: .artifacts
+      - name: Prepare frozen CLI and exact candidate provenance
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          tarballs=(.artifacts/*.tgz)
+          test "${#tarballs[@]}" -eq 1
+          sha256sum --check .artifacts/m7d-packed.sha256
+          cli_dir="$GITHUB_WORKSPACE/.artifacts/m7d-cli"
+          approved="$GITHUB_WORKSPACE/tests/m7d/cli/0.1.5-rc.2"
+          mkdir -p "$cli_dir"
+          cp "$approved/package.json" "$approved/pnpm-lock.yaml" "$approved/pnpm-workspace.yaml" "$cli_dir/"
+          (cd "$cli_dir" && pnpm install --ignore-scripts --frozen-lockfile)
+          echo "M7D_DSH_CLI_ROOT=$cli_dir" >> "$GITHUB_ENV"
+          echo "M7D_TARBALL=$GITHUB_WORKSPACE/.artifacts/$(basename "${tarballs[0]}")" >> "$GITHUB_ENV"
+          echo "M7D_EXPECTED_SHA256=$(awk '{print $1}' .artifacts/m7d-packed.sha256)" >> "$GITHUB_ENV"
+      - name: Verify two independently initialized frozen Web Profiles
+        shell: bash
+        env:
+          M7D_DSH_VERSION: 0.1.5-rc.2
+        run: node tests/m7d/frozen-profile-repeatability.mjs
+
   full-qualification:
     name: dsh-context-manager / full qualification
     # A skipped/failed/cancelled matrix must not satisfy the protected check.
     if: ${{ always() && (github.event_name != 'pull_request' || github.event.pull_request.draft == false) }}
-    needs: [verify, settings-modern, agent-presets-contract, session-preset-contract, prompt-library-contract, prompt-placement-contract, prompt-runtime-contract, prompt-runtime-agent-loop, skill-runtime-contract, skill-policy-runtime-contract, pinned-skill-runtime-contract, skill-policy-agent-loop, pinned-skill-agent-loop, remote-foundation-artifact, remote-foundation-contract, client-foundation-contract, client-presentation-contract, package, dsh-smoke, m7d-packed-web]
+    needs: [verify, settings-modern, agent-presets-contract, session-preset-contract, prompt-library-contract, prompt-placement-contract, prompt-runtime-contract, prompt-runtime-agent-loop, skill-runtime-contract, skill-policy-runtime-contract, pinned-skill-runtime-contract, skill-policy-agent-loop, pinned-skill-agent-loop, remote-foundation-artifact, remote-foundation-contract, client-foundation-contract, client-presentation-contract, package, dsh-smoke, m7d-packed-web, m7d-frozen-repeatability]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
