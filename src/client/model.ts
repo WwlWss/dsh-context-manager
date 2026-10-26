@@ -998,7 +998,7 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
       const protocol = await invokeRead(() => currentRemote.protocol())
       if (!currentOwner()) return staleResult()
       if (!protocol.ok) {
-        const surface = failedSurface(kind === 'list' ? state.getSnapshot().resources.list : getKeyed(kind, id) ?? idleSurface(), protocol.error)
+        const surface = failedSurface<unknown>((kind === 'list' ? state.getSnapshot().resources.list : getKeyed(kind, id) ?? idleSurface()) as ContextManagerClientSurface<unknown>, protocol.error)
         if (kind === 'list') publishList(surface as ContextManagerClientSurface<readonly ContextManagerRemotePromptResourceListItem[]>)
         else publishKeyed(kind, id, surface as ContextManagerClientSurface<KeyedValue>)
         return lazyResult('completed')
@@ -1012,7 +1012,7 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
         const before = await invokeRead(() => currentRemote.changes())
         if (!currentOwner()) return staleResult()
         if (!before.ok) {
-          const surface = failedSurface(kind === 'list' ? state.getSnapshot().resources.list : getKeyed(kind, id) ?? idleSurface(), before.error)
+          const surface = failedSurface<unknown>((kind === 'list' ? state.getSnapshot().resources.list : getKeyed(kind, id) ?? idleSurface()) as ContextManagerClientSurface<unknown>, before.error)
           if (kind === 'list') publishList(surface as ContextManagerClientSurface<readonly ContextManagerRemotePromptResourceListItem[]>)
           else publishKeyed(kind, id, surface as ContextManagerClientSurface<KeyedValue>)
           return lazyResult('completed')
@@ -1035,7 +1035,7 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
         adoptChanges(attachment, authority, before.value)
         if (!currentOwner()) return staleResult()
         if (kind === 'list') publishList(loadingSurface(state.getSnapshot().resources.list))
-        else publishKeyed(kind, id, loadingSurface(getKeyed(kind, id) ?? idleSurface()))
+        else publishKeyed(kind, id, loadingSurface<KeyedValue>(getKeyed(kind, id) ?? idleSurface<KeyedValue>()))
         if (!currentOwner()) return staleResult()
         const read: ReadOutcome<unknown> = await (kind === 'list'
           ? invokeBusinessRead(() => currentRemote.listPromptResources())
@@ -1048,7 +1048,7 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
         const after = await invokeRead(() => currentRemote.changes())
         if (!currentOwner()) return staleResult()
         if (!after.ok) {
-          const surface = failedSurface(kind === 'list' ? state.getSnapshot().resources.list : getKeyed(kind, id) ?? idleSurface(), after.error)
+          const surface = failedSurface<unknown>((kind === 'list' ? state.getSnapshot().resources.list : getKeyed(kind, id) ?? idleSurface()) as ContextManagerClientSurface<unknown>, after.error)
           if (kind === 'list') publishList(surface as ContextManagerClientSurface<readonly ContextManagerRemotePromptResourceListItem[]>)
           else publishKeyed(kind, id, surface as ContextManagerClientSurface<KeyedValue>)
           return lazyResult('completed')
@@ -1079,7 +1079,7 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
         ) continue
         const surface = read.ok
           ? readySurface(read.value)
-          : failedSurface(kind === 'list' ? state.getSnapshot().resources.list : getKeyed(kind, id) ?? idleSurface(), read.error)
+          : failedSurface<unknown>((kind === 'list' ? state.getSnapshot().resources.list : getKeyed(kind, id) ?? idleSurface()) as ContextManagerClientSurface<unknown>, read.error)
         if (kind === 'list') {
           publishList(surface as ContextManagerClientSurface<readonly ContextManagerRemotePromptResourceListItem[]>)
           if (read.ok) {
