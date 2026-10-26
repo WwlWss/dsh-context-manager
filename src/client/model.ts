@@ -1008,6 +1008,7 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
         return lazyResult('completed')
       }
       if (protocol.value.apiVersion !== CONTEXT_MANAGER_REMOTE_API_VERSION) {
+        clearAuthority(undefined, { status: 'incompatible', expected: CONTEXT_MANAGER_REMOTE_API_VERSION, actual: protocol.value.apiVersion })
         return lazyResult('incompatible')
       }
       let needsAuthorityRestart = false
@@ -1025,6 +1026,7 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
         if (transition.status === 'superseded') return staleResult()
         if (transition.status === 'changed') {
           authority = transition.authority
+          if ((keyedOwners.get(key) ?? 0) > request) return staleResult()
           keyedOwners.set(key, request)
           needsAuthorityRestart = true
           if (!baselineRecoveryScheduled) {
@@ -1061,6 +1063,7 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
         if (afterTransition.status === 'superseded') return staleResult()
         if (afterTransition.status === 'changed') {
           authority = afterTransition.authority
+          if ((keyedOwners.get(key) ?? 0) > request) return staleResult()
           keyedOwners.set(key, request)
           needsAuthorityRestart = true
           if (!baselineRecoveryScheduled) {
