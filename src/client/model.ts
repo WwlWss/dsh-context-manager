@@ -997,6 +997,7 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
     const staleResult = (): ContextManagerClientLazyReadResult => (
       disposed ? lazyResult('disposed') : !isAttachmentCurrent(attachment) ? lazyResult('detached') : lazyResult('superseded')
     )
+    try {
     for (let restart = 0; restart < MAX_AUTHORITY_RESTARTS; restart += 1) {
       if (!currentOwner()) return staleResult()
       const protocol = await invokeRead(() => currentRemote.protocol())
@@ -1088,15 +1089,15 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
           ? readySurface(read.value)
           : failedSurface<unknown>((kind === 'list' ? state.getSnapshot().resources.list : getKeyed(kind, id) ?? idleSurface()) as ContextManagerClientSurface<unknown>, read.error)
         if (kind === 'list') {
-          publishList(surface as ContextManagerClientSurface<readonly ContextManagerRemotePromptResourceListItem[]>)
-          if (read.ok) {
+          if (!read.ok) publishList(surface as ContextManagerClientSurface<readonly ContextManagerRemotePromptResourceListItem[]>)
+          else {
             const entries = read.value as readonly ContextManagerRemotePromptResourceListItem[]
             const revisions = new Map(entries.filter(x => x.status === 'usable').map(x => [x.id, x.revision]))
             const snapshot = state.getSnapshot()
             state.set({
               ...snapshot,
               resources: {
-                ...snapshot.resources,
+                list: surface as ContextManagerClientSurface<readonly ContextManagerRemotePromptResourceListItem[]>,
                 documents: mapSurfaces(snapshot.resources.documents, document => {
                   const record = document.data
                   return record !== undefined && revisions.get(record.id) !== record.revision
@@ -1119,6 +1120,11 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
     if (kind === 'list') publishList(failedSurface(state.getSnapshot().resources.list, error))
     else publishKeyed(kind, id, failedSurface(getKeyed(kind, id) ?? idleSurface(), error))
     return lazyResult('completed')
+    } finally {
+      // In-flight owner tokens must not accumulate for evicted resource IDs.
+      // An older completion may never delete a newer same-key owner.
+      if (keyedOwners.get(key) === request) keyedOwners.delete(key)
+    }
   }
 
   const capturePromptResourceReadStamp = (
