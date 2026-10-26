@@ -2000,6 +2000,96 @@ test('lazy protocol incompatibility clears stale Resource write observations', a
   model.dispose()
 })
 
+
+test('P1 regression: lazy before-bracket Host change recovers baseline despite synchronous same-key supersession', async () => {
+  const { model, remote, detach } = await attachAndReady()
+  remote.defaultChanges = changes('host-b')
+  let successor: ReturnType<typeof model.loadPromptResource> | undefined
+  let unsubscribe = () => {}
+  unsubscribe = model.state.subscribe(() => {
+    const snapshot = model.state.getSnapshot()
+    if (snapshot.instanceId !== 'host-b' || snapshot.profiles.status !== 'idle') return
+    unsubscribe()
+    successor = model.loadPromptResource('alpha')
+  })
+  const old = await model.loadPromptResource('alpha')
+  assert.equal(old.status, 'superseded')
+  assert.ok(successor)
+  await successor
+  await waitFor(() => {
+    const snapshot = model.state.getSnapshot()
+    return snapshot.instanceId === 'host-b'
+      && snapshot.protocol.status === 'compatible'
+      && snapshot.profiles.status === 'ready'
+      && snapshot.presets.status === 'ready'
+      && snapshot.promptPlacement.status === 'ready'
+  }, 'baseline recovery after synchronous lazy supersession')
+  unsubscribe()
+  detach()
+  model.dispose()
+})
+
+test('P1 regression: lazy after-bracket Host change still schedules baseline recovery on same-key reentrancy', async () => {
+  const { model, remote, detach } = await attachAndReady()
+  remote.defaultChanges = changes('host-b')
+  remote.changesSteps.push(async () => ok(changes('host-a')))
+  let successor: ReturnType<typeof model.loadPromptResource> | undefined
+  let unsubscribe = () => {}
+  unsubscribe = model.state.subscribe(() => {
+    const snapshot = model.state.getSnapshot()
+    if (snapshot.instanceId !== 'host-b' || snapshot.profiles.status !== 'idle') return
+    unsubscribe()
+    successor = model.loadPromptResource('alpha')
+  })
+  const old = await model.loadPromptResource('alpha')
+  assert.equal(old.status, 'superseded')
+  assert.ok(successor)
+  await successor
+  await waitFor(() => {
+    const snapshot = model.state.getSnapshot()
+    return snapshot.instanceId === 'host-b'
+      && snapshot.profiles.status === 'ready'
+      && snapshot.presets.status === 'ready'
+      && snapshot.promptPlacement.status === 'ready'
+  }, 'baseline recovery when after-bracket discovers Host')
+  unsubscribe()
+  detach()
+  model.dispose()
+})
+
+test('P2 regression: delayed lazy incompatible result cannot wipe a newer compatible baseline proof', async () => {
+  const { model, remote, detach } = await attachAndReady()
+  const staleProtocol = deferred<RemoteResult<ContextManagerRemoteProtocol>>()
+  const before = remote.calls.protocol
+  remote.protocolSteps.push(() => staleProtocol.promise)
+  const old = model.loadPromptResource('alpha')
+  await waitFor(() => remote.calls.protocol === before + 1, 'old lazy protocol request')
+  await model.reconcile(['profiles'])
+  assert.equal(model.state.getSnapshot().protocol.status, 'compatible')
+  staleProtocol.resolve(ok({ apiVersion: CONTEXT_MANAGER_REMOTE_API_VERSION + 1 }))
+  const oldResult = await old
+  assert.notEqual(oldResult.status, 'incompatible')
+  assert.equal(model.state.getSnapshot().protocol.status, 'compatible')
+  assert.equal(model.state.getSnapshot().profiles.status, 'ready')
+  assert.equal(model.getProfileRevision(), 7)
+  detach()
+  model.dispose()
+})
+
+test('P2 regression: lazy incompatible must be confirmed by guarded global protocol proof', async () => {
+  const { model, remote, detach } = await attachAndReady()
+  await model.loadPromptResource('alpha')
+  const before = remote.calls.protocol
+  remote.defaultProtocol = { apiVersion: CONTEXT_MANAGER_REMOTE_API_VERSION + 1 }
+  const result = await model.loadPromptResource('alpha')
+  assert.equal(result.status, 'incompatible')
+  assert.equal(remote.calls.protocol, before + 2)
+  assert.equal(model.state.getSnapshot().protocol.status, 'incompatible')
+  assert.equal(model.capturePromptResourceReadStamp('alpha', 'document'), undefined)
+  detach()
+  model.dispose()
+})
+
 test('the baseline surface list stays explicit and mutation-free', () => {
   assert.deepEqual(CONTEXT_MANAGER_BASELINE_SURFACES, [
     'profiles',
