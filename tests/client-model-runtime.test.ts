@@ -17,6 +17,12 @@ import {
   type ContextManagerRemoteProtocol,
   type ContextManagerRemoteResult,
   type ContextManagerRemoteSkillMode,
+  type ContextManagerRemotePromptResource,
+  type ContextManagerRemotePromptResourceListItem,
+  type ContextManagerRemoteSessionPresetIdentity,
+  type ContextManagerRemotePromptRuntimeInspection,
+  type ContextManagerRemoteSkillRuntimeInspection,
+  type ContextManagerRemotePinnedSkillInspection,
 } from '../src/remote/types.js'
 import {
   CONTEXT_MANAGER_BASELINE_SURFACES,
@@ -149,6 +155,12 @@ class ScriptedRemote implements ContextManagerClientBusinessRemote {
     presets: 0,
     promptPlacement: 0,
     profileMutation: 0,
+    listPromptResources: 0,
+    getPromptResource: 0,
+    sessionPreset: 0,
+    promptRuntime: 0,
+    skillRuntime: 0,
+    pinnedRuntime: 0,
   }
 
   readonly profileMutationCalls: Array<{
@@ -203,6 +215,41 @@ class ScriptedRemote implements ContextManagerClientBusinessRemote {
   promptPlacement(): Promise<RemoteResult<ContextManagerRemotePromptPlacementCapability>> {
     this.calls.promptPlacement += 1
     return this.take(this.placementSteps, this.defaultPlacement)
+  }
+
+  resourceList: readonly ContextManagerRemotePromptResourceListItem[] = [{ status: 'usable', id: 'alpha', name: 'Alpha', revision: 5 }]
+  resource: ContextManagerRemotePromptResource = { id: 'alpha', name: 'Alpha', content: 'body', revision: 5 }
+  session: ContextManagerRemoteSessionPresetIdentity = { status: 'known', sessionId: 's', presetId: null }
+  prompt: ContextManagerRemotePromptRuntimeInspection = { status: 'runtime-unavailable' }
+  skill: ContextManagerRemoteSkillRuntimeInspection = { status: 'runtime-unavailable' }
+  pinned: ContextManagerRemotePinnedSkillInspection = { status: 'runtime-unavailable' }
+  readonly resourceSteps: Array<Step<ContextManagerRemoteResult<ContextManagerRemotePromptResource>>> = []
+  readonly listSteps: Array<Step<ContextManagerRemoteResult<readonly ContextManagerRemotePromptResourceListItem[]>>> = []
+  readonly sessionSteps: Array<Step<ContextManagerRemoteSessionPresetIdentity>> = []
+
+  listPromptResources() {
+    this.calls.listPromptResources += 1
+    return this.take(this.listSteps, businessOk(this.resourceList))
+  }
+  getPromptResource(_id: string) {
+    this.calls.getPromptResource += 1
+    return this.take(this.resourceSteps, businessOk(this.resource))
+  }
+  sessionPreset(_id: string) {
+    this.calls.sessionPreset += 1
+    return this.take(this.sessionSteps, this.session)
+  }
+  inspectPromptRuntime(_id: string) {
+    this.calls.promptRuntime += 1
+    return Promise.resolve(ok(this.prompt))
+  }
+  inspectSkillRuntime(_id: string) {
+    this.calls.skillRuntime += 1
+    return Promise.resolve(ok(this.skill))
+  }
+  inspectPinnedSkillRuntime(_id: string) {
+    this.calls.pinnedRuntime += 1
+    return Promise.resolve(ok(this.pinned))
   }
 
   private mutate(
@@ -1789,6 +1836,79 @@ test('all profile mutation wrappers forward the exact arguments and immutable ba
   }
 
   detach()
+  model.dispose()
+})
+
+
+test('lazy resource directory and document reads keep revision and content separate', async () => {
+  const { model, remote } = await attachAndReady()
+  assert.equal(remote.calls.listPromptResources, 0)
+  assert.equal(remote.calls.getPromptResource, 0)
+  assert.equal((await model.loadPromptResourceList()).status, 'completed')
+  assert.equal(remote.calls.getPromptResource, 0)
+  assert.deepEqual(model.capturePromptResourceReadStamp('alpha', 'list'), {
+    instanceId: 'host-a', resourceId: 'alpha', revision: 5, source: 'list',
+  })
+  assert.equal((await model.loadPromptResource('alpha')).status, 'completed')
+  assert.equal(model.state.getSnapshot().resources.documents.get('alpha')?.data?.content, 'body')
+  assert.equal(model.capturePromptResourceReadStamp('alpha', 'document')?.revision, 5)
+  model.dispose()
+})
+
+test('resource business failures remain distinct from transport failures', async () => {
+  const { model, remote } = await attachAndReady()
+  remote.resourceSteps.push(async () => ok(businessFail('prompt-resource-not-found')))
+  await model.loadPromptResource('missing')
+  assert.deepEqual(model.state.getSnapshot().resources.documents.get('missing')?.error?.kind, 'business')
+  remote.resourceSteps.push(async () => fail())
+  await model.loadPromptResource('missing')
+  assert.deepEqual(model.state.getSnapshot().resources.documents.get('missing')?.error?.kind, 'remote')
+  model.dispose()
+})
+
+test('newer same-key requests own publication while different diagnostic keys remain isolated', async () => {
+  const { model, remote } = await attachAndReady()
+  const old = deferred<RemoteResult<ContextManagerRemoteResult<ContextManagerRemotePromptResource>>>()
+  remote.resourceSteps.push(() => old.promise)
+  const first = model.loadPromptResource('alpha')
+  await waitFor(() => remote.calls.getPromptResource === 1, 'first keyed request')
+  remote.resource = { id: 'alpha', name: 'New', content: 'new', revision: 6 }
+  const second = model.loadPromptResource('alpha')
+  await waitFor(() => remote.calls.getPromptResource === 2, 'second keyed request')
+  await second
+  old.resolve(ok(businessOk({ id: 'alpha', name: 'Old', content: 'old', revision: 5 })))
+  assert.equal((await first).status, 'superseded')
+  assert.equal(model.state.getSnapshot().resources.documents.get('alpha')?.data?.content, 'new')
+  assert.equal((await model.loadSessionPreset('s')).status, 'completed')
+  assert.deepEqual(model.state.getSnapshot().diagnostics.sessions.get('s')?.data, {
+    status: 'known', sessionId: 's', presetId: null,
+  })
+  model.dispose()
+})
+
+test('resource cursor invalidation stales content but does not contaminate runtime state', async () => {
+  const { model, remote } = await attachAndReady()
+  await model.loadPromptResourceList()
+  await model.loadPromptResource('alpha')
+  await model.loadAgentSkillRuntime('a')
+  remote.defaultChanges = { ...remote.defaultChanges, generation: 2, promptResources: 1 }
+  await model.loadSessionPreset('s')
+  assert.equal(model.state.getSnapshot().resources.documents.get('alpha')?.stale, true)
+  assert.equal(model.state.getSnapshot().diagnostics.skills.get('a')?.stale, false)
+  assert.equal(model.capturePromptResourceReadStamp('alpha', 'document'), undefined)
+  model.dispose()
+})
+
+test('keyed reads cannot publish after detach', async () => {
+  const { model, remote, detach } = await attachAndReady()
+  const gate = deferred<RemoteResult<ContextManagerRemoteSessionPresetIdentity>>()
+  remote.sessionSteps.push(() => gate.promise)
+  const request = model.loadSessionPreset('s')
+  await waitFor(() => remote.calls.sessionPreset === 1, 'session request')
+  detach()
+  gate.resolve(ok({ status: 'known', sessionId: 's', presetId: 'obsolete' }))
+  assert.equal((await request).status, 'detached')
+  assert.equal(model.state.getSnapshot().diagnostics.sessions.get('s'), undefined)
   model.dispose()
 })
 
