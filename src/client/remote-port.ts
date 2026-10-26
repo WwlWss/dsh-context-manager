@@ -12,6 +12,12 @@ import type {
   ContextManagerRemoteProtocol,
   ContextManagerRemoteResult,
   ContextManagerRemoteSkillMode,
+  ContextManagerRemotePromptResource,
+  ContextManagerRemotePromptResourceListItem,
+  ContextManagerRemoteSessionPresetIdentity,
+  ContextManagerRemotePromptRuntimeInspection,
+  ContextManagerRemoteSkillRuntimeInspection,
+  ContextManagerRemotePinnedSkillInspection,
 } from '../remote/types.js'
 
 export interface ContextManagerClientReadRemote {
@@ -20,6 +26,18 @@ export interface ContextManagerClientReadRemote {
   profiles(): Promise<RemoteResult<ContextManagerRemoteProfilesSnapshot>>
   presets(): Promise<RemoteResult<ContextManagerRemotePresetSnapshot>>
   promptPlacement(): Promise<RemoteResult<ContextManagerRemotePromptPlacementCapability>>
+}
+
+export interface ContextManagerClientResourceReadRemote {
+  listPromptResources(): Promise<RemoteResult<ContextManagerRemoteResult<readonly ContextManagerRemotePromptResourceListItem[]>>>
+  getPromptResource(id: string): Promise<RemoteResult<ContextManagerRemoteResult<ContextManagerRemotePromptResource>>>
+}
+
+export interface ContextManagerClientRuntimeReadRemote {
+  sessionPreset(sessionId: string): Promise<RemoteResult<ContextManagerRemoteSessionPresetIdentity>>
+  inspectPromptRuntime(agentId: string): Promise<RemoteResult<ContextManagerRemotePromptRuntimeInspection>>
+  inspectSkillRuntime(agentId: string): Promise<RemoteResult<ContextManagerRemoteSkillRuntimeInspection>>
+  inspectPinnedSkillRuntime(agentId: string): Promise<RemoteResult<ContextManagerRemotePinnedSkillInspection>>
 }
 
 type ProfileMutationResult = Promise<
@@ -44,4 +62,7 @@ export interface ContextManagerClientProfileMutationRemote {
 }
 
 export interface ContextManagerClientBusinessRemote
-  extends ContextManagerClientReadRemote, ContextManagerClientProfileMutationRemote {}
+  extends ContextManagerClientReadRemote,
+    ContextManagerClientResourceReadRemote,
+    ContextManagerClientRuntimeReadRemote,
+    ContextManagerClientProfileMutationRemote {}

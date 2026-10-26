@@ -3,6 +3,13 @@ import type {
   ContextManagerRemotePresetSnapshot,
   ContextManagerRemoteProfilesSnapshot,
   ContextManagerRemotePromptPlacementCapability,
+  ContextManagerRemotePromptResource,
+  ContextManagerRemotePromptResourceListItem,
+  ContextManagerRemoteSessionPresetIdentity,
+  ContextManagerRemotePromptRuntimeInspection,
+  ContextManagerRemoteSkillRuntimeInspection,
+  ContextManagerRemotePinnedSkillInspection,
+  ContextManagerRemoteErrorCode,
 } from '../remote/types.js'
 
 export type ContextManagerClientBaselineSurface =
@@ -11,6 +18,11 @@ export type ContextManagerClientBaselineSurface =
   | 'promptPlacement'
 
 export type ContextManagerClientReadError =
+  | {
+      readonly kind: 'business'
+      readonly code: ContextManagerRemoteErrorCode
+      readonly message: string
+    }
   | {
       readonly kind: 'remote'
       readonly code: string
@@ -61,6 +73,29 @@ export type ContextManagerClientSyncState =
       readonly error: ContextManagerClientReadError
     }
 
+export interface ContextManagerClientResourceState {
+  readonly list: ContextManagerClientSurface<readonly ContextManagerRemotePromptResourceListItem[]>
+  readonly documents: ReadonlyMap<string, ContextManagerClientSurface<ContextManagerRemotePromptResource>>
+}
+
+export interface ContextManagerClientDiagnosticState {
+  readonly sessions: ReadonlyMap<string, ContextManagerClientSurface<ContextManagerRemoteSessionPresetIdentity>>
+  readonly prompts: ReadonlyMap<string, ContextManagerClientSurface<ContextManagerRemotePromptRuntimeInspection>>
+  readonly skills: ReadonlyMap<string, ContextManagerClientSurface<ContextManagerRemoteSkillRuntimeInspection>>
+  readonly pinned: ReadonlyMap<string, ContextManagerClientSurface<ContextManagerRemotePinnedSkillInspection>>
+}
+
+export interface ContextManagerClientPromptResourceReadStamp {
+  readonly instanceId: string
+  readonly resourceId: string
+  readonly revision: number
+  readonly source: 'list' | 'document'
+}
+
+export type ContextManagerClientLazyReadResult = {
+  readonly status: 'completed' | 'superseded' | 'detached' | 'disposed' | 'incompatible'
+}
+
 export interface ContextManagerClientSnapshot {
   readonly attachment: 'detached' | 'attached'
   readonly protocol: ContextManagerClientProtocolState
@@ -70,6 +105,8 @@ export interface ContextManagerClientSnapshot {
   readonly profiles: ContextManagerClientSurface<ContextManagerRemoteProfilesSnapshot>
   readonly presets: ContextManagerClientSurface<ContextManagerRemotePresetSnapshot>
   readonly promptPlacement: ContextManagerClientSurface<ContextManagerRemotePromptPlacementCapability>
+  readonly resources: ContextManagerClientResourceState
+  readonly diagnostics: ContextManagerClientDiagnosticState
 }
 
 export type ContextManagerClientReconcileResult =
