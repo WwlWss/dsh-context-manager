@@ -10,6 +10,13 @@ import {
   type ContextManagerRemotePresetSnapshot,
   type ContextManagerRemoteProfilesSnapshot,
   type ContextManagerRemotePromptPlacementCapability,
+  type ContextManagerRemoteResult,
+  type ContextManagerRemotePromptResource,
+  type ContextManagerRemotePromptResourceListItem,
+  type ContextManagerRemoteSessionPresetIdentity,
+  type ContextManagerRemotePromptRuntimeInspection,
+  type ContextManagerRemoteSkillRuntimeInspection,
+  type ContextManagerRemotePinnedSkillInspection,
 } from '../remote/types.js'
 import type {
   ContextManagerClientBaselineSurface,
@@ -17,12 +24,15 @@ import type {
   ContextManagerClientReconcileResult,
   ContextManagerClientSnapshot,
   ContextManagerClientSurface,
+  ContextManagerClientLazyReadResult,
+  ContextManagerClientPromptResourceReadStamp,
 } from './model-types.js'
 import {
   createContextManagerProfileMutationController,
   type ContextManagerClientMutationController,
 } from './mutation-controller.js'
 import type { ContextManagerClientProfileMutationBasis } from './mutation-types.js'
+import { mapSurfaces, setBoundedEntry } from './keyed-cache.js'
 import type {
   ContextManagerClientBusinessRemote,
   ContextManagerClientReadRemote,
@@ -76,6 +86,13 @@ type ProtocolGuardOutcome =
 export interface ContextManagerClientModel {
   readonly state: SnapshotStore<ContextManagerClientSnapshot>
   readonly mutations: ContextManagerClientMutationController
+  loadPromptResourceList(): Promise<ContextManagerClientLazyReadResult>
+  loadPromptResource(id: string): Promise<ContextManagerClientLazyReadResult>
+  loadSessionPreset(id: string): Promise<ContextManagerClientLazyReadResult>
+  loadAgentPromptRuntime(id: string): Promise<ContextManagerClientLazyReadResult>
+  loadAgentSkillRuntime(id: string): Promise<ContextManagerClientLazyReadResult>
+  loadAgentPinnedRuntime(id: string): Promise<ContextManagerClientLazyReadResult>
+  capturePromptResourceReadStamp(id: string, source: 'list' | 'document'): ContextManagerClientPromptResourceReadStamp | undefined
 
   attach(remote: ContextManagerClientBusinessRemote): () => void
   refresh(): Promise<ContextManagerClientReconcileResult>
@@ -102,6 +119,8 @@ function initialSnapshot(): ContextManagerClientSnapshot {
     profiles: idleSurface(),
     presets: idleSurface(),
     promptPlacement: idleSurface(),
+    resources: { list: idleSurface(), documents: new Map() },
+    diagnostics: { sessions: new Map(), prompts: new Map(), skills: new Map(), pinned: new Map() },
   }
 }
 
@@ -216,6 +235,41 @@ function detachedSurface<T>(
   }
 }
 
+type KeyedKind = 'document' | 'session' | 'prompt' | 'skill' | 'pinned'
+type KeyedValue = ContextManagerRemotePromptResource
+  | ContextManagerRemoteSessionPresetIdentity
+  | ContextManagerRemotePromptRuntimeInspection
+  | ContextManagerRemoteSkillRuntimeInspection
+  | ContextManagerRemotePinnedSkillInspection
+
+function staleMap<T>(
+  entries: ReadonlyMap<string, ContextManagerClientSurface<T>>,
+): ReadonlyMap<string, ContextManagerClientSurface<T>> {
+  return mapSurfaces(entries, markSurfaceStale)
+}
+
+function detachMap<T>(
+  entries: ReadonlyMap<string, ContextManagerClientSurface<T>>,
+): ReadonlyMap<string, ContextManagerClientSurface<T>> {
+  return mapSurfaces(entries, detachedSurface)
+}
+
+async function invokeBusinessRead<T>(
+  call: () => Promise<RemoteResult<ContextManagerRemoteResult<T>>>,
+): Promise<ReadOutcome<T>> {
+  const transport = await invokeRead(call)
+  if (!transport.ok) return transport
+  if (transport.value.ok) return { ok: true, value: transport.value.value }
+  return {
+    ok: false,
+    error: {
+      kind: 'business',
+      code: transport.value.error.code,
+      message: transport.value.error.message,
+    },
+  }
+}
+
 export function createContextManagerClientModel(): ContextManagerClientModel {
   const state = createSnapshotStore<ContextManagerClientSnapshot>(initialSnapshot())
 
@@ -239,6 +293,9 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
   let latestCompletedRun = 0
   let latestCompletedError: ContextManagerClientReadError | undefined
   let protocolOwnerRun = 0
+  let keyedRequestSequence = 0
+  const keyedOwners = new Map<string, number>()
+  let baselineRecoveryScheduled = false
 
   const isAttachmentCurrent = (epoch: number): boolean => (
     !disposed && remote !== undefined && attachmentEpoch === epoch
@@ -379,6 +436,7 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
     latestCompletedError = undefined
     protocolOwnerRun = 0
     resetSurfaceOwnership()
+    keyedOwners.clear()
     const current = state.getSnapshot()
     state.set({
       ...current,
@@ -388,6 +446,8 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
       profiles: idleSurface(),
       presets: idleSurface(),
       promptPlacement: idleSurface(),
+      resources: { list: idleSurface(), documents: new Map() },
+      diagnostics: { sessions: new Map(), prompts: new Map(), skills: new Map(), pinned: new Map() },
     })
     resetMutationController()
   }
@@ -445,6 +505,17 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
       promptPlacement: sameInstance && previous.runtime !== next.runtime
         ? markSurfaceStale(current.promptPlacement)
         : current.promptPlacement,
+      resources: sameInstance && previous.promptResources !== next.promptResources
+        ? { list: markSurfaceStale(current.resources.list), documents: staleMap(current.resources.documents) }
+        : current.resources,
+      diagnostics: sameInstance && previous.runtime !== next.runtime
+        ? {
+            sessions: staleMap(current.diagnostics.sessions),
+            prompts: staleMap(current.diagnostics.prompts),
+            skills: staleMap(current.diagnostics.skills),
+            pinned: staleMap(current.diagnostics.pinned),
+          }
+        : current.diagnostics,
     })
   }
 
@@ -855,6 +926,216 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
     }
   }
 
+  // Lazy reads use B1-1's attachment/authority and change-hint source but do not
+  // take ownership of baseline reconcile runs or the global sync indicator.
+  const lazyResult = (status: ContextManagerClientLazyReadResult['status']): ContextManagerClientLazyReadResult => ({ status })
+  const keyOf = (kind: string, id: string): string => JSON.stringify([kind, id])
+  const cursorForKind = (kind: 'list' | KeyedKind, c: ContextManagerRemoteChangeSnapshot): number => (
+    kind === 'list' || kind === 'document' ? c.promptResources : c.runtime
+  )
+
+  const publishList = (surface: ContextManagerClientSurface<readonly ContextManagerRemotePromptResourceListItem[]>): void => {
+    const current = state.getSnapshot()
+    state.set({ ...current, resources: { ...current.resources, list: surface } })
+  }
+
+  const publishKeyed = (
+    kind: KeyedKind,
+    id: string,
+    surface: ContextManagerClientSurface<KeyedValue>,
+  ): void => {
+    const current = state.getSnapshot()
+    if (kind === 'document') {
+      state.set({
+        ...current,
+        resources: {
+          ...current.resources,
+          documents: setBoundedEntry(current.resources.documents, id, surface as ContextManagerClientSurface<ContextManagerRemotePromptResource>, 32),
+        },
+      })
+      return
+    }
+    const family = kind === 'session' ? 'sessions'
+      : kind === 'prompt' ? 'prompts'
+      : kind === 'skill' ? 'skills' : 'pinned'
+    state.set({
+      ...current,
+      diagnostics: {
+        ...current.diagnostics,
+        [family]: setBoundedEntry(current.diagnostics[family], id, surface as never, 64),
+      },
+    })
+  }
+
+  const getKeyed = (kind: KeyedKind, id: string): ContextManagerClientSurface<KeyedValue> | undefined => {
+    const snapshot = state.getSnapshot()
+    switch (kind) {
+      case 'document': return snapshot.resources.documents.get(id)
+      case 'session': return snapshot.diagnostics.sessions.get(id)
+      case 'prompt': return snapshot.diagnostics.prompts.get(id)
+      case 'skill': return snapshot.diagnostics.skills.get(id)
+      case 'pinned': return snapshot.diagnostics.pinned.get(id)
+    }
+  }
+
+  const runLazy = async (kind: 'list' | KeyedKind, id: string): Promise<ContextManagerClientLazyReadResult> => {
+    if (disposed) return lazyResult('disposed')
+    if (remote === undefined) return lazyResult('detached')
+    const attachment = attachmentEpoch
+    let authority = authorityEpoch
+    const currentRemote = remote
+    const key = keyOf(kind, id)
+    const request = ++keyedRequestSequence
+    keyedOwners.set(key, request)
+    const currentOwner = (): boolean => (
+      isAuthorityCurrent(attachment, authority) && keyedOwners.get(key) === request
+    )
+    const staleResult = (): ContextManagerClientLazyReadResult => (
+      disposed ? lazyResult('disposed') : !isAttachmentCurrent(attachment) ? lazyResult('detached') : lazyResult('superseded')
+    )
+    for (let restart = 0; restart < MAX_AUTHORITY_RESTARTS; restart += 1) {
+      if (!currentOwner()) return staleResult()
+      const protocol = await invokeRead(() => currentRemote.protocol())
+      if (!currentOwner()) return staleResult()
+      if (!protocol.ok) {
+        const surface = failedSurface(kind === 'list' ? state.getSnapshot().resources.list : getKeyed(kind, id) ?? idleSurface(), protocol.error)
+        if (kind === 'list') publishList(surface as ContextManagerClientSurface<readonly ContextManagerRemotePromptResourceListItem[]>)
+        else publishKeyed(kind, id, surface as ContextManagerClientSurface<KeyedValue>)
+        return lazyResult('completed')
+      }
+      if (protocol.value.apiVersion !== CONTEXT_MANAGER_REMOTE_API_VERSION) {
+        clearAuthority(undefined, { status: 'incompatible', expected: CONTEXT_MANAGER_REMOTE_API_VERSION, actual: protocol.value.apiVersion })
+        return lazyResult('incompatible')
+      }
+      let needsAuthorityRestart = false
+      for (let attempt = 0; attempt < MAX_STABILIZATION_ATTEMPTS; attempt += 1) {
+        if (!currentOwner()) return staleResult()
+        const before = await invokeRead(() => currentRemote.changes())
+        if (!currentOwner()) return staleResult()
+        if (!before.ok) {
+          const surface = failedSurface(kind === 'list' ? state.getSnapshot().resources.list : getKeyed(kind, id) ?? idleSurface(), before.error)
+          if (kind === 'list') publishList(surface as ContextManagerClientSurface<readonly ContextManagerRemotePromptResourceListItem[]>)
+          else publishKeyed(kind, id, surface as ContextManagerClientSurface<KeyedValue>)
+          return lazyResult('completed')
+        }
+        const transition = transitionAuthority(attachment, authority, before.value.instanceId)
+        if (transition.status === 'superseded') return staleResult()
+        if (transition.status === 'changed') {
+          authority = transition.authority
+          keyedOwners.set(key, request)
+          needsAuthorityRestart = true
+          if (!baselineRecoveryScheduled) {
+            baselineRecoveryScheduled = true
+            void Promise.resolve().then(async () => {
+              baselineRecoveryScheduled = false
+              if (isAttachmentCurrent(attachment)) await reconcile(CONTEXT_MANAGER_BASELINE_SURFACES)
+            })
+          }
+          break
+        }
+        adoptChanges(attachment, authority, before.value)
+        if (!currentOwner()) return staleResult()
+        if (kind === 'list') publishList(loadingSurface(state.getSnapshot().resources.list))
+        else publishKeyed(kind, id, loadingSurface(getKeyed(kind, id) ?? idleSurface()))
+        if (!currentOwner()) return staleResult()
+        const read: ReadOutcome<unknown> = await (kind === 'list'
+          ? invokeBusinessRead(() => currentRemote.listPromptResources())
+          : kind === 'document' ? invokeBusinessRead(() => currentRemote.getPromptResource(id))
+          : kind === 'session' ? invokeRead(() => currentRemote.sessionPreset(id))
+          : kind === 'prompt' ? invokeRead(() => currentRemote.inspectPromptRuntime(id))
+          : kind === 'skill' ? invokeRead(() => currentRemote.inspectSkillRuntime(id))
+          : invokeRead(() => currentRemote.inspectPinnedSkillRuntime(id)))
+        if (!currentOwner()) return staleResult()
+        const after = await invokeRead(() => currentRemote.changes())
+        if (!currentOwner()) return staleResult()
+        if (!after.ok) {
+          const surface = failedSurface(kind === 'list' ? state.getSnapshot().resources.list : getKeyed(kind, id) ?? idleSurface(), after.error)
+          if (kind === 'list') publishList(surface as ContextManagerClientSurface<readonly ContextManagerRemotePromptResourceListItem[]>)
+          else publishKeyed(kind, id, surface as ContextManagerClientSurface<KeyedValue>)
+          return lazyResult('completed')
+        }
+        const afterTransition = transitionAuthority(attachment, authority, after.value.instanceId)
+        if (afterTransition.status === 'superseded') return staleResult()
+        if (afterTransition.status === 'changed') {
+          authority = afterTransition.authority
+          keyedOwners.set(key, request)
+          needsAuthorityRestart = true
+          if (!baselineRecoveryScheduled) {
+            baselineRecoveryScheduled = true
+            void Promise.resolve().then(async () => {
+              baselineRecoveryScheduled = false
+              if (isAttachmentCurrent(attachment)) await reconcile(CONTEXT_MANAGER_BASELINE_SURFACES)
+            })
+          }
+          break
+        }
+        adoptChanges(attachment, authority, after.value)
+        if (!currentOwner()) return staleResult()
+        const latest = state.getSnapshot().changes
+        if (
+          cursorForKind(kind, before.value) !== cursorForKind(kind, after.value)
+          || latest?.instanceId !== after.value.instanceId
+          || cursorForKind(kind, latest) !== cursorForKind(kind, after.value)
+        ) continue
+        const surface = read.ok
+          ? readySurface(read.value)
+          : failedSurface(kind === 'list' ? state.getSnapshot().resources.list : getKeyed(kind, id) ?? idleSurface(), read.error)
+        if (kind === 'list') {
+          publishList(surface as ContextManagerClientSurface<readonly ContextManagerRemotePromptResourceListItem[]>)
+          if (read.ok) {
+            const entries = read.value as readonly ContextManagerRemotePromptResourceListItem[]
+            const revisions = new Map(entries.filter(x => x.status === 'usable').map(x => [x.id, x.revision]))
+            const snapshot = state.getSnapshot()
+            state.set({
+              ...snapshot,
+              resources: {
+                ...snapshot.resources,
+                documents: mapSurfaces(snapshot.resources.documents, document => {
+                  const record = document.data
+                  return record !== undefined && revisions.get(record.id) !== record.revision
+                    ? markSurfaceStale(document) : document
+                }),
+              },
+            })
+          }
+        } else publishKeyed(kind, id, surface as ContextManagerClientSurface<KeyedValue>)
+        return lazyResult('completed')
+      }
+      if (needsAuthorityRestart) continue
+      const error: ContextManagerClientReadError = { kind: 'unstable-snapshot', attempts: MAX_STABILIZATION_ATTEMPTS }
+      if (kind === 'list') publishList(failedSurface(state.getSnapshot().resources.list, error))
+      else publishKeyed(kind, id, failedSurface(getKeyed(kind, id) ?? idleSurface(), error))
+      return lazyResult('completed')
+    }
+    if (!currentOwner()) return staleResult()
+    const error: ContextManagerClientReadError = { kind: 'unstable-authority', attempts: MAX_AUTHORITY_RESTARTS }
+    if (kind === 'list') publishList(failedSurface(state.getSnapshot().resources.list, error))
+    else publishKeyed(kind, id, failedSurface(getKeyed(kind, id) ?? idleSurface(), error))
+    return lazyResult('completed')
+  }
+
+  const capturePromptResourceReadStamp = (
+    id: string,
+    source: 'list' | 'document',
+  ): ContextManagerClientPromptResourceReadStamp | undefined => {
+    const snapshot = state.getSnapshot()
+    if (snapshot.attachment !== 'attached' || snapshot.protocol.status !== 'compatible'
+      || snapshot.instanceId === undefined || snapshot.changes?.instanceId !== snapshot.instanceId) return undefined
+    let revision: number | undefined
+    if (source === 'document') {
+      const surface = snapshot.resources.documents.get(id)
+      if (surface?.status === 'ready' && !surface.stale && surface.data?.id === id) revision = surface.data.revision
+    } else {
+      const surface = snapshot.resources.list
+      if (surface.status === 'ready' && !surface.stale) {
+        const row = surface.data?.find(item => item.id === id)
+        if (row?.status === 'usable') revision = row.revision
+      }
+    }
+    if (revision === undefined || !Number.isSafeInteger(revision) || revision < 1) return undefined
+    return Object.freeze({ instanceId: snapshot.instanceId, resourceId: id, revision, source })
+  }
+
   const attach = (nextRemote: ContextManagerClientBusinessRemote): (() => void) => {
     if (disposed) {
       throw new Error('Context Manager Client model is disposed')
@@ -865,6 +1146,7 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
     remote = nextRemote
     resetRunBookkeeping()
     resetSurfaceOwnership()
+    keyedOwners.clear()
 
     {
       const current = state.getSnapshot()
@@ -876,6 +1158,8 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
         profiles: detachedSurface(current.profiles),
         presets: detachedSurface(current.presets),
         promptPlacement: detachedSurface(current.promptPlacement),
+        resources: { list: detachedSurface(current.resources.list), documents: detachMap(current.resources.documents) },
+        diagnostics: { sessions: detachMap(current.diagnostics.sessions), prompts: detachMap(current.diagnostics.prompts), skills: detachMap(current.diagnostics.skills), pinned: detachMap(current.diagnostics.pinned) },
       })
     }
     resetMutationController()
@@ -888,6 +1172,7 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
       remote = undefined
       resetRunBookkeeping()
       resetSurfaceOwnership()
+      keyedOwners.clear()
       const current = state.getSnapshot()
       state.set({
         ...current,
@@ -966,6 +1251,7 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
     remote = undefined
     resetRunBookkeeping()
     resetSurfaceOwnership()
+    keyedOwners.clear()
     const current = state.getSnapshot()
     state.set({
       ...current,
@@ -982,6 +1268,13 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
   return Object.freeze({
     state,
     mutations,
+    loadPromptResourceList: () => runLazy('list', ''),
+    loadPromptResource: (id: string) => runLazy('document', id),
+    loadSessionPreset: (id: string) => runLazy('session', id),
+    loadAgentPromptRuntime: (id: string) => runLazy('prompt', id),
+    loadAgentSkillRuntime: (id: string) => runLazy('skill', id),
+    loadAgentPinnedRuntime: (id: string) => runLazy('pinned', id),
+    capturePromptResourceReadStamp,
     attach,
     refresh: () => reconcile(CONTEXT_MANAGER_BASELINE_SURFACES),
     reconcile,
