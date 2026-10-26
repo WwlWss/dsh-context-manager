@@ -890,6 +890,12 @@ jobs:
         run: |
           corepack enable
           corepack prepare pnpm@11.7.0 --activate
+      - name: Install frozen M7D audit parser from repository dev dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          pnpm install --ignore-scripts --frozen-lockfile
+          node -e "import('yaml').then(y => { if (!y.parseDocument) process.exit(1) })"
       - name: Download exact package-job tarball and digest
         uses: actions/download-artifact@v4
         with:
@@ -942,6 +948,14 @@ jobs:
           M7D_DSH_VERSION: ${{ matrix.version }}
           M7D_EXPANDED_PREFLIGHT: ${{ matrix.os == 'ubuntu-latest' && matrix.version == '0.1.5-rc.2' }}
         run: node tests/m7d/host-preflight.mjs
+      - name: Independent native DSH plugin-add compatibility smoke
+        shell: bash
+        env:
+          M7D_DSH_VERSION: ${{ matrix.version }}
+        run: |
+          set -euo pipefail
+          node tests/m7d/native-add-smoke.mjs
+          echo "M7D_NATIVE_ADD_VERIFIED=true" >> "$GITHUB_ENV"
       - name: Execute real DSH Host / Remote / Chromium Profile scenario
         shell: bash
         env:
@@ -953,7 +967,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: m7d-qualified-${{ matrix.os }}-${{ matrix.version }}
-          path: .artifacts/m7d-evidence/qualification-manifest.json
+          path: |
+            .artifacts/m7d-evidence/qualification-manifest.json
+            .artifacts/m7d-evidence/frozen-graph-evidence.json
           if-no-files-found: error
           include-hidden-files: true
           retention-days: 30
@@ -965,16 +981,67 @@ jobs:
           path: |
             .artifacts/m7d-evidence/evidence.json
             .artifacts/m7d-evidence/host-preflight.json
+            .artifacts/m7d-evidence/frozen-graph-evidence.json
             .artifacts/m7d-evidence/m7d-failure.png
           if-no-files-found: ignore
           include-hidden-files: true
           retention-days: 3
 
+  m7d-frozen-repeatability:
+    name: M7D frozen Profile repeatability (${{ matrix.os }} / independent run ${{ matrix.attempt }})
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.draft == false }}
+    needs: package
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        attempt: [1, 2]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22.20.0
+      - name: Prepare fixed pnpm and audit dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          corepack enable
+          corepack prepare pnpm@11.7.0 --activate
+          pnpm install --ignore-scripts --frozen-lockfile
+      - name: Download packed candidate
+        uses: actions/download-artifact@v4
+        with:
+          name: context-manager-packed
+          path: .artifacts
+      - name: Prepare frozen CLI and exact candidate provenance
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          tarballs=(.artifacts/*.tgz)
+          test "${#tarballs[@]}" -eq 1
+          sha256sum --check .artifacts/m7d-packed.sha256
+          cli_dir="$GITHUB_WORKSPACE/.artifacts/m7d-cli"
+          approved="$GITHUB_WORKSPACE/tests/m7d/cli/0.1.5-rc.2"
+          mkdir -p "$cli_dir"
+          cp "$approved/package.json" "$approved/pnpm-lock.yaml" "$approved/pnpm-workspace.yaml" "$cli_dir/"
+          (cd "$cli_dir" && pnpm install --ignore-scripts --frozen-lockfile)
+          echo "M7D_DSH_CLI_ROOT=$cli_dir" >> "$GITHUB_ENV"
+          echo "M7D_TARBALL=$GITHUB_WORKSPACE/.artifacts/$(basename "${tarballs[0]}")" >> "$GITHUB_ENV"
+          echo "M7D_EXPECTED_SHA256=$(awk '{print $1}' .artifacts/m7d-packed.sha256)" >> "$GITHUB_ENV"
+      - name: Verify two independently initialized frozen Web Profiles
+        shell: bash
+        env:
+          M7D_DSH_VERSION: 0.1.5-rc.2
+        run: node tests/m7d/frozen-profile-repeatability.mjs
+
   full-qualification:
     name: dsh-context-manager / full qualification
     # A skipped/failed/cancelled matrix must not satisfy the protected check.
     if: ${{ always() && (github.event_name != 'pull_request' || github.event.pull_request.draft == false) }}
-    needs: [verify, settings-modern, agent-presets-contract, session-preset-contract, prompt-library-contract, prompt-placement-contract, prompt-runtime-contract, prompt-runtime-agent-loop, skill-runtime-contract, skill-policy-runtime-contract, pinned-skill-runtime-contract, skill-policy-agent-loop, pinned-skill-agent-loop, remote-foundation-artifact, remote-foundation-contract, client-foundation-contract, client-presentation-contract, package, dsh-smoke, m7d-packed-web]
+    needs: [verify, settings-modern, agent-presets-contract, session-preset-contract, prompt-library-contract, prompt-placement-contract, prompt-runtime-contract, prompt-runtime-agent-loop, skill-runtime-contract, skill-policy-runtime-contract, pinned-skill-runtime-contract, skill-policy-agent-loop, pinned-skill-agent-loop, remote-foundation-artifact, remote-foundation-contract, client-foundation-contract, client-presentation-contract, package, dsh-smoke, m7d-packed-web, m7d-frozen-repeatability]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:

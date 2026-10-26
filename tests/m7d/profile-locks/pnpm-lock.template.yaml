@@ -1,0 +1,40 @@
+importers:
+  .:
+    dependencies:
+      dsh-context-manager:
+        specifier: file:vendor/dsh-context-manager-0.1.0-alpha.0.tgz
+        version: file:vendor/dsh-context-manager-0.1.0-alpha.0.tgz
+lockfileVersion: "9.0"
+packages:
+  dsh-context-manager@file:vendor/dsh-context-manager-0.1.0-alpha.0.tgz:
+    engines:
+      node: ^22.19.0 || >=24.0.0
+    peerDependencies:
+      "@deepseek-ai/cordis": ^4.0.1
+      "@deepseek-ai/dsh-client-locale": 0.1.2-rc.1 || 0.1.5-rc.1 || 0.1.5-rc.2 || 0.1.6-alpha.2
+      "@deepseek-ai/dsh-client-ui-renderer": 0.1.2-rc.1 || 0.1.5-rc.1 || 0.1.5-rc.2 || 0.1.6-alpha.2
+      "@deepseek-ai/dsh-scope": 0.1.1-rc.2 || 0.1.2-rc.1 || 0.1.5-rc.1 || 0.1.5-rc.2 || 0.1.6-alpha.2
+      "@deepseek-ai/dsh-settings": 0.1.1-rc.2 || 0.1.2-rc.1 || 0.1.5-rc.1 || 0.1.5-rc.2 || 0.1.6-alpha.2
+      "@deepseek-ai/dsh-skill": 0.1.1-rc.2 || 0.1.2-rc.1 || 0.1.5-rc.1 || 0.1.5-rc.2 || 0.1.6-alpha.2
+      "@deepseek-ai/dsh-typert-protocol": 0.1.1-rc.2 || 0.1.2-rc.1 || 0.1.5-rc.1 || 0.1.5-rc.2 || 0.1.6-alpha.2
+      "@deepseek-ai/schemastery": ^3.18.1
+    peerDependenciesMeta:
+      "@deepseek-ai/dsh-client-locale":
+        optional: true
+      "@deepseek-ai/dsh-client-ui-renderer":
+        optional: true
+    resolution:
+      integrity: __M7D_VERIFIED_CANDIDATE_SHA512__
+      tarball: file:vendor/dsh-context-manager-0.1.0-alpha.0.tgz
+    version: 0.1.0-alpha.0
+  zod@4.6.7:
+    resolution:
+      integrity: sha512-g8W2D2kU6a8untc053fX1uVBKzM7yqAxW/3zwk83+6RyF2+SKOuV+c0wBDhUwzV1PaGapmZH+rmcUzPf+3CGwg==
+settings:
+  autoInstallPeers: false
+  excludeLinksFromLockfile: false
+snapshots:
+  dsh-context-manager@file:vendor/dsh-context-manager-0.1.0-alpha.0.tgz:
+    dependencies:
+      zod: 4.6.7
+  zod@4.6.7: {}

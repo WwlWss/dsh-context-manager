@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "generatedOn": "0.1.6-alpha.2",
+  "generator": "native dsh plugin add on disposable Profile with vendor-relative candidate",
+  "candidatePackageLocator": "dsh-context-manager@file:vendor/dsh-context-manager-0.1.0-alpha.0.tgz",
+  "candidateIntegrityMarker": "__M7D_VERIFIED_CANDIDATE_SHA512__",
+  "reviewedZod": [
+    "zod@4.6.7"
+  ],
+  "graphAuditSha256": "23eceede72efc7d88c285b147f02561166aaff708f4720cf43aa06b234931175"
+}
