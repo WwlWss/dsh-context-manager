@@ -37,6 +37,8 @@ function createFixture() {
     profiles: { status: 'idle', stale: false },
     presets: { status: 'idle', stale: false },
     promptPlacement: { status: 'idle', stale: false },
+    resources: { list: { status: 'idle', stale: false }, documents: new Map() },
+    diagnostics: { sessions: new Map(), prompts: new Map(), skills: new Map(), pinned: new Map() },
   })
   const mutationState = createSnapshotStore<ContextManagerClientMutationSnapshot>({
     profile: { status: 'idle' },
