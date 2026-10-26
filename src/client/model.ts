@@ -1004,7 +1004,6 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
         return lazyResult('completed')
       }
       if (protocol.value.apiVersion !== CONTEXT_MANAGER_REMOTE_API_VERSION) {
-        clearAuthority(undefined, { status: 'incompatible', expected: CONTEXT_MANAGER_REMOTE_API_VERSION, actual: protocol.value.apiVersion })
         return lazyResult('incompatible')
       }
       let needsAuthorityRestart = false
@@ -1075,6 +1074,7 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
         if (
           cursorForKind(kind, before.value) !== cursorForKind(kind, after.value)
           || latest?.instanceId !== after.value.instanceId
+          || latest === undefined
           || cursorForKind(kind, latest) !== cursorForKind(kind, after.value)
         ) continue
         const surface = read.ok
@@ -1256,6 +1256,8 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
     state.set({
       ...current,
       attachment: 'detached',
+      resources: { list: idleSurface(), documents: new Map() },
+      diagnostics: { sessions: new Map(), prompts: new Map(), skills: new Map(), pinned: new Map() },
       protocol: { status: 'unchecked' },
       sync: { status: 'idle' },
       profiles: detachedSurface(current.profiles),
