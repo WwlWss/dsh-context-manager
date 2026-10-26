@@ -2090,6 +2090,151 @@ test('P2 regression: lazy incompatible must be confirmed by guarded global proto
   model.dispose()
 })
 
+
+test('P1 recovery ticket does not issue a stale baseline Remote call after synchronous detach', async () => {
+  const { model, remote, detach } = await attachAndReady()
+  const initialProfileCalls = remote.calls.profiles
+  remote.defaultChanges = changes('host-b')
+  let unsubscribe = () => {}
+  unsubscribe = model.state.subscribe(() => {
+    const snapshot = model.state.getSnapshot()
+    if (snapshot.instanceId !== 'host-b' || snapshot.profiles.status !== 'idle') return
+    unsubscribe()
+    detach()
+  })
+  const result = await model.loadPromptResource('alpha')
+  assert.equal(result.status, 'detached')
+  await Promise.resolve()
+  await Promise.resolve()
+  assert.equal(remote.calls.profiles, initialProfileCalls)
+  assert.equal(model.state.getSnapshot().attachment, 'detached')
+  unsubscribe()
+  model.dispose()
+})
+
+test('P1 synchronous Host replacement schedules only one baseline recovery for multiple lazy readers', async () => {
+  const { model, remote, detach } = await attachAndReady()
+  const initialProfileCalls = remote.calls.profiles
+  remote.defaultChanges = changes('host-b')
+  let successor: ReturnType<typeof model.loadSessionPreset> | undefined
+  let unsubscribe = () => {}
+  unsubscribe = model.state.subscribe(() => {
+    const snapshot = model.state.getSnapshot()
+    if (snapshot.instanceId !== 'host-b' || snapshot.profiles.status !== 'idle') return
+    unsubscribe()
+    successor = model.loadSessionPreset('session-new')
+  })
+  await model.loadPromptResource('alpha')
+  assert.ok(successor)
+  await successor
+  await waitFor(() => model.state.getSnapshot().profiles.status === 'ready', 'single Host baseline recovery')
+  assert.equal(remote.calls.profiles, initialProfileCalls + 1)
+  assert.equal(model.state.getSnapshot().instanceId, 'host-b')
+  unsubscribe()
+  detach()
+  model.dispose()
+})
+
+test('P2 global verification survives same-key supersession after it has claimed protocol ownership', async () => {
+  const { model, remote, detach } = await attachAndReady()
+  const verificationGate = deferred<RemoteResult<ContextManagerRemoteProtocol>>()
+  const initialCalls = remote.calls.protocol
+  remote.protocolSteps.push(
+    async () => ok({ apiVersion: CONTEXT_MANAGER_REMOTE_API_VERSION + 1 }),
+    () => verificationGate.promise,
+  )
+  const first = model.loadPromptResource('alpha')
+  await waitFor(() => remote.calls.protocol === initialCalls + 2, 'global lazy protocol verification started')
+  const second = model.loadPromptResource('alpha')
+  await second
+  verificationGate.resolve(ok({ apiVersion: CONTEXT_MANAGER_REMOTE_API_VERSION + 1 }))
+  assert.equal((await first).status, 'incompatible')
+  assert.equal(model.state.getSnapshot().protocol.status, 'incompatible')
+  assert.equal(model.state.getSnapshot().resources.documents.size, 0)
+  detach()
+  model.dispose()
+})
+
+test('P2 a newer baseline protocol proof supersedes an in-flight lazy global verification', async () => {
+  const { model, remote, detach } = await attachAndReady()
+  const verificationGate = deferred<RemoteResult<ContextManagerRemoteProtocol>>()
+  const before = remote.calls.protocol
+  remote.protocolSteps.push(
+    async () => ok({ apiVersion: CONTEXT_MANAGER_REMOTE_API_VERSION + 1 }),
+    () => verificationGate.promise,
+  )
+  const old = model.loadPromptResource('alpha')
+  await waitFor(() => remote.calls.protocol === before + 2, 'lazy verification waiting')
+  await model.reconcile(['profiles'])
+  assert.equal(model.state.getSnapshot().protocol.status, 'compatible')
+  verificationGate.resolve(ok({ apiVersion: CONTEXT_MANAGER_REMOTE_API_VERSION + 1 }))
+  assert.equal((await old).status, 'superseded')
+  assert.equal(model.state.getSnapshot().protocol.status, 'compatible')
+  assert.equal(model.getProfileRevision(), 7)
+  detach()
+  model.dispose()
+})
+
+test('P2 verification cannot overwrite the new attachment after detach and reattach', async () => {
+  const { model, remote, detach } = await attachAndReady()
+  const gate = deferred<RemoteResult<ContextManagerRemoteProtocol>>()
+  const before = remote.calls.protocol
+  remote.protocolSteps.push(
+    async () => ok({ apiVersion: CONTEXT_MANAGER_REMOTE_API_VERSION + 1 }),
+    () => gate.promise,
+  )
+  const old = model.loadPromptResource('alpha')
+  await waitFor(() => remote.calls.protocol === before + 2, 'old attachment protocol verification')
+  detach()
+  const nextRemote = new ScriptedRemote()
+  nextRemote.defaultChanges = changes('host-c')
+  nextRemote.defaultProfiles = profiles(77)
+  const detachNext = model.attach(nextRemote)
+  gate.resolve(ok({ apiVersion: CONTEXT_MANAGER_REMOTE_API_VERSION + 1 }))
+  assert.equal((await old).status, 'detached')
+  await waitFor(() => {
+    const snapshot = model.state.getSnapshot()
+    return snapshot.instanceId === 'host-c' && snapshot.profiles.status === 'ready'
+      && snapshot.protocol.status === 'compatible'
+  }, 'new attachment rehydration')
+  assert.equal(model.getProfileRevision(), 77)
+  detachNext()
+  model.dispose()
+})
+
+test('P2 failed verification reports a protocol error rather than claiming incompatible', async () => {
+  const { model, remote, detach } = await attachAndReady()
+  remote.protocolSteps.push(
+    async () => ok({ apiVersion: CONTEXT_MANAGER_REMOTE_API_VERSION + 1 }),
+    async () => fail('verification-transport-failed'),
+  )
+  assert.equal((await model.loadPromptResource('alpha')).status, 'completed')
+  const snapshot = model.state.getSnapshot()
+  assert.equal(snapshot.protocol.status, 'error')
+  assert.equal(snapshot.resources.documents.get('alpha')?.error?.kind, 'remote')
+  assert.equal(model.capturePromptResourceReadStamp('alpha', 'document'), undefined)
+  detach()
+  model.dispose()
+})
+
+test('P2 a synchronous checking subscriber detach prevents the verification RPC itself', async () => {
+  const { model, remote, detach } = await attachAndReady()
+  const before = remote.calls.protocol
+  remote.protocolSteps.push(async () => ok({ apiVersion: CONTEXT_MANAGER_REMOTE_API_VERSION + 1 }))
+  let unsubscribe = () => {}
+  unsubscribe = model.state.subscribe(() => {
+    if (model.state.getSnapshot().protocol.status !== 'checking') return
+    unsubscribe()
+    detach()
+  })
+  const result = await model.loadPromptResource('alpha')
+  assert.equal(result.status, 'detached')
+  assert.equal(remote.calls.protocol, before + 1)
+  assert.equal(model.state.getSnapshot().attachment, 'detached')
+  unsubscribe()
+  model.dispose()
+})
+
 test('the baseline surface list stays explicit and mutation-free', () => {
   assert.deepEqual(CONTEXT_MANAGER_BASELINE_SURFACES, [
     'profiles',
