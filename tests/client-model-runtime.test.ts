@@ -1912,6 +1912,94 @@ test('keyed reads cannot publish after detach', async () => {
   model.dispose()
 })
 
+
+test('all three Agent diagnostic families are individually lazy and retain domain statuses', async () => {
+  const { model, remote } = await attachAndReady()
+  assert.equal(remote.calls.promptRuntime, 0)
+  assert.equal(remote.calls.skillRuntime, 0)
+  assert.equal(remote.calls.pinnedRuntime, 0)
+  remote.prompt = { status: 'assembly-bypassed', agentId: 'p' }
+  remote.skill = { status: 'agent-not-live', agentId: 's' }
+  remote.pinned = { status: 'runtime-unavailable' }
+  await model.loadAgentPromptRuntime('p')
+  await model.loadAgentSkillRuntime('s')
+  await model.loadAgentPinnedRuntime('z')
+  assert.deepEqual(model.state.getSnapshot().diagnostics.prompts.get('p')?.data, { status: 'assembly-bypassed', agentId: 'p' })
+  assert.deepEqual(model.state.getSnapshot().diagnostics.skills.get('s')?.data, { status: 'agent-not-live', agentId: 's' })
+  assert.deepEqual(model.state.getSnapshot().diagnostics.pinned.get('z')?.data, { status: 'runtime-unavailable' })
+  assert.equal(remote.calls.promptRuntime, 1)
+  assert.equal(remote.calls.skillRuntime, 1)
+  assert.equal(remote.calls.pinnedRuntime, 1)
+  model.dispose()
+})
+
+test('invalid resource summaries have no editable revision stamp and exact string IDs do not collide', async () => {
+  const { model, remote } = await attachAndReady()
+  remote.resourceList = [{ status: 'invalid', id: '__proto__', message: 'invalid stored resource' }]
+  await model.loadPromptResourceList()
+  assert.equal(model.capturePromptResourceReadStamp('__proto__', 'list'), undefined)
+  remote.resource = { id: '__proto__', name: 'Special', content: 'exact', revision: 2 }
+  await model.loadPromptResource('__proto__')
+  assert.equal(model.state.getSnapshot().resources.documents.get('__proto__')?.data?.content, 'exact')
+  assert.equal(model.capturePromptResourceReadStamp('__proto__', 'document')?.revision, 2)
+  model.dispose()
+})
+
+test('a resource list revision change invalidates only a mismatched cached document', async () => {
+  const { model, remote } = await attachAndReady()
+  await model.loadPromptResource('alpha')
+  remote.resourceList = [{ status: 'usable', id: 'alpha', name: 'Alpha', revision: 6 }]
+  await model.loadPromptResourceList()
+  const snapshot = model.state.getSnapshot()
+  assert.equal(snapshot.resources.list.stale, false)
+  assert.equal(snapshot.resources.documents.get('alpha')?.stale, true)
+  assert.equal(model.capturePromptResourceReadStamp('alpha', 'document'), undefined)
+  assert.equal(model.capturePromptResourceReadStamp('alpha', 'list')?.revision, 6)
+  model.dispose()
+})
+
+test('a changed resource cursor during a read retries before accepting resource content', async () => {
+  const { model, remote } = await attachAndReady()
+  const oldChanges = remote.defaultChanges
+  remote.defaultChanges = { ...oldChanges, generation: 2, promptResources: 1 }
+  remote.changesSteps.push(async () => ok(oldChanges))
+  remote.changesSteps.push(async () => ok(remote.defaultChanges))
+  remote.resourceSteps.push(async () => ok(businessOk({ id: 'alpha', name: 'Old', content: 'old', revision: 1 })))
+  remote.resource = { id: 'alpha', name: 'New', content: 'new', revision: 2 }
+  const result = await model.loadPromptResource('alpha')
+  assert.equal(result.status, 'completed')
+  assert.equal(remote.calls.getPromptResource, 2)
+  assert.equal(model.state.getSnapshot().resources.documents.get('alpha')?.data?.content, 'new')
+  model.dispose()
+})
+
+test('lazy-first Host authority replacement invalidates old caches and rehydrates baseline', async () => {
+  const { model, remote } = await attachAndReady()
+  await model.loadPromptResource('alpha')
+  remote.defaultChanges = { instanceId: 'host-b', generation: 1, profiles: 1, promptResources: 0, presets: 1, runtime: 1 }
+  remote.resource = { id: 'alpha', name: 'New Host', content: 'host-b', revision: 1 }
+  assert.equal((await model.loadPromptResource('alpha')).status, 'completed')
+  await waitFor(() => {
+    const snapshot = model.state.getSnapshot()
+    return snapshot.instanceId === 'host-b' && snapshot.profiles.status === 'ready' && snapshot.protocol.status === 'compatible'
+  }, 'baseline rehydrated after lazy Host replacement')
+  const snapshot = model.state.getSnapshot()
+  assert.equal(snapshot.resources.documents.get('alpha')?.data?.content, 'host-b')
+  assert.equal(model.capturePromptResourceReadStamp('alpha', 'document')?.instanceId, 'host-b')
+  model.dispose()
+})
+
+test('lazy protocol incompatibility clears stale Resource write observations', async () => {
+  const { model, remote } = await attachAndReady()
+  await model.loadPromptResource('alpha')
+  assert.equal(model.capturePromptResourceReadStamp('alpha', 'document')?.revision, 5)
+  remote.defaultProtocol = { apiVersion: CONTEXT_MANAGER_REMOTE_API_VERSION + 1 }
+  assert.equal((await model.loadPromptResource('alpha')).status, 'incompatible')
+  assert.equal(model.state.getSnapshot().protocol.status, 'incompatible')
+  assert.equal(model.capturePromptResourceReadStamp('alpha', 'document'), undefined)
+  model.dispose()
+})
+
 test('the baseline surface list stays explicit and mutation-free', () => {
   assert.deepEqual(CONTEXT_MANAGER_BASELINE_SURFACES, [
     'profiles',
