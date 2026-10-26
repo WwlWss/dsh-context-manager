@@ -1189,6 +1189,8 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
         profiles: detachedSurface(current.profiles),
         presets: detachedSurface(current.presets),
         promptPlacement: detachedSurface(current.promptPlacement),
+        resources: { list: detachedSurface(current.resources.list), documents: detachMap(current.resources.documents) },
+        diagnostics: { sessions: detachMap(current.diagnostics.sessions), prompts: detachMap(current.diagnostics.prompts), skills: detachMap(current.diagnostics.skills), pinned: detachMap(current.diagnostics.pinned) },
       })
       resetMutationController()
     }
