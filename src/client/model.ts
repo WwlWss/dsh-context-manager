@@ -962,7 +962,7 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
       ...current,
       diagnostics: {
         ...current.diagnostics,
-        [family]: setBoundedEntry(current.diagnostics[family], id, surface as never, 64),
+        [family]: setBoundedEntry(current.diagnostics[family] as ReadonlyMap<string, ContextManagerClientSurface<KeyedValue>>, id, surface, 64),
       },
     })
   }
