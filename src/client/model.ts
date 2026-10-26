@@ -629,6 +629,14 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
       }
 
       beginProtocolCheck(attachment, authority, run)
+      // The store notification is synchronous; detach/Host replacement may
+      // happen during publication, before the Remote call even starts.
+      if (!isAttachmentCurrent(attachment)) {
+        return { status: 'attachment-stale' }
+      }
+      if (authority !== authorityEpoch) {
+        return { status: 'authority-stale' }
+      }
       const protocol = await invokeRead(() => currentRemote.protocol())
 
       if (!isAttachmentCurrent(attachment)) {
@@ -1020,6 +1028,7 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
     try {
     for (let restart = 0; restart < MAX_AUTHORITY_RESTARTS; restart += 1) {
       if (!currentOwner()) return staleResult()
+      const observedProtocolOwner = protocolOwnerRun
       const protocol = await invokeRead(() => currentRemote.protocol())
       if (!currentOwner()) return staleResult()
       if (!protocol.ok) {
@@ -1029,8 +1038,46 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
         return lazyResult('completed')
       }
       if (protocol.value.apiVersion !== CONTEXT_MANAGER_REMOTE_API_VERSION) {
-        clearAuthority(undefined, { status: 'incompatible', expected: CONTEXT_MANAGER_REMOTE_API_VERSION, actual: protocol.value.apiVersion })
-        return lazyResult('incompatible')
+        // A lazy read has no global protocol publication authority. In
+        // particular, a delayed negative probe cannot override a newer
+        // baseline proof that completed while the probe was in flight.
+        if (protocolOwnerRun !== observedProtocolOwner) return staleResult()
+
+        // Promote only the anomaly to a guarded global verification. This
+        // run does NOT enter activeReconcileRuns or change baseline sync.
+        const verificationRun = ++reconcileRunEpoch
+        const verified = await guardProtocol(currentRemote, attachment, authority, verificationRun)
+        if (
+          verified.status === 'attachment-stale'
+          || verified.status === 'authority-stale'
+          || verified.status === 'superseded'
+        ) return staleResult()
+
+        // A synchronous protocol-state subscriber may have started a newer
+        // global check; neither its verdict nor its authority may be stolen.
+        if (!isProtocolOwner(attachment, authority, verificationRun)) return staleResult()
+
+        if (verified.status === 'incompatible') {
+          // Once global verification owns this verdict, same-key cancellation
+          // must NOT cancel protocol safety. This invalidates both Profile
+          // mutation bases and PromptResource read stamps.
+          clearAuthority(undefined, {
+            status: 'incompatible',
+            expected: CONTEXT_MANAGER_REMOTE_API_VERSION,
+            actual: verified.actual,
+          })
+          return lazyResult('incompatible')
+        }
+        if (verified.status === 'error') {
+          if (!currentOwner()) return staleResult()
+          const surface = failedSurface<unknown>((kind === 'list' ? state.getSnapshot().resources.list : getKeyed(kind, id) ?? idleSurface()) as ContextManagerClientSurface<unknown>, verified.error)
+          if (kind === 'list') publishList(surface as ContextManagerClientSurface<readonly ContextManagerRemotePromptResourceListItem[]>)
+          else publishKeyed(kind, id, surface as ContextManagerClientSurface<KeyedValue>)
+          return lazyResult('completed')
+        }
+        // Only the original keyed read may continue to the data endpoint;
+        // the successful protocol verdict belongs to the global owner.
+        if (!currentOwner()) return staleResult()
       }
       let needsAuthorityRestart = false
       for (let attempt = 0; attempt < MAX_STABILIZATION_ATTEMPTS; attempt += 1) {
