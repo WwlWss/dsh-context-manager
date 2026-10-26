@@ -2235,6 +2235,99 @@ test('P2 a synchronous checking subscriber detach prevents the verification RPC 
   model.dispose()
 })
 
+
+test('P1 rapid Host A-B-C changes retire older recovery tickets and rehydrate the latest Host', async () => {
+  const { model, remote, detach } = await attachAndReady()
+  remote.defaultChanges = changes('host-b')
+  let successor: ReturnType<typeof model.loadSessionPreset> | undefined
+  let unsubscribe = () => {}
+  unsubscribe = model.state.subscribe(() => {
+    const snapshot = model.state.getSnapshot()
+    if (snapshot.instanceId !== 'host-b' || snapshot.profiles.status !== 'idle') return
+    unsubscribe()
+    remote.defaultChanges = changes('host-c')
+    successor = model.loadSessionPreset('session-c')
+  })
+  const first = model.loadPromptResource('alpha')
+  assert.ok(successor === undefined)
+  await first
+  assert.ok(successor)
+  await successor
+  await waitFor(() => {
+    const snapshot = model.state.getSnapshot()
+    return snapshot.instanceId === 'host-c'
+      && snapshot.protocol.status === 'compatible'
+      && snapshot.profiles.status === 'ready'
+      && snapshot.presets.status === 'ready'
+      && snapshot.promptPlacement.status === 'ready'
+  }, 'latest Host C rehydration')
+  assert.equal(model.state.getSnapshot().instanceId, 'host-c')
+  unsubscribe()
+  detach()
+  model.dispose()
+})
+
+test('different keyed reads make independent progress while another resource read is held', async () => {
+  const { model, remote, detach } = await attachAndReady()
+  const gate = deferred<RemoteResult<ContextManagerRemoteResult<ContextManagerRemotePromptResource>>>()
+  remote.resourceSteps.push(() => gate.promise)
+  const document = model.loadPromptResource('alpha')
+  await waitFor(() => remote.calls.getPromptResource === 1, 'held resource request')
+  const session = await model.loadSessionPreset('s')
+  assert.equal(session.status, 'completed')
+  assert.equal(model.state.getSnapshot().diagnostics.sessions.get('s')?.status, 'ready')
+  assert.equal(model.state.getSnapshot().resources.documents.get('alpha')?.status, 'loading')
+  gate.resolve(ok(businessOk(remote.resource)))
+  assert.equal((await document).status, 'completed')
+  assert.equal(model.state.getSnapshot().resources.documents.get('alpha')?.status, 'ready')
+  detach()
+  model.dispose()
+})
+
+test('keyed caches evict old entries at the documented 32-document and 64-session limits', async () => {
+  const { model, remote, detach } = await attachAndReady()
+  for (let i = 0; i < 33; i += 1) {
+    const id = 'resource-' + String(i)
+    remote.resource = { id, name: 'Name ' + String(i), content: 'body', revision: i + 1 }
+    assert.equal((await model.loadPromptResource(id)).status, 'completed')
+  }
+  const documents = model.state.getSnapshot().resources.documents
+  assert.equal(documents.size, 32)
+  assert.equal(documents.has('resource-0'), false)
+  assert.equal(documents.has('resource-32'), true)
+
+  for (let i = 0; i < 65; i += 1) {
+    const id = 'session-' + String(i)
+    remote.session = { status: 'known', sessionId: id, presetId: null }
+    assert.equal((await model.loadSessionPreset(id)).status, 'completed')
+  }
+  const sessions = model.state.getSnapshot().diagnostics.sessions
+  assert.equal(sessions.size, 64)
+  assert.equal(sessions.has('session-0'), false)
+  assert.equal(sessions.has('session-64'), true)
+  detach()
+  model.dispose()
+})
+
+test('a continuously moving keyed cursor exhausts exactly three stabilizations without publishing a fresh stamp', async () => {
+  const { model, remote, detach } = await attachAndReady()
+  const before = remote.calls.getPromptResource
+  for (let i = 0; i < 3; i += 1) {
+    const generation = i * 2 + 2
+    remote.changesSteps.push(
+      async () => ok({ ...changes('host-a', generation), promptResources: generation }),
+      async () => ok({ ...changes('host-a', generation + 1), promptResources: generation + 1 }),
+    )
+  }
+  const result = await model.loadPromptResource('alpha')
+  assert.equal(result.status, 'completed')
+  assert.equal(remote.calls.getPromptResource, before + 3)
+  assert.equal(model.state.getSnapshot().resources.documents.get('alpha')?.error?.kind, 'unstable-snapshot')
+  assert.equal(model.capturePromptResourceReadStamp('alpha', 'document'), undefined)
+  detach()
+  model.dispose()
+})
+
 test('the baseline surface list stays explicit and mutation-free', () => {
   assert.deepEqual(CONTEXT_MANAGER_BASELINE_SURFACES, [
     'profiles',
