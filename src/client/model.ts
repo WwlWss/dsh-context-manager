@@ -299,7 +299,7 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
   let protocolOwnerRun = 0
   let keyedRequestSequence = 0
   const keyedOwners = new Map<string, number>()
-  let baselineRecoveryScheduled = false
+  let pendingBaselineRecovery: { readonly attachment: number; readonly authority: number } | undefined
 
   const isAttachmentCurrent = (epoch: number): boolean => (
     !disposed && remote !== undefined && attachmentEpoch === epoch
@@ -441,6 +441,7 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
     protocolOwnerRun = 0
     resetSurfaceOwnership()
     keyedOwners.clear()
+    pendingBaselineRecovery = undefined
     const current = state.getSnapshot()
     state.set({
       ...current,
@@ -930,6 +931,25 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
     }
   }
 
+  // Host-authority recovery is a model-wide obligation, not a keyed-read
+  // completion. Ticket identity prevents an older scheduled microtask from
+  // dropping a newer authority's recovery after synchronous subscribers run.
+  const scheduleBaselineRecovery = (attachment: number, authority: number): void => {
+    if (!isAuthorityCurrent(attachment, authority)) return
+    if (
+      pendingBaselineRecovery?.attachment === attachment
+      && pendingBaselineRecovery.authority === authority
+    ) return
+    const ticket = { attachment, authority }
+    pendingBaselineRecovery = ticket
+    void Promise.resolve().then(async () => {
+      if (pendingBaselineRecovery !== ticket) return
+      pendingBaselineRecovery = undefined
+      if (!isAuthorityCurrent(ticket.attachment, ticket.authority)) return
+      await reconcile(CONTEXT_MANAGER_BASELINE_SURFACES)
+    })
+  }
+
   // Lazy reads use B1-1's attachment/authority and change-hint source but do not
   // take ownership of baseline reconcile runs or the global sync indicator.
   const lazyResult = (status: ContextManagerClientLazyReadResult['status']): ContextManagerClientLazyReadResult => ({ status })
@@ -1027,16 +1047,12 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
         if (transition.status === 'superseded') return staleResult()
         if (transition.status === 'changed') {
           authority = transition.authority
+          scheduleBaselineRecovery(attachment, authority)
+          // clearAuthority publishes synchronously: an observer may already have
+          // replaced this key, but it cannot cancel model-wide recovery.
           if ((keyedOwners.get(key) ?? 0) > request) return staleResult()
           keyedOwners.set(key, request)
           needsAuthorityRestart = true
-          if (!baselineRecoveryScheduled) {
-            baselineRecoveryScheduled = true
-            void Promise.resolve().then(async () => {
-              baselineRecoveryScheduled = false
-              if (isAttachmentCurrent(attachment)) await reconcile(CONTEXT_MANAGER_BASELINE_SURFACES)
-            })
-          }
           break
         }
         adoptChanges(attachment, authority, before.value)
@@ -1064,16 +1080,10 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
         if (afterTransition.status === 'superseded') return staleResult()
         if (afterTransition.status === 'changed') {
           authority = afterTransition.authority
+          scheduleBaselineRecovery(attachment, authority)
           if ((keyedOwners.get(key) ?? 0) > request) return staleResult()
           keyedOwners.set(key, request)
           needsAuthorityRestart = true
-          if (!baselineRecoveryScheduled) {
-            baselineRecoveryScheduled = true
-            void Promise.resolve().then(async () => {
-              baselineRecoveryScheduled = false
-              if (isAttachmentCurrent(attachment)) await reconcile(CONTEXT_MANAGER_BASELINE_SURFACES)
-            })
-          }
           break
         }
         adoptChanges(attachment, authority, after.value)
