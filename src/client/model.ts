@@ -251,7 +251,11 @@ function staleMap<T>(
 function detachMap<T>(
   entries: ReadonlyMap<string, ContextManagerClientSurface<T>>,
 ): ReadonlyMap<string, ContextManagerClientSurface<T>> {
-  return mapSurfaces(entries, detachedSurface)
+  const result = new Map<string, ContextManagerClientSurface<T>>()
+  for (const [key, value] of entries) {
+    if (value.data !== undefined) result.set(key, detachedSurface(value))
+  }
+  return result
 }
 
 async function invokeBusinessRead<T>(
