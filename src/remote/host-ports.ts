@@ -5,6 +5,8 @@ import type {
   ContextManagerRemotePromptBinding,
   ContextManagerRemotePromptPlacement,
   ContextManagerRemotePromptRuntimeInspection,
+  ContextManagerRemoteResourceCreateBasis,
+  ContextManagerRemoteResourceMutationBasis,
   ContextManagerRemoteSessionPresetIdentity,
   ContextManagerRemoteSkillMode,
   ContextManagerRemoteSkillRuntimeInspection,
@@ -72,6 +74,7 @@ export interface ContextManagerPromptRemotePort {
         readonly name: string
         readonly description?: string
         readonly revision: number
+        readonly incarnationId: string | null
       }
     | {
         readonly status: 'invalid'
@@ -86,12 +89,16 @@ export interface ContextManagerPromptRemotePort {
       readonly description?: string
       readonly content: string
       readonly revision: number
+      readonly __dshCmResourceIncarnation?: string
       readonly [key: string]: unknown
     }
   }
-  createPrompt(id: string, input: { readonly name: string; readonly description?: string; readonly content: string }): Promise<{ readonly id: string; readonly revision: number }>
-  replacePrompt(id: string, input: { readonly name: string; readonly description?: string; readonly content: string }, expectedRevision: number): Promise<{ readonly id: string; readonly revision: number }>
-  deletePrompt(id: string, expectedRevision: number): Promise<void>
+  createPrompt(id: string, input: { readonly name: string; readonly description?: string; readonly content: string }, basis: ContextManagerRemoteResourceCreateBasis): Promise<{ readonly id: string; readonly revision: number }>
+  replacePrompt(id: string, input: { readonly name: string; readonly description?: string; readonly content: string }, basis: ContextManagerRemoteResourceMutationBasis): Promise<{ readonly id: string; readonly revision: number }>
+  deletePrompt(id: string, basis: ContextManagerRemoteResourceMutationBasis): Promise<void>
+  setPromptName(id: string, name: string, basis: ContextManagerRemoteResourceMutationBasis): Promise<{ readonly id: string; readonly revision: number }>
+  setPromptDescription(id: string, description: string | undefined, basis: ContextManagerRemoteResourceMutationBasis): Promise<{ readonly id: string; readonly revision: number }>
+  setPromptContent(id: string, content: string, basis: ContextManagerRemoteResourceMutationBasis): Promise<{ readonly id: string; readonly revision: number }>
 }
 
 

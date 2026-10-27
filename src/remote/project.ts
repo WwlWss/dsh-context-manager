@@ -1,3 +1,4 @@
+import { PROMPT_RESOURCE_INCARNATION_FIELD } from '../library/prompt-library.js'
 import type {
   ContextManagerRemoteProfilesSnapshot,
   ContextManagerRemotePromptResource,
@@ -73,6 +74,7 @@ export function projectPromptResourceList(
         name: item.name,
         ...(item.description === undefined ? {} : { description: item.description }),
         revision: item.revision,
+        incarnationId: item.incarnationId,
       })
     : Object.freeze({
         status: 'invalid' as const,
@@ -90,5 +92,6 @@ export function projectPromptResource(
     ...(snapshot.resource.description === undefined ? {} : { description: snapshot.resource.description }),
     content: snapshot.resource.content,
     revision: snapshot.resource.revision,
+    incarnationId: snapshot.resource[PROMPT_RESOURCE_INCARNATION_FIELD] ?? null,
   })
 }
