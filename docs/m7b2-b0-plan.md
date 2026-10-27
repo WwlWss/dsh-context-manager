@@ -16,12 +16,24 @@ Host: enforce separate **Resource Authority**, **per-resource incarnation**, and
 - `resourceAuthorityId`: the currently opened Prompt Library storage source lifetime, rotated on successful open/reattach and invalidated on teardown; observed independently by ChangeTracker without rotating `instanceId`.
 - `incarnationId`: persistent random UUID generated only on create, stored in one reserved extension field; stable through normal edits; regenerated after delete+create of the same ID. Legacy resources missing the field project `null` and are lazily upgraded on their first successful **existing** edit, atomically with that edit. Unknown fields remain intact.
 - `revision`: the existing per-resource positive safe-integer mutation counter; never a ChangeTracker cursor.
-- `ResourceMutationBasis`: exact `{instanceId,resourceAuthorityId,resourceId,incarnationId,revision}` captured at draft creation. Create uses only `{instanceId,resourceAuthorityId}`. No Save-time recapture and no silent write retries.
+- `ResourceMutationBasis`: exact `{resourceAuthorityId,resourceId,incarnationId,revision}` captured at draft creation; Create uses only `{resourceAuthorityId}`. The **Client read stamp** additionally remembers the global `instanceId` for observation/lifecycle fencing, but the **Host Resource write authority is independent from Profile Settings**; replacing the Profile Settings provider must not invalidate an otherwise unchanged Resource Host basis. No Save-time recapture and no silent write retries.
 - Rejected basis, stale authority, invalid reserved field and malformed document must not modify storage or publish an invalidation cursor.
 - Any structural edit must reserve revision/incarnation and preserve unknown siblings. The reserved incarnation field is Host-owned: payloads may not set it.
 - For Resource cursor coherence, `resourceAuthorityId` and `incarnationId` must be compared in authoritative read brackets and list↔document invalidation, even when numeric revisions match.
 - Respect published StorageDomain table semantics: synchronous `table.update` callback controls update validation; `get`+async `delete` is serialized only within the package's `operationTail`. **No cross-process or foreign-writer atomic CAS guarantee is claimed**.
 - The Resource write lane remains separate from Profile Settings, and Provider change does not reset unrelated Profile mutations. Native preset authoring stays M8C.
+
+## Storage API preflight, safety limits and evidence
+
+This slice does **not** add a new DSH storage-domain dependency or bypass the already-qualified public StorageDomain API. Existing published-package preflights and regression files are `tests/prompt-library-upstream-contract.ts` and `tests/prompt-library-upstream-runtime.mjs`: the native API exposes `open(spec)`, `table(name)`, and `get/entries/put/delete/update`. The `table.update` synchronous callback is the Host's checked replacement point. Delete is `get` + `delete` serialized by this plugin's single `operationTail`; the existing public API has no foreign-process/foreign-writer conditional delete guarantee. Do not claim distributed atomicity.
+
+The reserved storage field is `__dshCmResourceIncarnation` (UUID). It is omitted from Client DTOs except for a separately projected browser-safe `incarnationId`; invalid stored field values isolate the record as invalid and are not silently rewritten. Existing valid legacy rows with no field project `incarnationId:null`; first *successful* leaf/replace update adds an incarnation in that same `table.update` commit. The storage Domain version remains 1 because the payload table remains opaque, forward-compatible JSON.
+
+**RED evidence:** [workflow #40526267595](https://github.com/WwlWss/dsh-context-manager/actions/runs/40526267595) on `d95db05a520c`: both unguarded ABA/remount scenarios failed, showing an unsafe old write was accepted.
+
+**GREEN focused evidence:** [workflow #40530368505](https://github.com/WwlWss/dsh-context-manager/actions/runs/40530368505) passed for the v3 Host/Client contract; later regression expansions cover legacy migration, reserved-field refusal, duplicate IDs, revised source-aware Resource read stamps, and changed Resource Authorities with equal numeric cursors.
+
+This PR is **B0 only**: Host/Remote safety and B1-3 read adapter; B1 will separately add a production Client Resource Mutation Controller, presentation Business Face and explicit recovery flows.
 
 ## Staged implementation
 
