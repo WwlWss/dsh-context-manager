@@ -90,6 +90,7 @@ function changes(
 ): ContextManagerRemoteChangeSnapshot {
   return {
     instanceId,
+    resourceAuthorityId: 'resource-host-a',
     generation,
     profiles,
     promptResources: 0,
@@ -217,8 +218,8 @@ class ScriptedRemote implements ContextManagerClientBusinessRemote {
     return this.take(this.placementSteps, this.defaultPlacement)
   }
 
-  resourceList: readonly ContextManagerRemotePromptResourceListItem[] = [{ status: 'usable', id: 'alpha', name: 'Alpha', revision: 5 }]
-  resource: ContextManagerRemotePromptResource = { id: 'alpha', name: 'Alpha', content: 'body', revision: 5 }
+  resourceList: readonly ContextManagerRemotePromptResourceListItem[] = [{ status: 'usable', id: 'alpha', name: 'Alpha', revision: 5, incarnationId: null }]
+  resource: ContextManagerRemotePromptResource = { id: 'alpha', name: 'Alpha', content: 'body', revision: 5, incarnationId: null }
   session: ContextManagerRemoteSessionPresetIdentity = { status: 'known', sessionId: 's', presetId: null }
   prompt: ContextManagerRemotePromptRuntimeInspection = { status: 'runtime-unavailable' }
   skill: ContextManagerRemoteSkillRuntimeInspection = { status: 'runtime-unavailable' }
@@ -1847,7 +1848,7 @@ test('lazy resource directory and document reads keep revision and content separ
   assert.equal((await model.loadPromptResourceList()).status, 'completed')
   assert.equal(remote.calls.getPromptResource, 0)
   assert.deepEqual(model.capturePromptResourceReadStamp('alpha', 'list'), {
-    instanceId: 'host-a', resourceId: 'alpha', revision: 5, source: 'list',
+    instanceId: 'host-a', resourceAuthorityId: 'resource-host-a', resourceId: 'alpha', incarnationId: null, revision: 5, source: 'list',
   })
   assert.equal((await model.loadPromptResource('alpha')).status, 'completed')
   assert.equal(model.state.getSnapshot().resources.documents.get('alpha')?.data?.content, 'body')
@@ -1872,11 +1873,11 @@ test('newer same-key requests own publication while different diagnostic keys re
   remote.resourceSteps.push(() => old.promise)
   const first = model.loadPromptResource('alpha')
   await waitFor(() => remote.calls.getPromptResource === 1, 'first keyed request')
-  remote.resource = { id: 'alpha', name: 'New', content: 'new', revision: 6 }
+  remote.resource = { id: 'alpha', name: 'New', content: 'new', revision: 6, incarnationId: null }
   const second = model.loadPromptResource('alpha')
   await waitFor(() => remote.calls.getPromptResource === 2, 'second keyed request')
   await second
-  old.resolve(ok(businessOk({ id: 'alpha', name: 'Old', content: 'old', revision: 5 })))
+  old.resolve(ok(businessOk({ id: 'alpha', name: 'Old', content: 'old', revision: 5, incarnationId: null })))
   assert.equal((await first).status, 'superseded')
   assert.equal(model.state.getSnapshot().resources.documents.get('alpha')?.data?.content, 'new')
   assert.equal((await model.loadSessionPreset('s')).status, 'completed')
@@ -1938,7 +1939,7 @@ test('invalid resource summaries have no editable revision stamp and exact strin
   remote.resourceList = [{ status: 'invalid', id: '__proto__', message: 'invalid stored resource' }]
   await model.loadPromptResourceList()
   assert.equal(model.capturePromptResourceReadStamp('__proto__', 'list'), undefined)
-  remote.resource = { id: '__proto__', name: 'Special', content: 'exact', revision: 2 }
+  remote.resource = { id: '__proto__', name: 'Special', content: 'exact', revision: 2, incarnationId: null }
   await model.loadPromptResource('__proto__')
   assert.equal(model.state.getSnapshot().resources.documents.get('__proto__')?.data?.content, 'exact')
   assert.equal(model.capturePromptResourceReadStamp('__proto__', 'document')?.revision, 2)
@@ -1948,7 +1949,7 @@ test('invalid resource summaries have no editable revision stamp and exact strin
 test('a resource list revision change invalidates only a mismatched cached document', async () => {
   const { model, remote } = await attachAndReady()
   await model.loadPromptResource('alpha')
-  remote.resourceList = [{ status: 'usable', id: 'alpha', name: 'Alpha', revision: 6 }]
+  remote.resourceList = [{ status: 'usable', id: 'alpha', name: 'Alpha', revision: 6, incarnationId: null }]
   await model.loadPromptResourceList()
   const snapshot = model.state.getSnapshot()
   assert.equal(snapshot.resources.list.stale, false)
@@ -1964,8 +1965,8 @@ test('a changed resource cursor during a read retries before accepting resource 
   remote.defaultChanges = { ...oldChanges, generation: 2, promptResources: 1 }
   remote.changesSteps.push(async () => ok(oldChanges))
   remote.changesSteps.push(async () => ok(remote.defaultChanges))
-  remote.resourceSteps.push(async () => ok(businessOk({ id: 'alpha', name: 'Old', content: 'old', revision: 1 })))
-  remote.resource = { id: 'alpha', name: 'New', content: 'new', revision: 2 }
+  remote.resourceSteps.push(async () => ok(businessOk({ id: 'alpha', name: 'Old', content: 'old', revision: 1, incarnationId: null })))
+  remote.resource = { id: 'alpha', name: 'New', content: 'new', revision: 2, incarnationId: null }
   const result = await model.loadPromptResource('alpha')
   assert.equal(result.status, 'completed')
   assert.equal(remote.calls.getPromptResource, 2)
@@ -1976,8 +1977,8 @@ test('a changed resource cursor during a read retries before accepting resource 
 test('lazy-first Host authority replacement invalidates old caches and rehydrates baseline', async () => {
   const { model, remote } = await attachAndReady()
   await model.loadPromptResource('alpha')
-  remote.defaultChanges = { instanceId: 'host-b', generation: 1, profiles: 1, promptResources: 0, presets: 1, runtime: 1 }
-  remote.resource = { id: 'alpha', name: 'New Host', content: 'host-b', revision: 1 }
+  remote.defaultChanges = { instanceId: 'host-b', resourceAuthorityId: 'resource-host-b', generation: 1, profiles: 1, promptResources: 0, presets: 1, runtime: 1 }
+  remote.resource = { id: 'alpha', name: 'New Host', content: 'host-b', revision: 1, incarnationId: null }
   assert.equal((await model.loadPromptResource('alpha')).status, 'completed')
   await waitFor(() => {
     const snapshot = model.state.getSnapshot()
@@ -2288,7 +2289,7 @@ test('keyed caches evict old entries at the documented 32-document and 64-sessio
   const { model, remote, detach } = await attachAndReady()
   for (let i = 0; i < 33; i += 1) {
     const id = 'resource-' + String(i)
-    remote.resource = { id, name: 'Name ' + String(i), content: 'body', revision: i + 1 }
+    remote.resource = { id, name: 'Name ' + String(i), content: 'body', revision: i, incarnationId: null + 1 }
     assert.equal((await model.loadPromptResource(id)).status, 'completed')
   }
   const documents = model.state.getSnapshot().resources.documents
