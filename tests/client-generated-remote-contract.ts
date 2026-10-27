@@ -4,6 +4,7 @@ import type {} from '../lib/typert.remote-client.js'
 import type {
   ContextManagerClientBusinessRemote,
   ContextManagerClientReadRemote,
+  ContextManagerClientResourceMutationRemote,
 } from '../src/client/remote-port.js'
 
 type Assert<T extends true> = T
@@ -23,3 +24,9 @@ type GeneratedRemoteSatisfiesBusinessPort = Assert<
 
 const _generatedRemoteSatisfiesBusinessPort: GeneratedRemoteSatisfiesBusinessPort = true
 void _generatedRemoteSatisfiesBusinessPort
+
+type GeneratedRemoteSatisfiesResourceMutationPort = Assert<
+  GeneratedContextManagerRemote extends ContextManagerClientResourceMutationRemote ? true : false
+>
+const _generatedResourcePort: GeneratedRemoteSatisfiesResourceMutationPort = true
+void _generatedResourcePort
