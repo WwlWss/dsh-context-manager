@@ -197,6 +197,7 @@ class FakeChanges extends Service {
   snapshot() {
     return {
       instanceId: 'instance-1',
+      resourceAuthorityId: null,
       generation: 12,
       profiles: 2,
       promptResources: 3,
@@ -352,6 +353,7 @@ test('M6C changes endpoint exposes only invalidation cursors', async (t) => {
 
   assert.deepEqual(remote.changes(), {
     instanceId: 'instance-1',
+    resourceAuthorityId: null,
     generation: 12,
     profiles: 2,
     promptResources: 3,
