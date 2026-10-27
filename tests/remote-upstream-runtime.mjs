@@ -90,7 +90,11 @@ class FakePrompts extends Service {
   constructor(ctx) {
     super(ctx, 'dshContextPromptLibrary')
     this.rows = new Map()
+    this.storageIdentity = 'matrix-storage-authority'
+    this.creationSequence = 0
   }
+
+  resourceWriteAuthority() { return this.storageIdentity }
 
   list() {
     return [...this.rows.entries()].map(([id, resource]) => ({
@@ -99,6 +103,7 @@ class FakePrompts extends Service {
       name: resource.name,
       ...(resource.description === undefined ? {} : { description: resource.description }),
       revision: resource.revision,
+      incarnationId: resource.__dshCmResourceIncarnation ?? null,
     }))
   }
 
@@ -112,31 +117,76 @@ class FakePrompts extends Service {
     return { id, resource: structuredClone(resource) }
   }
 
-  async createPrompt(id, input) {
-    this.rows.set(id, { ...structuredClone(input), revision: 1 })
-    return { id, revision: 1 }
+  assertAuthority(basis) {
+    if (basis?.resourceAuthorityId !== this.storageIdentity) {
+      const error = new Error('Prompt Library authority changed')
+      error.code = 'prompt-resource-authority-conflict'
+      throw error
+    }
   }
 
-  async replacePrompt(id, input, expectedRevision) {
-    const current = this.rows.get(id)
-    if (current.revision !== expectedRevision) {
+  assertMutation(id, basis) {
+    this.assertAuthority(basis)
+    const current = this.get(id).resource
+    if (basis.resourceId !== id) {
+      const error = new Error('Resource ID mismatched')
+      error.code = 'invalid-prompt-resource'
+      throw error
+    }
+    if ((current.__dshCmResourceIncarnation ?? null) !== basis.incarnationId) {
+      const error = new Error('Resource was recreated')
+      error.code = 'prompt-resource-incarnation-conflict'
+      throw error
+    }
+    if (current.revision !== basis.revision) {
       const error = new Error('stale prompt')
       error.code = 'prompt-resource-conflict'
       throw error
     }
+    return current
+  }
+
+  async createPrompt(id, input, basis) {
+    this.assertAuthority(basis)
+    if (this.rows.has(id)) {
+      const error = new Error('duplicate Prompt ID')
+      error.code = 'prompt-resource-exists'
+      throw error
+    }
+    this.creationSequence += 1
+    this.rows.set(id, {
+      ...structuredClone(input),
+      revision: 1,
+      __dshCmResourceIncarnation: '00000000-0000-4000-8000-' + String(this.creationSequence).padStart(12, '0'),
+    })
+    return { id, revision: 1 }
+  }
+
+  async replacePrompt(id, input, basis) {
+    const current = this.assertMutation(id, basis)
     const revision = current.revision + 1
     this.rows.set(id, { ...current, ...structuredClone(input), revision })
     return { id, revision }
   }
 
-  async deletePrompt(id, expectedRevision) {
-    const current = this.rows.get(id)
-    if (current.revision !== expectedRevision) {
-      const error = new Error('stale prompt')
-      error.code = 'prompt-resource-conflict'
-      throw error
-    }
+  async deletePrompt(id, basis) {
+    this.assertMutation(id, basis)
     this.rows.delete(id)
+  }
+
+  async setPromptName(id, name, basis) {
+    const current = this.assertMutation(id, basis)
+    return this.replacePrompt(id, { name, content: current.content, ...(current.description === undefined ? {} : { description: current.description }) }, basis)
+  }
+
+  async setPromptDescription(id, description, basis) {
+    const current = this.assertMutation(id, basis)
+    return this.replacePrompt(id, { name: current.name, content: current.content, ...(description === undefined ? {} : { description }) }, basis)
+  }
+
+  async setPromptContent(id, content, basis) {
+    const current = this.assertMutation(id, basis)
+    return this.replacePrompt(id, { name: current.name, content, ...(current.description === undefined ? {} : { description: current.description }) }, basis)
   }
 }
 
@@ -255,6 +305,7 @@ class FakeChanges extends Service {
   snapshot() {
     return {
       instanceId: 'runtime-matrix',
+      resourceAuthorityId: 'matrix-storage-authority',
       generation: 9,
       profiles: 1,
       promptResources: 2,
@@ -288,8 +339,8 @@ await mount(TypertGatewayService)
 
 const disposeContribution = ctx.typert.register(TYPERT)
 try {
-  assert.equal(TYPERT.invocations.length, 31)
-  assert.equal(TYPERT_REMOTE.descriptors.length, 31)
+  assert.equal(TYPERT.invocations.length, 34)
+  assert.equal(TYPERT_REMOTE.descriptors.length, 34)
   for (const invocation of TYPERT.invocations) {
     assertDualStrictCodec(invocation.result, `Host ${invocation.method} result`)
     for (const parameter of invocation.parameters) {
@@ -385,7 +436,7 @@ try {
   const promptCreated = await ctx.typertGateway.invoke({
     namespace: 'contextManager',
     method: 'createPromptResource',
-    args: { id: 'p', input: { name: 'Prompt', content: 'body' } },
+    args: { id: 'p', input: { name: 'Prompt', content: 'body' }, basis: { resourceAuthorityId: changeSnapshot.resourceAuthorityId } },
   })
   assert.deepEqual(promptCreated, { ok: true, value: { id: 'p', revision: 1 } })
 
@@ -483,6 +534,7 @@ try {
     args: {},
   }), {
     instanceId: 'runtime-matrix',
+    resourceAuthorityId: 'matrix-storage-authority',
     generation: 9,
     profiles: 1,
     promptResources: 2,
