@@ -175,10 +175,11 @@ function createWritableRemoteFixture() {
   }
 
   const face = {
-    async protocol() { return okRead({ apiVersion: 2 }) },
+    async protocol() { return okRead({ apiVersion: 3 }) },
     async changes() {
       return okRead({
         instanceId,
+        resourceAuthorityId: 'm7c-fixture-resource',
         generation: change,
         profiles: change,
         promptResources: 0,
