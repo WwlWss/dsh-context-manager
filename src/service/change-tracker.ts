@@ -3,6 +3,7 @@ import { Service, type Context } from '@deepseek-ai/cordis'
 
 export interface ContextManagerChangeSnapshot {
   readonly instanceId: string
+  readonly resourceAuthorityId: string | null
   readonly generation: number
   readonly profiles: number
   readonly promptResources: number
@@ -76,8 +77,11 @@ export class ContextManagerChangeTracker extends Service {
 
   snapshot(): ContextManagerChangeSnapshot {
     this.syncAuthority()
+    const promptLibrary = this.ownerCtx.get('dshContextPromptLibrary') as { resourceWriteAuthority(): string | undefined } | undefined
+    const resourceAuthorityId = promptLibrary?.resourceWriteAuthority() ?? null
     return Object.freeze({
       instanceId: this.instanceId,
+      resourceAuthorityId,
       generation: this.generation,
       profiles: this.profiles,
       promptResources: this.promptResources,
