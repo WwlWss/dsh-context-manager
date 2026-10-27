@@ -78,7 +78,7 @@ export class ContextManagerChangeTracker extends Service {
   snapshot(): ContextManagerChangeSnapshot {
     this.syncAuthority()
     const promptLibrary = this.ownerCtx.get('dshContextPromptLibrary') as { resourceWriteAuthority(): string | undefined } | undefined
-    const resourceAuthorityId = promptLibrary?.resourceWriteAuthority() ?? null
+    const resourceAuthorityId = promptLibrary?.resourceWriteAuthority?.() ?? null
     return Object.freeze({
       instanceId: this.instanceId,
       resourceAuthorityId,
