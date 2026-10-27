@@ -40,6 +40,20 @@ async function boot(state = memoryState()) {
   await ctx.plugin(ContextManagerPromptLibrary)
   return { ctx, library: ctx.dshContextPromptLibrary, state }
 }
+
+function createBasis(library) {
+  return { resourceAuthorityId: library.resourceWriteAuthority() }
+}
+function resourceBasis(library, id, revision, incarnationId) {
+  const row = library.list().find(item => item.id === id)
+  return {
+    resourceAuthorityId: library.resourceWriteAuthority(),
+    resourceId: id,
+    incarnationId: incarnationId === undefined ? row?.incarnationId ?? null : incarnationId,
+    revision: revision ?? row?.revision ?? 1,
+  }
+}
+
 async function rejectsCode(promise, code) {
   await assert.rejects(promise, error => {
     assert.ok(error instanceof ContextManagerError)
@@ -62,23 +76,23 @@ test('create preserves arbitrary ids, exact text, and unknown JSON extensions', 
   t.after(() => ctx.fiber.dispose())
   const id = `  /Prompt/${['__', 'proto', '__'].join('')}/日本語  `
   const content = '  leading\r\n中文\n日本語 {{variable}} {{unknown}}\ntrailing  '
-  const created = await library.createPrompt(id, { name: '  Name  ', description: '', content, futureField: { nested: ['keep'] } })
+  const created = await library.createPrompt(id, { name: '  Name  ', description: '', content, futureField: { nested: ['keep'] } }, createBasis(library))
   assert.deepEqual(created, { id, revision: 1 })
   const stored = library.get(id)
   assert.equal(stored.resource.content, content)
   assert.deepEqual(stored.resource.futureField, { nested: ['keep'] })
-  assert.deepEqual(library.list(), [{ status: 'usable', id, name: '  Name  ', description: '', revision: 1 }])
+  assert.deepEqual(library.list(), [{ status: 'usable', id, name: '  Name  ', description: '', revision: 1, incarnationId: stored.resource.__dshCmResourceIncarnation }])
   assert.equal(Object.hasOwn(library.list()[0], 'content'), false)
 })
 
 test('duplicate create and stale revisions are explicit', async (t) => {
   const { ctx, library } = await boot()
   t.after(() => ctx.fiber.dispose())
-  await library.createPrompt('same', { name: 'first', content: 'A' })
-  await rejectsCode(library.createPrompt('same', { name: 'second', content: 'B' }), 'prompt-resource-exists')
-  const updated = await library.setPromptContent('same', 'B', 1)
+  await library.createPrompt('same', { name: 'first', content: 'A' }, createBasis(library))
+  await rejectsCode(library.createPrompt('same', { name: 'second', content: 'B' }, createBasis(library)), 'prompt-resource-exists')
+  const updated = await library.setPromptContent('same', 'B', resourceBasis(library, 'same', 1))
   assert.deepEqual(updated, { id: 'same', revision: 2 })
-  await rejectsCode(library.setPromptName('same', 'stale', 1), 'prompt-resource-conflict')
+  await rejectsCode(library.setPromptName('same', 'stale', resourceBasis(library, 'same', 1)), 'prompt-resource-conflict')
 })
 
 test('replace merges old and new unknown siblings and reserves revision', async (t) => {
@@ -86,14 +100,14 @@ test('replace merges old and new unknown siblings and reserves revision', async 
   state.table.records.set('future', { name: 'old', description: 'old', content: 'old', revision: 7, futureField: { old: true }, stableField: 'keep' })
   const { ctx, library } = await boot(state)
   t.after(() => ctx.fiber.dispose())
-  const receipt = await library.replacePrompt('future', { name: 'new', content: 'new', futureField: { new: true }, addedField: 42 }, 7)
+  const receipt = await library.replacePrompt('future', { name: 'new', content: 'new', futureField: { new: true }, addedField: 42 }, resourceBasis(library, 'future', 7))
   assert.deepEqual(receipt, { id: 'future', revision: 8 })
   const resource = library.get('future').resource
   assert.equal(Object.hasOwn(resource, 'description'), false)
   assert.deepEqual(resource.futureField, { new: true })
   assert.equal(resource.stableField, 'keep')
   assert.equal(resource.addedField, 42)
-  await rejectsCode(library.replacePrompt('future', { name: 'x', content: 'x', revision: 99 }, 8), 'invalid-prompt-resource')
+  await rejectsCode(library.replacePrompt('future', { name: 'x', content: 'x', revision: 99 }, resourceBasis(library, 'future', 8)), 'invalid-prompt-resource')
 })
 
 test('malformed stored resources are isolated while usable resources remain available', async (t) => {
@@ -104,7 +118,7 @@ test('malformed stored resources are isolated while usable resources remain avai
   t.after(() => ctx.fiber.dispose())
   const listed = library.list()
   assert.equal(listed.find(item => item.id === 'bad').status, 'invalid')
-  assert.deepEqual(listed.find(item => item.id === 'good'), { status: 'usable', id: 'good', name: 'good', revision: 2 })
+  assert.deepEqual(listed.find(item => item.id === 'good'), { status: 'usable', id: 'good', name: 'good', revision: 2, incarnationId: null })
   assert.equal(library.get('good').resource.content, 'ok')
   assert.throws(() => library.get('bad'), error => error instanceof ContextManagerError && error.code === 'invalid-prompt-resource')
 })
@@ -115,7 +129,7 @@ test('path-local setter repairs one malformed field without requiring full Domai
   const { ctx, library } = await boot(state)
   t.after(() => ctx.fiber.dispose())
   assert.equal(library.list()[0].status, 'invalid')
-  assert.deepEqual(await library.setPromptName('repair', 'fixed', 5), { id: 'repair', revision: 6 })
+  assert.deepEqual(await library.setPromptName('repair', 'fixed', resourceBasis(library, 'repair', 5)), { id: 'repair', revision: 6 })
   assert.equal(library.get('repair').resource.name, 'fixed')
   assert.deepEqual(library.get('repair').resource.futureField, { keep: true })
 })
@@ -125,15 +139,15 @@ test('missing usable revision fence blocks path-local mutation', async (t) => {
   state.table.records.set('no-fence', { name: 'n', content: 'c', revision: 'bad' })
   const { ctx, library } = await boot(state)
   t.after(() => ctx.fiber.dispose())
-  await rejectsCode(library.setPromptContent('no-fence', 'new', 1), 'prompt-resource-path-not-editable')
+  await rejectsCode(library.setPromptContent('no-fence', 'new', resourceBasis(library, 'no-fence', 1)), 'prompt-resource-path-not-editable')
 })
 
 test('structured writes reject extension values that JSON persistence would change', async (t) => {
   const { ctx, library } = await boot()
   t.after(() => ctx.fiber.dispose())
-  await rejectsCode(library.createPrompt('undefined', { name: 'n', content: 'c', future: undefined }), 'invalid-prompt-resource')
-  await rejectsCode(library.createPrompt('date', { name: 'n', content: 'c', future: new Date() }), 'invalid-prompt-resource')
-  await rejectsCode(library.createPrompt('nan', { name: 'n', content: 'c', future: Number.NaN }), 'invalid-prompt-resource')
+  await rejectsCode(library.createPrompt('undefined', { name: 'n', content: 'c', future: undefined }, createBasis(library)), 'invalid-prompt-resource')
+  await rejectsCode(library.createPrompt('date', { name: 'n', content: 'c', future: new Date() }, createBasis(library)), 'invalid-prompt-resource')
+  await rejectsCode(library.createPrompt('nan', { name: 'n', content: 'c', future: Number.NaN }, createBasis(library)), 'invalid-prompt-resource')
   assert.equal(library.list().length, 0)
 })
 
@@ -153,10 +167,10 @@ test('get is detached while list carries no body or extension payload', async (t
 test('delete is revision-fenced and removes only the named resource', async (t) => {
   const { ctx, library } = await boot()
   t.after(() => ctx.fiber.dispose())
-  await library.createPrompt('a', { name: 'a', content: 'A' })
-  await library.createPrompt('b', { name: 'b', content: 'B' })
-  await rejectsCode(library.deletePrompt('a', 2), 'prompt-resource-conflict')
-  await library.deletePrompt('a', 1)
+  await library.createPrompt('a', { name: 'a', content: 'A' }, createBasis(library))
+  await library.createPrompt('b', { name: 'b', content: 'B' }, createBasis(library))
+  await rejectsCode(library.deletePrompt('a', resourceBasis(library, 'a', 2)), 'prompt-resource-conflict')
+  await library.deletePrompt('a', resourceBasis(library, 'a', 1))
   assert.deepEqual(library.list().map(item => item.id), ['b'])
 })
 

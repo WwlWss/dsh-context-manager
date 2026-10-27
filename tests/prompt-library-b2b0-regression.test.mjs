@@ -31,6 +31,19 @@ async function boot(table) {
   return { ctx, library: ctx.dshContextPromptLibrary }
 }
 
+function createBasis(library) {
+  return { resourceAuthorityId: library.resourceWriteAuthority() }
+}
+function mutationBasis(library, id) {
+  const resource = library.get(id).resource
+  return {
+    resourceAuthorityId: library.resourceWriteAuthority(),
+    resourceId: id,
+    incarnationId: resource.__dshCmResourceIncarnation ?? null,
+    revision: resource.revision,
+  }
+}
+
 const isIncarnationConflict = error => error instanceof ContextManagerError
   && error.code === 'prompt-resource-incarnation-conflict'
 const isAuthorityConflict = error => error instanceof ContextManagerError
@@ -40,14 +53,15 @@ test('B2-B0 RED: delete+recreate at equal revision must refuse a stale draft', a
   const { ctx, library } = await boot(new MemoryTable())
   t.after(() => ctx.fiber.dispose())
 
-  await library.createPrompt('same-id', { name: 'original', content: 'first' })
-  const oldRevision = library.get('same-id').resource.revision
-  await library.deletePrompt('same-id', oldRevision)
-  await library.createPrompt('same-id', { name: 'replacement', content: 'second' })
+  await library.createPrompt('same-id', { name: 'original', content: 'first' }, createBasis(library))
+  const oldBasis = mutationBasis(library, 'same-id')
+  const oldRevision = oldBasis.revision
+  await library.deletePrompt('same-id', oldBasis)
+  await library.createPrompt('same-id', { name: 'replacement', content: 'second' }, createBasis(library))
   assert.equal(library.get('same-id').resource.revision, oldRevision)
 
   await assert.rejects(
-    library.replacePrompt('same-id', { name: 'stale edit', content: 'unsafe' }, oldRevision),
+    library.replacePrompt('same-id', { name: 'stale edit', content: 'unsafe' }, oldBasis),
     isIncarnationConflict,
   )
   assert.equal(library.get('same-id').resource.content, 'second')
@@ -56,8 +70,9 @@ test('B2-B0 RED: delete+recreate at equal revision must refuse a stale draft', a
 test('B2-B0 RED: reopening a storage-backed library with equal revision must reject the old authority', async (t) => {
   const table = new MemoryTable()
   const first = await boot(table)
-  await first.library.createPrompt('same-id', { name: 'original', content: 'first' })
-  const oldRevision = first.library.get('same-id').resource.revision
+  await first.library.createPrompt('same-id', { name: 'original', content: 'first' }, createBasis(first.library))
+  const oldBasis = mutationBasis(first.library, 'same-id')
+  const oldRevision = oldBasis.revision
   await first.ctx.fiber.dispose()
 
   const second = await boot(table)
@@ -65,7 +80,7 @@ test('B2-B0 RED: reopening a storage-backed library with equal revision must rej
   assert.equal(second.library.get('same-id').resource.revision, oldRevision)
 
   await assert.rejects(
-    second.library.replacePrompt('same-id', { name: 'stale edit', content: 'unsafe' }, oldRevision),
+    second.library.replacePrompt('same-id', { name: 'stale edit', content: 'unsafe' }, oldBasis),
     isAuthorityConflict,
   )
   assert.equal(second.library.get('same-id').resource.content, 'first')

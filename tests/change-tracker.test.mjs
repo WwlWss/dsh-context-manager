@@ -172,6 +172,18 @@ test('profile Settings commits invalidate profiles, preset resolution, and runti
   assert.equal(after.promptResources, before.promptResources)
 })
 
+function createResourceBasis(library) {
+  return { resourceAuthorityId: library.resourceWriteAuthority() }
+}
+function editResourceBasis(library, id, revision) {
+  const entry = library.list().find(row => row.id === id)
+  return {
+    resourceAuthorityId: library.resourceWriteAuthority(), resourceId: id,
+    incarnationId: entry?.incarnationId ?? null,
+    revision: revision ?? entry?.revision ?? 1,
+  }
+}
+
 test('PromptResource successful durable mutations bump promptResources and runtime exactly once', async (t) => {
   const ctx = new Context()
   t.after(() => ctx.fiber.dispose())
@@ -184,7 +196,7 @@ test('PromptResource successful durable mutations bump promptResources and runti
   await libraryFiber
 
   let before = ctx.dshContextChanges.snapshot()
-  await ctx.dshContextPromptLibrary.createPrompt('p', { name: 'P', content: 'one' })
+  await ctx.dshContextPromptLibrary.createPrompt('p', { name: 'P', content: 'one' }, createResourceBasis(ctx.dshContextPromptLibrary))
   let after = ctx.dshContextChanges.snapshot()
   assert.equal(after.generation, before.generation + 1)
   assert.equal(after.promptResources, before.promptResources + 1)
@@ -192,12 +204,12 @@ test('PromptResource successful durable mutations bump promptResources and runti
 
   before = after
   await assert.rejects(
-    ctx.dshContextPromptLibrary.createPrompt('p', { name: 'dup', content: 'x' }),
+    ctx.dshContextPromptLibrary.createPrompt('p', { name: 'dup', content: 'x' }, createResourceBasis(ctx.dshContextPromptLibrary)),
     error => error instanceof ContextManagerError && error.code === 'prompt-resource-exists',
   )
   assert.deepEqual(ctx.dshContextChanges.snapshot(), before)
 
-  await ctx.dshContextPromptLibrary.setPromptContent('p', 'two', 1)
+  await ctx.dshContextPromptLibrary.setPromptContent('p', 'two', editResourceBasis(ctx.dshContextPromptLibrary, 'p', 1))
   after = ctx.dshContextChanges.snapshot()
   assert.equal(after.generation, before.generation + 1)
   assert.equal(after.promptResources, before.promptResources + 1)
@@ -205,12 +217,12 @@ test('PromptResource successful durable mutations bump promptResources and runti
 
   before = after
   await assert.rejects(
-    ctx.dshContextPromptLibrary.setPromptName('p', 'stale', 1),
+    ctx.dshContextPromptLibrary.setPromptName('p', 'stale', editResourceBasis(ctx.dshContextPromptLibrary, 'p', 1)),
     error => error instanceof ContextManagerError && error.code === 'prompt-resource-conflict',
   )
   assert.deepEqual(ctx.dshContextChanges.snapshot(), before)
 
-  await ctx.dshContextPromptLibrary.deletePrompt('p', 2)
+  await ctx.dshContextPromptLibrary.deletePrompt('p', editResourceBasis(ctx.dshContextPromptLibrary, 'p', 2))
   after = ctx.dshContextChanges.snapshot()
   assert.equal(after.generation, before.generation + 1)
   assert.equal(after.promptResources, before.promptResources + 1)
