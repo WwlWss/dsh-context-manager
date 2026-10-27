@@ -17,6 +17,12 @@ import {
   type ContextManagerRemoteProtocol,
   type ContextManagerRemoteResult,
   type ContextManagerRemoteSkillMode,
+  type ContextManagerRemotePromptResource,
+  type ContextManagerRemotePromptResourceListItem,
+  type ContextManagerRemoteSessionPresetIdentity,
+  type ContextManagerRemotePromptRuntimeInspection,
+  type ContextManagerRemoteSkillRuntimeInspection,
+  type ContextManagerRemotePinnedSkillInspection,
 } from '../src/remote/types.js'
 import {
   CONTEXT_MANAGER_BASELINE_SURFACES,
@@ -149,6 +155,12 @@ class ScriptedRemote implements ContextManagerClientBusinessRemote {
     presets: 0,
     promptPlacement: 0,
     profileMutation: 0,
+    listPromptResources: 0,
+    getPromptResource: 0,
+    sessionPreset: 0,
+    promptRuntime: 0,
+    skillRuntime: 0,
+    pinnedRuntime: 0,
   }
 
   readonly profileMutationCalls: Array<{
@@ -203,6 +215,41 @@ class ScriptedRemote implements ContextManagerClientBusinessRemote {
   promptPlacement(): Promise<RemoteResult<ContextManagerRemotePromptPlacementCapability>> {
     this.calls.promptPlacement += 1
     return this.take(this.placementSteps, this.defaultPlacement)
+  }
+
+  resourceList: readonly ContextManagerRemotePromptResourceListItem[] = [{ status: 'usable', id: 'alpha', name: 'Alpha', revision: 5 }]
+  resource: ContextManagerRemotePromptResource = { id: 'alpha', name: 'Alpha', content: 'body', revision: 5 }
+  session: ContextManagerRemoteSessionPresetIdentity = { status: 'known', sessionId: 's', presetId: null }
+  prompt: ContextManagerRemotePromptRuntimeInspection = { status: 'runtime-unavailable' }
+  skill: ContextManagerRemoteSkillRuntimeInspection = { status: 'runtime-unavailable' }
+  pinned: ContextManagerRemotePinnedSkillInspection = { status: 'runtime-unavailable' }
+  readonly resourceSteps: Array<Step<ContextManagerRemoteResult<ContextManagerRemotePromptResource>>> = []
+  readonly listSteps: Array<Step<ContextManagerRemoteResult<readonly ContextManagerRemotePromptResourceListItem[]>>> = []
+  readonly sessionSteps: Array<Step<ContextManagerRemoteSessionPresetIdentity>> = []
+
+  listPromptResources() {
+    this.calls.listPromptResources += 1
+    return this.take(this.listSteps, businessOk(this.resourceList))
+  }
+  getPromptResource(_id: string) {
+    this.calls.getPromptResource += 1
+    return this.take(this.resourceSteps, businessOk(this.resource))
+  }
+  sessionPreset(_id: string) {
+    this.calls.sessionPreset += 1
+    return this.take(this.sessionSteps, this.session)
+  }
+  inspectPromptRuntime(_id: string) {
+    this.calls.promptRuntime += 1
+    return Promise.resolve(ok(this.prompt))
+  }
+  inspectSkillRuntime(_id: string) {
+    this.calls.skillRuntime += 1
+    return Promise.resolve(ok(this.skill))
+  }
+  inspectPinnedSkillRuntime(_id: string) {
+    this.calls.pinnedRuntime += 1
+    return Promise.resolve(ok(this.pinned))
   }
 
   private mutate(
@@ -1788,6 +1835,495 @@ test('all profile mutation wrappers forward the exact arguments and immutable ba
     assert.deepEqual(call?.basis, basis)
   }
 
+  detach()
+  model.dispose()
+})
+
+
+test('lazy resource directory and document reads keep revision and content separate', async () => {
+  const { model, remote } = await attachAndReady()
+  assert.equal(remote.calls.listPromptResources, 0)
+  assert.equal(remote.calls.getPromptResource, 0)
+  assert.equal((await model.loadPromptResourceList()).status, 'completed')
+  assert.equal(remote.calls.getPromptResource, 0)
+  assert.deepEqual(model.capturePromptResourceReadStamp('alpha', 'list'), {
+    instanceId: 'host-a', resourceId: 'alpha', revision: 5, source: 'list',
+  })
+  assert.equal((await model.loadPromptResource('alpha')).status, 'completed')
+  assert.equal(model.state.getSnapshot().resources.documents.get('alpha')?.data?.content, 'body')
+  assert.equal(model.capturePromptResourceReadStamp('alpha', 'document')?.revision, 5)
+  model.dispose()
+})
+
+test('resource business failures remain distinct from transport failures', async () => {
+  const { model, remote } = await attachAndReady()
+  remote.resourceSteps.push(async () => ok(businessFail('prompt-resource-not-found')))
+  await model.loadPromptResource('missing')
+  assert.deepEqual(model.state.getSnapshot().resources.documents.get('missing')?.error?.kind, 'business')
+  remote.resourceSteps.push(async () => fail())
+  await model.loadPromptResource('missing')
+  assert.deepEqual(model.state.getSnapshot().resources.documents.get('missing')?.error?.kind, 'remote')
+  model.dispose()
+})
+
+test('newer same-key requests own publication while different diagnostic keys remain isolated', async () => {
+  const { model, remote } = await attachAndReady()
+  const old = deferred<RemoteResult<ContextManagerRemoteResult<ContextManagerRemotePromptResource>>>()
+  remote.resourceSteps.push(() => old.promise)
+  const first = model.loadPromptResource('alpha')
+  await waitFor(() => remote.calls.getPromptResource === 1, 'first keyed request')
+  remote.resource = { id: 'alpha', name: 'New', content: 'new', revision: 6 }
+  const second = model.loadPromptResource('alpha')
+  await waitFor(() => remote.calls.getPromptResource === 2, 'second keyed request')
+  await second
+  old.resolve(ok(businessOk({ id: 'alpha', name: 'Old', content: 'old', revision: 5 })))
+  assert.equal((await first).status, 'superseded')
+  assert.equal(model.state.getSnapshot().resources.documents.get('alpha')?.data?.content, 'new')
+  assert.equal((await model.loadSessionPreset('s')).status, 'completed')
+  assert.deepEqual(model.state.getSnapshot().diagnostics.sessions.get('s')?.data, {
+    status: 'known', sessionId: 's', presetId: null,
+  })
+  model.dispose()
+})
+
+test('resource cursor invalidation stales content but does not contaminate runtime state', async () => {
+  const { model, remote } = await attachAndReady()
+  await model.loadPromptResourceList()
+  await model.loadPromptResource('alpha')
+  await model.loadAgentSkillRuntime('a')
+  remote.defaultChanges = { ...remote.defaultChanges, generation: 2, promptResources: 1 }
+  await model.loadSessionPreset('s')
+  assert.equal(model.state.getSnapshot().resources.documents.get('alpha')?.stale, true)
+  assert.equal(model.state.getSnapshot().diagnostics.skills.get('a')?.stale, false)
+  assert.equal(model.capturePromptResourceReadStamp('alpha', 'document'), undefined)
+  model.dispose()
+})
+
+test('keyed reads cannot publish after detach', async () => {
+  const { model, remote, detach } = await attachAndReady()
+  const gate = deferred<RemoteResult<ContextManagerRemoteSessionPresetIdentity>>()
+  remote.sessionSteps.push(() => gate.promise)
+  const request = model.loadSessionPreset('s')
+  await waitFor(() => remote.calls.sessionPreset === 1, 'session request')
+  detach()
+  gate.resolve(ok({ status: 'known', sessionId: 's', presetId: 'obsolete' }))
+  assert.equal((await request).status, 'detached')
+  assert.equal(model.state.getSnapshot().diagnostics.sessions.get('s'), undefined)
+  model.dispose()
+})
+
+
+test('all three Agent diagnostic families are individually lazy and retain domain statuses', async () => {
+  const { model, remote } = await attachAndReady()
+  assert.equal(remote.calls.promptRuntime, 0)
+  assert.equal(remote.calls.skillRuntime, 0)
+  assert.equal(remote.calls.pinnedRuntime, 0)
+  remote.prompt = { status: 'assembly-bypassed', agentId: 'p' }
+  remote.skill = { status: 'agent-not-live', agentId: 's' }
+  remote.pinned = { status: 'runtime-unavailable' }
+  await model.loadAgentPromptRuntime('p')
+  await model.loadAgentSkillRuntime('s')
+  await model.loadAgentPinnedRuntime('z')
+  assert.deepEqual(model.state.getSnapshot().diagnostics.prompts.get('p')?.data, { status: 'assembly-bypassed', agentId: 'p' })
+  assert.deepEqual(model.state.getSnapshot().diagnostics.skills.get('s')?.data, { status: 'agent-not-live', agentId: 's' })
+  assert.deepEqual(model.state.getSnapshot().diagnostics.pinned.get('z')?.data, { status: 'runtime-unavailable' })
+  assert.equal(remote.calls.promptRuntime, 1)
+  assert.equal(remote.calls.skillRuntime, 1)
+  assert.equal(remote.calls.pinnedRuntime, 1)
+  model.dispose()
+})
+
+test('invalid resource summaries have no editable revision stamp and exact string IDs do not collide', async () => {
+  const { model, remote } = await attachAndReady()
+  remote.resourceList = [{ status: 'invalid', id: '__proto__', message: 'invalid stored resource' }]
+  await model.loadPromptResourceList()
+  assert.equal(model.capturePromptResourceReadStamp('__proto__', 'list'), undefined)
+  remote.resource = { id: '__proto__', name: 'Special', content: 'exact', revision: 2 }
+  await model.loadPromptResource('__proto__')
+  assert.equal(model.state.getSnapshot().resources.documents.get('__proto__')?.data?.content, 'exact')
+  assert.equal(model.capturePromptResourceReadStamp('__proto__', 'document')?.revision, 2)
+  model.dispose()
+})
+
+test('a resource list revision change invalidates only a mismatched cached document', async () => {
+  const { model, remote } = await attachAndReady()
+  await model.loadPromptResource('alpha')
+  remote.resourceList = [{ status: 'usable', id: 'alpha', name: 'Alpha', revision: 6 }]
+  await model.loadPromptResourceList()
+  const snapshot = model.state.getSnapshot()
+  assert.equal(snapshot.resources.list.stale, false)
+  assert.equal(snapshot.resources.documents.get('alpha')?.stale, true)
+  assert.equal(model.capturePromptResourceReadStamp('alpha', 'document'), undefined)
+  assert.equal(model.capturePromptResourceReadStamp('alpha', 'list')?.revision, 6)
+  model.dispose()
+})
+
+test('a changed resource cursor during a read retries before accepting resource content', async () => {
+  const { model, remote } = await attachAndReady()
+  const oldChanges = remote.defaultChanges
+  remote.defaultChanges = { ...oldChanges, generation: 2, promptResources: 1 }
+  remote.changesSteps.push(async () => ok(oldChanges))
+  remote.changesSteps.push(async () => ok(remote.defaultChanges))
+  remote.resourceSteps.push(async () => ok(businessOk({ id: 'alpha', name: 'Old', content: 'old', revision: 1 })))
+  remote.resource = { id: 'alpha', name: 'New', content: 'new', revision: 2 }
+  const result = await model.loadPromptResource('alpha')
+  assert.equal(result.status, 'completed')
+  assert.equal(remote.calls.getPromptResource, 2)
+  assert.equal(model.state.getSnapshot().resources.documents.get('alpha')?.data?.content, 'new')
+  model.dispose()
+})
+
+test('lazy-first Host authority replacement invalidates old caches and rehydrates baseline', async () => {
+  const { model, remote } = await attachAndReady()
+  await model.loadPromptResource('alpha')
+  remote.defaultChanges = { instanceId: 'host-b', generation: 1, profiles: 1, promptResources: 0, presets: 1, runtime: 1 }
+  remote.resource = { id: 'alpha', name: 'New Host', content: 'host-b', revision: 1 }
+  assert.equal((await model.loadPromptResource('alpha')).status, 'completed')
+  await waitFor(() => {
+    const snapshot = model.state.getSnapshot()
+    return snapshot.instanceId === 'host-b' && snapshot.profiles.status === 'ready' && snapshot.protocol.status === 'compatible'
+  }, 'baseline rehydrated after lazy Host replacement')
+  const snapshot = model.state.getSnapshot()
+  assert.equal(snapshot.resources.documents.get('alpha')?.data?.content, 'host-b')
+  assert.equal(model.capturePromptResourceReadStamp('alpha', 'document')?.instanceId, 'host-b')
+  model.dispose()
+})
+
+test('lazy protocol incompatibility clears stale Resource write observations', async () => {
+  const { model, remote } = await attachAndReady()
+  await model.loadPromptResource('alpha')
+  assert.equal(model.capturePromptResourceReadStamp('alpha', 'document')?.revision, 5)
+  remote.defaultProtocol = { apiVersion: CONTEXT_MANAGER_REMOTE_API_VERSION + 1 }
+  assert.equal((await model.loadPromptResource('alpha')).status, 'incompatible')
+  assert.equal(model.state.getSnapshot().protocol.status, 'incompatible')
+  assert.equal(model.capturePromptResourceReadStamp('alpha', 'document'), undefined)
+  model.dispose()
+})
+
+
+test('P1 regression: lazy before-bracket Host change recovers baseline despite synchronous same-key supersession', async () => {
+  const { model, remote, detach } = await attachAndReady()
+  remote.defaultChanges = changes('host-b')
+  let successor: ReturnType<typeof model.loadPromptResource> | undefined
+  let unsubscribe = () => {}
+  unsubscribe = model.state.subscribe(() => {
+    const snapshot = model.state.getSnapshot()
+    if (snapshot.instanceId !== 'host-b' || snapshot.profiles.status !== 'idle') return
+    unsubscribe()
+    successor = model.loadPromptResource('alpha')
+  })
+  const old = await model.loadPromptResource('alpha')
+  assert.equal(old.status, 'superseded')
+  assert.ok(successor)
+  await successor
+  await waitFor(() => {
+    const snapshot = model.state.getSnapshot()
+    return snapshot.instanceId === 'host-b'
+      && snapshot.protocol.status === 'compatible'
+      && snapshot.profiles.status === 'ready'
+      && snapshot.presets.status === 'ready'
+      && snapshot.promptPlacement.status === 'ready'
+  }, 'baseline recovery after synchronous lazy supersession')
+  unsubscribe()
+  detach()
+  model.dispose()
+})
+
+test('P1 regression: lazy after-bracket Host change still schedules baseline recovery on same-key reentrancy', async () => {
+  const { model, remote, detach } = await attachAndReady()
+  remote.defaultChanges = changes('host-b')
+  remote.changesSteps.push(async () => ok(changes('host-a')))
+  let successor: ReturnType<typeof model.loadPromptResource> | undefined
+  let unsubscribe = () => {}
+  unsubscribe = model.state.subscribe(() => {
+    const snapshot = model.state.getSnapshot()
+    if (snapshot.instanceId !== 'host-b' || snapshot.profiles.status !== 'idle') return
+    unsubscribe()
+    successor = model.loadPromptResource('alpha')
+  })
+  const old = await model.loadPromptResource('alpha')
+  assert.equal(old.status, 'superseded')
+  assert.ok(successor)
+  await successor
+  await waitFor(() => {
+    const snapshot = model.state.getSnapshot()
+    return snapshot.instanceId === 'host-b'
+      && snapshot.profiles.status === 'ready'
+      && snapshot.presets.status === 'ready'
+      && snapshot.promptPlacement.status === 'ready'
+  }, 'baseline recovery when after-bracket discovers Host')
+  unsubscribe()
+  detach()
+  model.dispose()
+})
+
+test('P2 regression: delayed lazy incompatible result cannot wipe a newer compatible baseline proof', async () => {
+  const { model, remote, detach } = await attachAndReady()
+  const staleProtocol = deferred<RemoteResult<ContextManagerRemoteProtocol>>()
+  const before = remote.calls.protocol
+  remote.protocolSteps.push(() => staleProtocol.promise)
+  const old = model.loadPromptResource('alpha')
+  await waitFor(() => remote.calls.protocol === before + 1, 'old lazy protocol request')
+  await model.reconcile(['profiles'])
+  assert.equal(model.state.getSnapshot().protocol.status, 'compatible')
+  staleProtocol.resolve(ok({ apiVersion: CONTEXT_MANAGER_REMOTE_API_VERSION + 1 }))
+  const oldResult = await old
+  assert.notEqual(oldResult.status, 'incompatible')
+  assert.equal(model.state.getSnapshot().protocol.status, 'compatible')
+  assert.equal(model.state.getSnapshot().profiles.status, 'ready')
+  assert.equal(model.getProfileRevision(), 7)
+  detach()
+  model.dispose()
+})
+
+test('P2 regression: lazy incompatible must be confirmed by guarded global protocol proof', async () => {
+  const { model, remote, detach } = await attachAndReady()
+  await model.loadPromptResource('alpha')
+  const before = remote.calls.protocol
+  remote.defaultProtocol = { apiVersion: CONTEXT_MANAGER_REMOTE_API_VERSION + 1 }
+  const result = await model.loadPromptResource('alpha')
+  assert.equal(result.status, 'incompatible')
+  assert.equal(remote.calls.protocol, before + 2)
+  assert.equal(model.state.getSnapshot().protocol.status, 'incompatible')
+  assert.equal(model.capturePromptResourceReadStamp('alpha', 'document'), undefined)
+  detach()
+  model.dispose()
+})
+
+
+test('P1 recovery ticket does not issue a stale baseline Remote call after synchronous detach', async () => {
+  const { model, remote, detach } = await attachAndReady()
+  const initialProfileCalls = remote.calls.profiles
+  remote.defaultChanges = changes('host-b')
+  let unsubscribe = () => {}
+  unsubscribe = model.state.subscribe(() => {
+    const snapshot = model.state.getSnapshot()
+    if (snapshot.instanceId !== 'host-b' || snapshot.profiles.status !== 'idle') return
+    unsubscribe()
+    detach()
+  })
+  const result = await model.loadPromptResource('alpha')
+  assert.equal(result.status, 'detached')
+  await Promise.resolve()
+  await Promise.resolve()
+  assert.equal(remote.calls.profiles, initialProfileCalls)
+  assert.equal(model.state.getSnapshot().attachment, 'detached')
+  unsubscribe()
+  model.dispose()
+})
+
+test('P1 synchronous Host replacement schedules only one baseline recovery for multiple lazy readers', async () => {
+  const { model, remote, detach } = await attachAndReady()
+  const initialProfileCalls = remote.calls.profiles
+  remote.defaultChanges = changes('host-b')
+  let successor: ReturnType<typeof model.loadSessionPreset> | undefined
+  let unsubscribe = () => {}
+  unsubscribe = model.state.subscribe(() => {
+    const snapshot = model.state.getSnapshot()
+    if (snapshot.instanceId !== 'host-b' || snapshot.profiles.status !== 'idle') return
+    unsubscribe()
+    successor = model.loadSessionPreset('session-new')
+  })
+  await model.loadPromptResource('alpha')
+  assert.ok(successor)
+  await successor
+  await waitFor(() => model.state.getSnapshot().profiles.status === 'ready', 'single Host baseline recovery')
+  assert.equal(remote.calls.profiles, initialProfileCalls + 1)
+  assert.equal(model.state.getSnapshot().instanceId, 'host-b')
+  unsubscribe()
+  detach()
+  model.dispose()
+})
+
+test('P2 global verification survives same-key supersession after it has claimed protocol ownership', async () => {
+  const { model, remote, detach } = await attachAndReady()
+  const verificationGate = deferred<RemoteResult<ContextManagerRemoteProtocol>>()
+  const initialCalls = remote.calls.protocol
+  remote.protocolSteps.push(
+    async () => ok({ apiVersion: CONTEXT_MANAGER_REMOTE_API_VERSION + 1 }),
+    () => verificationGate.promise,
+  )
+  const first = model.loadPromptResource('alpha')
+  await waitFor(() => remote.calls.protocol === initialCalls + 2, 'global lazy protocol verification started')
+  const second = model.loadPromptResource('alpha')
+  await second
+  verificationGate.resolve(ok({ apiVersion: CONTEXT_MANAGER_REMOTE_API_VERSION + 1 }))
+  assert.equal((await first).status, 'incompatible')
+  assert.equal(model.state.getSnapshot().protocol.status, 'incompatible')
+  assert.equal(model.state.getSnapshot().resources.documents.size, 0)
+  detach()
+  model.dispose()
+})
+
+test('P2 a newer baseline protocol proof supersedes an in-flight lazy global verification', async () => {
+  const { model, remote, detach } = await attachAndReady()
+  const verificationGate = deferred<RemoteResult<ContextManagerRemoteProtocol>>()
+  const before = remote.calls.protocol
+  remote.protocolSteps.push(
+    async () => ok({ apiVersion: CONTEXT_MANAGER_REMOTE_API_VERSION + 1 }),
+    () => verificationGate.promise,
+  )
+  const old = model.loadPromptResource('alpha')
+  await waitFor(() => remote.calls.protocol === before + 2, 'lazy verification waiting')
+  await model.reconcile(['profiles'])
+  assert.equal(model.state.getSnapshot().protocol.status, 'compatible')
+  verificationGate.resolve(ok({ apiVersion: CONTEXT_MANAGER_REMOTE_API_VERSION + 1 }))
+  assert.equal((await old).status, 'superseded')
+  assert.equal(model.state.getSnapshot().protocol.status, 'compatible')
+  assert.equal(model.getProfileRevision(), 7)
+  detach()
+  model.dispose()
+})
+
+test('P2 verification cannot overwrite the new attachment after detach and reattach', async () => {
+  const { model, remote, detach } = await attachAndReady()
+  const gate = deferred<RemoteResult<ContextManagerRemoteProtocol>>()
+  const before = remote.calls.protocol
+  remote.protocolSteps.push(
+    async () => ok({ apiVersion: CONTEXT_MANAGER_REMOTE_API_VERSION + 1 }),
+    () => gate.promise,
+  )
+  const old = model.loadPromptResource('alpha')
+  await waitFor(() => remote.calls.protocol === before + 2, 'old attachment protocol verification')
+  detach()
+  const nextRemote = new ScriptedRemote()
+  nextRemote.defaultChanges = changes('host-c')
+  nextRemote.defaultProfiles = profiles(77)
+  const detachNext = model.attach(nextRemote)
+  gate.resolve(ok({ apiVersion: CONTEXT_MANAGER_REMOTE_API_VERSION + 1 }))
+  assert.equal((await old).status, 'detached')
+  await waitFor(() => {
+    const snapshot = model.state.getSnapshot()
+    return snapshot.instanceId === 'host-c' && snapshot.profiles.status === 'ready'
+      && snapshot.protocol.status === 'compatible'
+  }, 'new attachment rehydration')
+  assert.equal(model.getProfileRevision(), 77)
+  detachNext()
+  model.dispose()
+})
+
+test('P2 failed verification reports a protocol error rather than claiming incompatible', async () => {
+  const { model, remote, detach } = await attachAndReady()
+  remote.protocolSteps.push(
+    async () => ok({ apiVersion: CONTEXT_MANAGER_REMOTE_API_VERSION + 1 }),
+    async () => fail('verification-transport-failed'),
+  )
+  assert.equal((await model.loadPromptResource('alpha')).status, 'completed')
+  const snapshot = model.state.getSnapshot()
+  assert.equal(snapshot.protocol.status, 'error')
+  assert.equal(snapshot.resources.documents.get('alpha')?.error?.kind, 'remote')
+  assert.equal(model.capturePromptResourceReadStamp('alpha', 'document'), undefined)
+  detach()
+  model.dispose()
+})
+
+test('P2 a synchronous checking subscriber detach prevents the verification RPC itself', async () => {
+  const { model, remote, detach } = await attachAndReady()
+  const before = remote.calls.protocol
+  remote.protocolSteps.push(async () => ok({ apiVersion: CONTEXT_MANAGER_REMOTE_API_VERSION + 1 }))
+  let unsubscribe = () => {}
+  unsubscribe = model.state.subscribe(() => {
+    if (model.state.getSnapshot().protocol.status !== 'checking') return
+    unsubscribe()
+    detach()
+  })
+  const result = await model.loadPromptResource('alpha')
+  assert.equal(result.status, 'detached')
+  assert.equal(remote.calls.protocol, before + 1)
+  assert.equal(model.state.getSnapshot().attachment, 'detached')
+  unsubscribe()
+  model.dispose()
+})
+
+
+test('P1 rapid Host A-B-C changes retire older recovery tickets and rehydrate the latest Host', async () => {
+  const { model, remote, detach } = await attachAndReady()
+  remote.defaultChanges = changes('host-b')
+  let successor: ReturnType<typeof model.loadSessionPreset> | undefined
+  let unsubscribe = () => {}
+  unsubscribe = model.state.subscribe(() => {
+    const snapshot = model.state.getSnapshot()
+    if (snapshot.instanceId !== 'host-b' || snapshot.profiles.status !== 'idle') return
+    unsubscribe()
+    remote.defaultChanges = changes('host-c')
+    successor = model.loadSessionPreset('session-c')
+  })
+  const first = model.loadPromptResource('alpha')
+  assert.ok(successor === undefined)
+  await first
+  assert.ok(successor)
+  await successor
+  await waitFor(() => {
+    const snapshot = model.state.getSnapshot()
+    return snapshot.instanceId === 'host-c'
+      && snapshot.protocol.status === 'compatible'
+      && snapshot.profiles.status === 'ready'
+      && snapshot.presets.status === 'ready'
+      && snapshot.promptPlacement.status === 'ready'
+  }, 'latest Host C rehydration')
+  assert.equal(model.state.getSnapshot().instanceId, 'host-c')
+  unsubscribe()
+  detach()
+  model.dispose()
+})
+
+test('different keyed reads make independent progress while another resource read is held', async () => {
+  const { model, remote, detach } = await attachAndReady()
+  const gate = deferred<RemoteResult<ContextManagerRemoteResult<ContextManagerRemotePromptResource>>>()
+  remote.resourceSteps.push(() => gate.promise)
+  const document = model.loadPromptResource('alpha')
+  await waitFor(() => remote.calls.getPromptResource === 1, 'held resource request')
+  const session = await model.loadSessionPreset('s')
+  assert.equal(session.status, 'completed')
+  assert.equal(model.state.getSnapshot().diagnostics.sessions.get('s')?.status, 'ready')
+  assert.equal(model.state.getSnapshot().resources.documents.get('alpha')?.status, 'loading')
+  gate.resolve(ok(businessOk(remote.resource)))
+  assert.equal((await document).status, 'completed')
+  assert.equal(model.state.getSnapshot().resources.documents.get('alpha')?.status, 'ready')
+  detach()
+  model.dispose()
+})
+
+test('keyed caches evict old entries at the documented 32-document and 64-session limits', async () => {
+  const { model, remote, detach } = await attachAndReady()
+  for (let i = 0; i < 33; i += 1) {
+    const id = 'resource-' + String(i)
+    remote.resource = { id, name: 'Name ' + String(i), content: 'body', revision: i + 1 }
+    assert.equal((await model.loadPromptResource(id)).status, 'completed')
+  }
+  const documents = model.state.getSnapshot().resources.documents
+  assert.equal(documents.size, 32)
+  assert.equal(documents.has('resource-0'), false)
+  assert.equal(documents.has('resource-32'), true)
+
+  for (let i = 0; i < 65; i += 1) {
+    const id = 'session-' + String(i)
+    remote.session = { status: 'known', sessionId: id, presetId: null }
+    assert.equal((await model.loadSessionPreset(id)).status, 'completed')
+  }
+  const sessions = model.state.getSnapshot().diagnostics.sessions
+  assert.equal(sessions.size, 64)
+  assert.equal(sessions.has('session-0'), false)
+  assert.equal(sessions.has('session-64'), true)
+  detach()
+  model.dispose()
+})
+
+test('a continuously moving keyed cursor exhausts exactly three stabilizations without publishing a fresh stamp', async () => {
+  const { model, remote, detach } = await attachAndReady()
+  const before = remote.calls.getPromptResource
+  for (let i = 0; i < 3; i += 1) {
+    const generation = i * 2 + 2
+    remote.changesSteps.push(
+      async () => ok({ ...changes('host-a', generation), promptResources: generation }),
+      async () => ok({ ...changes('host-a', generation + 1), promptResources: generation + 1 }),
+    )
+  }
+  const result = await model.loadPromptResource('alpha')
+  assert.equal(result.status, 'completed')
+  assert.equal(remote.calls.getPromptResource, before + 3)
+  assert.equal(model.state.getSnapshot().resources.documents.get('alpha')?.error?.kind, 'unstable-snapshot')
+  assert.equal(model.capturePromptResourceReadStamp('alpha', 'document'), undefined)
   detach()
   model.dispose()
 })

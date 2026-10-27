@@ -515,9 +515,9 @@ B1-1 is complete in merged PR #27: the Client now owns a React-free authoritativ
 
 **B1-2 is complete in PR #30.** It bridges that stable business model plus the merged profile mutation controller through the retained Slot/renderer `inject.hooks` boundary without copying authoritative data into presentation state or reintroducing package-owned React subscription machinery. See [m7b1-2-plan.md](m7b1-2-plan.md).
 
-**B1-3 remains outstanding, but was not a dependency for the Profile-only M7C slice.** M7C Core is complete in merged PR #33 using B1-1/B1-2/B2-A Profile state/mutations. Its completion does not imply PromptResource or keyed Session/Agent diagnostic support. Remaining Client-model work is explicit:
+**B1-3 implementation is in Draft PR #37, and was not a dependency for the completed Profile-only M7C slice.** M7C Core is complete in merged PR #33 using B1-1/B1-2/B2-A Profile state/mutations. Its completion does not imply PromptResource or keyed Session/Agent diagnostic support. Remaining Client-model work is explicit:
 
-- **B1-3** — add separately invalidated/lazy PromptResource state plus keyed Session/Agent diagnostics and their revision ownership;
+- **B1-3 (Draft PR #37)** — implement separately invalidated/lazy PromptResource state plus keyed Session/Agent diagnostics and source-aware resource read stamps; the change is not merged or final-qualified yet. [Implementation contract](m7b1-3-plan.md);
 - polling/focus/reconnect refresh remains a later lifecycle slice and must keep change cursors as invalidation hints only.
 
 ### M7B2 — Mutation controller
@@ -542,11 +542,11 @@ The Profile-only M7C Core uses authoritative B1-1/B1-2 Profile/Preset data and B
 - view-only drafts/selection/tab state owned by the presentation layer;
 - additive right-side shell behavior that does not replace stock DSH occupants.
 
-Prompt/Skill resource editors are not part of M7C; M8 owns those feature editors. After the already-merged M7C Core, M7D browser/package/lifecycle closeout remains the gate for declaring the whole Web milestone complete. B1-3 and dependent B2-B must precede M8A resource editing; deferred Session/Agent diagnostic UI must wait for actual keyed authoritative state.
+Prompt/Skill resource editors are not part of M7C; M8 owns those feature editors. M7D browser/package/lifecycle closeout has completed after PR #36 and successful independent main CI. B1-3 and dependent B2-B must precede M8A resource editing; deferred Session/Agent diagnostic UI must wait for actual keyed authoritative state.
 
 ### M7D — Browser/package/compatibility closeout
 
-PR #35 qualified and merged the installed M7C editor in retained published DSH Web generations. P0 PR #36 addresses the failed post-merge `main` Profile graph by freezing the separately installed Profile dependency graph and retaining a separate native plugin-add control; full closeout requires passing the new repeatability gate and post-merge CI. The test runs require the documented legacy HMR precondition on 0.1.2/0.1.5; only 0.1.6 exposes native no-navigation Plugins lifecycle. Every successful lane retains an exact-commit, tarball, CLI/Profile dependency graph and fixed-scenario evidence manifest. The real response-held-across-unload scenario runs only on the supported native Plugins generation.
+PR #35 qualified and merged the installed M7C editor in retained published DSH Web generations. P0 PR #36 merged on 2026-10-26 to freeze the separately installed Profile dependency graph while retaining a separate native plugin-add control. The independent post-merge `main` Full Qualification run #40255884041 passed all 86 jobs on merge commit `5e0d11a24d09`; M7D is complete. The test runs require the documented legacy HMR precondition on 0.1.2/0.1.5; only 0.1.6 exposes native no-navigation Plugins lifecycle. Every successful lane retains an exact-commit, tarball, CLI/Profile dependency graph and fixed-scenario evidence manifest. The real response-held-across-unload scenario runs only on the supported native Plugins generation.
 
 Before declaring Milestone 7 complete:
 
