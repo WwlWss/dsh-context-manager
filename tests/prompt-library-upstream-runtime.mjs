@@ -68,6 +68,7 @@ try {
     assert.equal(reopened.resource.description, '')
     assert.equal(reopened.resource.content, initialContent)
     assert.equal(reopened.resource.revision, 1)
+    assert.match(reopened.resource.__dshCmResourceIncarnation, /^[0-9a-f-]{36}$/i)
     assert.deepEqual(reopened.resource.authoredExtension, { retained: true })
     assert.deepEqual(reopened.resource.futureField, { opaque: ['keep', 1, { nested: true }] })
     assert.equal(second.library.list().find(item => item.id === 'malformed').status, 'invalid')

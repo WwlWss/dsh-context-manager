@@ -2329,6 +2329,56 @@ test('a continuously moving keyed cursor exhausts exactly three stabilizations w
   model.dispose()
 })
 
+
+test('v3 Resource Authority changes stale only Resource caches even with unchanged numeric cursors', async () => {
+  const { model, remote, detach } = await attachAndReady()
+  await model.loadPromptResourceList()
+  await model.loadPromptResource('alpha')
+  await model.loadAgentSkillRuntime('a')
+  const oldStamp = model.capturePromptResourceReadStamp('alpha', 'document')
+  assert.equal(oldStamp?.resourceAuthorityId, 'resource-host-a')
+  remote.defaultChanges = { ...remote.defaultChanges, resourceAuthorityId: 'resource-host-b' }
+  await model.loadSessionPreset('s')
+  assert.equal(model.state.getSnapshot().resources.list.stale, true)
+  assert.equal(model.state.getSnapshot().resources.documents.get('alpha')?.stale, true)
+  assert.equal(model.state.getSnapshot().diagnostics.skills.get('a')?.stale, true)
+  assert.equal(model.state.getSnapshot().profiles.stale, false)
+  assert.equal(model.capturePromptResourceReadStamp('alpha', 'document'), undefined)
+  await model.loadPromptResource('alpha')
+  assert.equal(model.capturePromptResourceReadStamp('alpha', 'document')?.resourceAuthorityId, 'resource-host-b')
+  detach()
+  model.dispose()
+})
+
+test('v3 directory incarnation change stales an equal-revision cached resource body', async () => {
+  const { model, remote, detach } = await attachAndReady()
+  await model.loadPromptResourceList()
+  await model.loadPromptResource('alpha')
+  assert.equal(model.state.getSnapshot().resources.documents.get('alpha')?.stale, false)
+  remote.resourceList = [{ status: 'usable', id: 'alpha', name: 'replacement', revision: 5,
+    incarnationId: '11b15985-e54c-4af1-88bb-e3dfed584678' }]
+  await model.loadPromptResourceList()
+  assert.equal(model.state.getSnapshot().resources.list.stale, false)
+  assert.equal(model.state.getSnapshot().resources.documents.get('alpha')?.stale, true)
+  assert.equal(model.capturePromptResourceReadStamp('alpha', 'document'), undefined)
+  assert.equal(model.capturePromptResourceReadStamp('alpha', 'list')?.incarnationId, '11b15985-e54c-4af1-88bb-e3dfed584678')
+  detach()
+  model.dispose()
+})
+
+test('v3 Resource Authority drift across a changes bracket retries even with equal numeric cursor', async () => {
+  const { model, remote, detach } = await attachAndReady()
+  const before = remote.defaultChanges
+  const after = { ...before, resourceAuthorityId: 'resource-host-b' }
+  remote.changesSteps.push(async () => ok(before), async () => ok(after))
+  remote.defaultChanges = after
+  const initialCalls = remote.calls.getPromptResource
+  await model.loadPromptResource('alpha')
+  assert.equal(remote.calls.getPromptResource, initialCalls + 2)
+  assert.equal(model.capturePromptResourceReadStamp('alpha', 'document')?.resourceAuthorityId, 'resource-host-b')
+  detach()
+  model.dispose()
+})
 test('the baseline surface list stays explicit and mutation-free', () => {
   assert.deepEqual(CONTEXT_MANAGER_BASELINE_SURFACES, [
     'profiles',
