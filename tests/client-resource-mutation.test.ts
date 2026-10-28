@@ -289,3 +289,14 @@ test('create and replace capture payload values before synchronous publication c
   off()
   assert.deepEqual(f.calls[1]?.args[0], { name: 'Replace', content: 'Body' })
 })
+
+test('local rejected edit publishes a settled resource operation without Remote dispatch', async () => {
+  const f = fixture()
+  f.setReadStamp({ ...f.stamp, revision: 6 })
+  const result = await f.handle.controller.setPromptResourceName(f.stamp, 'Stale')
+  assert.equal(preconditionCode(result), 'resource-basis-stale')
+  const operation = f.handle.controller.state.getSnapshot().resource
+  assert.equal(operation.status, 'settled')
+  assert.equal(operation.status === 'settled' ? operation.result.status : undefined, 'rejected')
+  assert.equal(f.calls.length, 0)
+})
