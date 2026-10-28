@@ -1,7 +1,12 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { Context, Service } from '@deepseek-ai/cordis'
-import { ContextManagerError, ContextManagerPromptLibrary } from '../lib/index.js'
+import {
+  ContextManagerChangeTracker,
+  ContextManagerError,
+  ContextManagerPromptLibrary,
+  ContextManagerRemoteService,
+} from '../lib/index.js'
 
 class MemoryTable {
   constructor(records = new Map()) { this.records = records }
@@ -168,4 +173,63 @@ test('B2-B0: stale revision and mismatched resource ID reject independently of i
   )
   assert.equal(library.get('one').resource.content, 'one')
   assert.equal(library.get('two').resource.content, 'two')
+})
+
+test('B2-B0: actual PromptLibrary plus Remote leaf calls preserve opaque data and reject stale legacy basis', async (t) => {
+  const table = new MemoryTable(new Map([['real', {
+    name: 'Original',
+    description: 'first description',
+    content: 'first body',
+    revision: 5,
+    opaque: { keep: ['a', 'b'] },
+  }]]))
+  const { ctx, library } = await boot(table)
+  t.after(() => ctx.fiber.dispose())
+  await ctx.plugin(ContextManagerChangeTracker)
+  await ctx.plugin(ContextManagerRemoteService)
+  const remote = ctx.dshContextRemote
+
+  const authority = remote.changes().resourceAuthorityId
+  assert.equal(authority, library.resourceWriteAuthority())
+  const legacy = {
+    resourceAuthorityId: authority,
+    resourceId: 'real',
+    incarnationId: null,
+    revision: 5,
+  }
+
+  let saved = await remote.setPromptResourceName('real', 'Renamed', legacy)
+  assert.deepEqual(saved, { ok: true, value: { id: 'real', revision: 6 } })
+  const first = library.get('real').resource
+  assert.match(first.__dshCmResourceIncarnation, /^[0-9a-f-]{36}$/i)
+  assert.deepEqual(first.opaque, { keep: ['a', 'b'] })
+  assert.equal(first.description, 'first description')
+  assert.equal(first.content, 'first body')
+
+  const rejectedLegacy = await remote.setPromptResourceContent('real', 'stale body', legacy)
+  assert.equal(rejectedLegacy.ok, false)
+  assert.equal(rejectedLegacy.error.code, 'prompt-resource-incarnation-conflict')
+
+  const basis = (revision) => ({
+    ...legacy, revision, incarnationId: library.get('real').resource.__dshCmResourceIncarnation,
+  })
+  saved = await remote.setPromptResourceDescription('real', null, basis(6))
+  assert.deepEqual(saved, { ok: true, value: { id: 'real', revision: 7 } })
+  assert.equal(Object.hasOwn(library.get('real').resource, 'description'), false)
+  saved = await remote.setPromptResourceContent('real', 'unicode 文本', basis(7))
+  assert.deepEqual(saved, { ok: true, value: { id: 'real', revision: 8 } })
+  assert.equal(library.get('real').resource.content, 'unicode 文本')
+  assert.deepEqual(library.get('real').resource.opaque, { keep: ['a', 'b'] })
+  assert.equal(library.get('real').resource.__dshCmResourceIncarnation, first.__dshCmResourceIncarnation)
+
+  const wrongAuthority = await remote.setPromptResourceContent('real', 'illegal', {
+    ...basis(8), resourceAuthorityId: 'old-provider',
+  })
+  assert.equal(wrongAuthority.ok, false)
+  assert.equal(wrongAuthority.error.code, 'prompt-resource-authority-conflict')
+  const wrongRevision = await remote.setPromptResourceContent('real', 'illegal', basis(7))
+  assert.equal(wrongRevision.ok, false)
+  assert.equal(wrongRevision.error.code, 'prompt-resource-conflict')
+  assert.equal(table.records.get('real').content, 'unicode 文本')
+  assert.equal(table.records.get('real').revision, 8)
 })
