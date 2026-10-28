@@ -19,6 +19,11 @@ import {
   type ContextManagerRemoteSkillMode,
   type ContextManagerRemotePromptResource,
   type ContextManagerRemotePromptResourceListItem,
+  type ContextManagerRemotePromptResourceInput,
+  type ContextManagerRemoteResourceCreateBasis,
+  type ContextManagerRemoteResourceMutationBasis,
+  type ContextManagerRemoteMutationReceipt,
+  type ContextManagerRemoteDeleteReceipt,
   type ContextManagerRemoteSessionPresetIdentity,
   type ContextManagerRemotePromptRuntimeInspection,
   type ContextManagerRemoteSkillRuntimeInspection,
@@ -161,6 +166,7 @@ class ScriptedRemote implements ContextManagerClientBusinessRemote {
     presets: 0,
     promptPlacement: 0,
     profileMutation: 0,
+    resourceMutation: 0,
     listPromptResources: 0,
     getPromptResource: 0,
     sessionPreset: 0,
@@ -260,6 +266,48 @@ class ScriptedRemote implements ContextManagerClientBusinessRemote {
   inspectPinnedSkillRuntime(_id: string) {
     this.calls.pinnedRuntime += 1
     return Promise.resolve(ok(this.pinned))
+  }
+
+  readonly resourceMutationCalls: Array<{
+    readonly kind: string
+    readonly id: string
+    readonly args: readonly unknown[]
+    readonly basis: ContextManagerRemoteResourceCreateBasis | ContextManagerRemoteResourceMutationBasis
+  }> = []
+  readonly resourceMutationSteps: Array<Step<ContextManagerRemoteResult<ContextManagerRemoteMutationReceipt>>> = []
+  readonly resourceDeleteSteps: Array<Step<ContextManagerRemoteResult<ContextManagerRemoteDeleteReceipt>>> = []
+
+  private resourceWrite(
+    kind: string,
+    id: string,
+    args: readonly unknown[],
+    basis: ContextManagerRemoteResourceCreateBasis | ContextManagerRemoteResourceMutationBasis,
+  ): Promise<RemoteResult<ContextManagerRemoteResult<ContextManagerRemoteMutationReceipt>>> {
+    this.calls.resourceMutation += 1
+    this.resourceMutationCalls.push({ kind, id, args, basis })
+    const revision = 'revision' in basis ? basis.revision + 1 : 1
+    return this.take(this.resourceMutationSteps, businessOk({ id, revision }))
+  }
+
+  createPromptResource(id: string, input: ContextManagerRemotePromptResourceInput, basis: ContextManagerRemoteResourceCreateBasis) {
+    return this.resourceWrite('create', id, [input], basis)
+  }
+  replacePromptResource(id: string, input: ContextManagerRemotePromptResourceInput, basis: ContextManagerRemoteResourceMutationBasis) {
+    return this.resourceWrite('replace', id, [input], basis)
+  }
+  deletePromptResource(id: string, basis: ContextManagerRemoteResourceMutationBasis) {
+    this.calls.resourceMutation += 1
+    this.resourceMutationCalls.push({ kind: 'delete', id, args: [], basis })
+    return this.take(this.resourceDeleteSteps, businessOk({ id }))
+  }
+  setPromptResourceName(id: string, name: string, basis: ContextManagerRemoteResourceMutationBasis) {
+    return this.resourceWrite('name', id, [name], basis)
+  }
+  setPromptResourceDescription(id: string, description: string | null, basis: ContextManagerRemoteResourceMutationBasis) {
+    return this.resourceWrite('description', id, [description], basis)
+  }
+  setPromptResourceContent(id: string, content: string, basis: ContextManagerRemoteResourceMutationBasis) {
+    return this.resourceWrite('content', id, [content], basis)
   }
 
   private mutate(
