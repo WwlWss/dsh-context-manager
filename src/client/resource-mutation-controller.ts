@@ -165,6 +165,17 @@ export function createContextManagerResourceMutationController(
     return e === epoch ? result : obsolete()
   }
 
+  const publishPrecondition = (
+    kind: ContextManagerClientResourceMutationKind,
+    result: ContextManagerClientResourceMutationResult,
+  ): ContextManagerClientResourceMutationResult => {
+    const publicationEpoch = epoch
+    const id = ++nextId
+    state.set({ resource: { status: 'settled', id, kind, result } })
+    if (epoch !== publicationEpoch) return obsolete()
+    return lifecycleResult() ?? result
+  }
+
   const check = (
     basis: ContextManagerClientResourceCreateBasis,
     stamp?: ContextManagerClientPromptResourceReadStamp,
@@ -208,7 +219,15 @@ export function createContextManagerResourceMutationController(
       ? Object.freeze({ resourceAuthorityId: basis.resourceAuthorityId })
       : Object.freeze({ ...stamp })
     const blocked = check(frozenBasis, stamp === undefined ? undefined : frozenBasis as ContextManagerClientPromptResourceReadStamp)
-    if (blocked !== undefined) return blocked
+    if (blocked !== undefined) {
+      // A busy request must not overwrite the running lane. Other local
+      // precondition refusals are observable via the Resource Mutation Hook.
+      return blocked.status === 'rejected'
+        && blocked.error.kind === 'precondition'
+        && blocked.error.code !== 'busy'
+        ? publishPrecondition(kind, blocked)
+        : blocked
+    }
     const remote = deps.getRemote()
     if (remote === undefined) return { status: 'detached' }
     const idNumber = ++nextId
