@@ -19,7 +19,6 @@ import {
   type ContextManagerRemoteSkillMode,
   type ContextManagerRemotePromptResource,
   type ContextManagerRemotePromptResourceListItem,
-  type ContextManagerRemoteMutationReceipt,
   type ContextManagerRemotePromptResourceInput,
   type ContextManagerRemoteResourceCreateBasis,
   type ContextManagerRemoteResourceMutationBasis,
