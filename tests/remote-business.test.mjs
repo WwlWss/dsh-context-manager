@@ -99,11 +99,10 @@ class FakePromptLibrary extends Service {
       throw error
     }
     const revision = current.revision + 1
-    this.rows.set(id, {
-      ...current,
-      ...structuredClone(input),
-      revision,
-    })
+    // Match the real Host's replace semantics: editable fields are replaced,
+    // absent description is removed, and unrelated stored extensions survive.
+    const { name: _name, description: _description, content: _content, revision: _revision, ...extensions } = current
+    this.rows.set(id, { ...extensions, ...structuredClone(input), revision })
     return { id, revision }
   }
 
@@ -388,6 +387,71 @@ test('M6B Prompt Resource Remote keeps list metadata-only and get projection nar
 
   const deleted = await remote.deletePromptResource('p', resourceBasis(remote, 'p'))
   assert.deepEqual(deleted, { ok: true, value: { id: 'p' } })
+})
+
+
+test('M7B2-B0 Resource leaf Remote preserves identity and maps independent conflicts', async (t) => {
+  const { ctx } = await boot()
+  t.after(() => ctx.fiber.dispose())
+  const remote = ctx.dshContextRemote
+
+  const created = await remote.createPromptResource('leaf', {
+    name: 'Original', description: 'initial', content: 'body',
+  }, resourceCreateBasis(remote))
+  assert.deepEqual(created, { ok: true, value: { id: 'leaf', revision: 1 } })
+  let basis = resourceBasis(remote, 'leaf')
+  const incarnation = basis.incarnationId
+  const staleBasis = basis
+  assert.equal(ctx.dshContextPromptLibrary.rows.get('leaf').hidden, 'host-only-extension')
+
+  const wrongAuthority = await remote.setPromptResourceName('leaf', 'unauthorized', {
+    ...basis, resourceAuthorityId: 'older-resource-authority',
+  })
+  assert.equal(wrongAuthority.ok, false)
+  assert.equal(wrongAuthority.error.code, 'prompt-resource-authority-conflict')
+  const wrongIncarnation = await remote.setPromptResourceContent('leaf', 'unsafe', {
+    ...basis, incarnationId: 'another-resource-incarnation',
+  })
+  assert.equal(wrongIncarnation.ok, false)
+  assert.equal(wrongIncarnation.error.code, 'prompt-resource-incarnation-conflict')
+  const wrongRevision = await remote.setPromptResourceDescription('leaf', 'unsafe', {
+    ...basis, revision: basis.revision + 1,
+  })
+  assert.equal(wrongRevision.ok, false)
+  assert.equal(wrongRevision.error.code, 'prompt-resource-conflict')
+  assert.equal(remote.getPromptResource('leaf').value.revision, 1)
+  assert.equal(remote.getPromptResource('leaf').value.content, 'body')
+
+  let result = await remote.setPromptResourceName('leaf', 'Renamed', basis)
+  assert.deepEqual(result, { ok: true, value: { id: 'leaf', revision: 2 } })
+  basis = resourceBasis(remote, 'leaf')
+  assert.equal(basis.incarnationId, incarnation)
+  assert.equal(remote.getPromptResource('leaf').value.content, 'body')
+
+  result = await remote.setPromptResourceDescription('leaf', 'description set', basis)
+  assert.deepEqual(result, { ok: true, value: { id: 'leaf', revision: 3 } })
+  assert.equal(remote.getPromptResource('leaf').value.description, 'description set')
+  basis = resourceBasis(remote, 'leaf')
+
+  result = await remote.setPromptResourceDescription('leaf', null, basis)
+  assert.deepEqual(result, { ok: true, value: { id: 'leaf', revision: 4 } })
+  assert.equal(remote.getPromptResource('leaf').value.description, undefined)
+  assert.equal(Object.hasOwn(ctx.dshContextPromptLibrary.rows.get('leaf'), 'description'), false)
+  basis = resourceBasis(remote, 'leaf')
+
+  result = await remote.setPromptResourceContent('leaf', 'new body\\nutf8\\t正文', basis)
+  assert.deepEqual(result, { ok: true, value: { id: 'leaf', revision: 5 } })
+  const document = remote.getPromptResource('leaf').value
+  assert.equal(document.name, 'Renamed')
+  assert.equal(document.content, 'new body\\nutf8\\t正文')
+  assert.equal(document.incarnationId, incarnation)
+  assert.equal(document.description, undefined)
+  assert.equal(ctx.dshContextPromptLibrary.rows.get('leaf').hidden, 'host-only-extension')
+
+  const outdated = await remote.setPromptResourceContent('leaf', 'stale write', staleBasis)
+  assert.equal(outdated.ok, false)
+  assert.equal(outdated.error.code, 'prompt-resource-conflict')
+  assert.equal(remote.getPromptResource('leaf').value.revision, 5)
 })
 
 test('M6B Prompt Resource absence degrades only Prompt endpoints', async () => {
