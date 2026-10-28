@@ -381,3 +381,31 @@ test('B2-B0 RED: first snapshot of an already mounted library initializes withou
   assert.equal(first.runtime, 0)
   assert.deepEqual(ctx.dshContextChanges.snapshot(), first)
 })
+
+
+test('B2-B0: direct Resource A-to-B remount without intermediate snapshot advances one cursor step', async (t) => {
+  const ctx = new Context()
+  t.after(() => ctx.fiber.dispose())
+  await ctx.plugin(MemorySettings, {})
+  await ctx.plugin(ContextManagerService)
+  await ctx.plugin(MemoryStorageDomain)
+  await ctx.plugin(ContextManagerChangeTracker)
+  const libraryA = ctx.plugin(ContextManagerPromptLibrary)
+  await libraryA
+  const before = ctx.dshContextChanges.snapshot()
+  assert.ok(before.resourceAuthorityId)
+
+  await libraryA.dispose()
+  const libraryB = ctx.plugin(ContextManagerPromptLibrary)
+  await libraryB
+  const after = ctx.dshContextChanges.snapshot()
+  assert.ok(after.resourceAuthorityId)
+  assert.notEqual(after.resourceAuthorityId, before.resourceAuthorityId)
+  assert.equal(after.generation, before.generation + 1)
+  assert.equal(after.promptResources, before.promptResources + 1)
+  assert.equal(after.runtime, before.runtime + 1)
+  assert.equal(after.instanceId, before.instanceId)
+  assert.equal(after.profiles, before.profiles)
+  assert.equal(after.presets, before.presets)
+  assert.deepEqual(ctx.dshContextChanges.snapshot(), after)
+})
