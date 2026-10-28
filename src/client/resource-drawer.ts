@@ -213,8 +213,12 @@ export function ContextManagerResourceDrawerContent(props: ContextManagerDrawerP
 
   const blockedElement = draft && (draft.blocked !== undefined || !draftCurrent)
     ? h('section', { role: 'alert', className: styles.warning },
-      h('strong', null, draft.blocked === 'unknown'
-        ? t('resourceNoticeUnknown') : t('resourceNoticeStale')),
+      h('strong', null, t(
+        draft.blocked === 'unknown' ? 'resourceNoticeUnknown'
+          : draft.blocked === 'unverified' ? 'resourceNoticeDegraded'
+            : draft.blocked === 'conflict' ? 'resourceNoticeConflict'
+              : 'resourceNoticeStale',
+      )),
       h('p', null, t('resourceDraftBlockedHint')),
       h('div', { className: styles.actions },
         button(t('refresh'), refresh, running),
