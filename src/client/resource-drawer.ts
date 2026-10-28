@@ -326,7 +326,7 @@ export function ContextManagerResourceDrawerContent(props: ContextManagerDrawerP
           view.canInspectSelected
             ? h('section', { className: styles.field },
               h('span', { className: styles.label }, t('resourceContent')),
-              h('pre', { className: styles.resourceBody }, body.data?.content),
+              h('pre', { className: styles.resourceBody }, view.document?.content),
             )
             : h('p', { className: styles.hint, role: 'status' },
               body?.status === 'error' ? t('resourceDocumentError')
