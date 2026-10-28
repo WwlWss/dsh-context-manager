@@ -10,6 +10,7 @@
     "tests/client-model-runtime.test.ts",
     "tests/client-business-face.test.ts",
     "tests/client-profile-editor.test.ts",
-    "tests/client-resource-mutation.test.ts"
+    "tests/client-resource-mutation.test.ts",
+    "tests/client-resource-editor.test.ts"
   ]
 }
