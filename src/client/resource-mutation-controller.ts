@@ -247,64 +247,109 @@ export function createContextManagerResourceMutationController(
     const initial = recheck()
     if (initial !== undefined) return settle(operationEpoch, idNumber, kind, initial)
 
-    // Fence already-started lazy reads before sending any mutation RPC.
+    // Fence pre-existing lazy readers before dispatch. The resource Stamp was
+    // proven fresh before this invalidation, and it remains immutable; a
+    // second *freshness* check here would reject every valid write.
     deps.invalidate(id)
-    // Invalidation intentionally makes the source stamp stale. Do not require
-    // freshness *again* after invalidation; only recheck lifecycle/authority.
     if (!stillOwns()) return obsolete()
+
+    // Any branch after our own invalidation must either restore the same
+    // Resource source using authoritative reads, or genuinely lose its
+    // lifetime/ownership. This also covers a synchronous subscription which
+    // starts a protocol verification while the invalidation is published.
+    type AfterInvalidate =
+      | Invocation
+      | {
+          readonly kind: 'local-refusal'
+          readonly code: Extract<ContextManagerClientResourceMutationError, { kind: 'precondition' }>['code']
+          readonly message: string
+        }
+    const finishAfterInvalidate = async (
+      outcome: AfterInvalidate,
+    ): Promise<ContextManagerClientResourceMutationResult> => {
+      if (!stillOwns()) return obsolete()
+      state.set({ resource: { status: 'running', id: idNumber, kind, phase: 'rehydrating' } })
+      if (!stillOwns()) return obsolete()
+
+      let fresh = false
+      try {
+        // Invalidate again after the RPC outcome: a read started in the
+        // meantime may have published a pre-write Resource snapshot.
+        deps.invalidate(id)
+        if (!stillOwns()) return obsolete()
+        fresh = await deps.rehydrate({
+          id,
+          kind,
+          resourceAuthorityId: frozenBasis.resourceAuthorityId,
+          refreshDocument: kind === 'replace-prompt-resource'
+            || kind === 'set-prompt-resource-content'
+            || (kind !== 'create-prompt-resource' && kind !== 'delete-prompt-resource'
+              && deps.isDocumentCached(id)),
+        })
+      } catch {
+        // The write result remains what the Host/transport told us; a failed
+        // read-back cannot rewrite success/refusal/unknown into another result.
+        fresh = false
+      }
+      if (!stillOwns()) return obsolete()
+      const refresh = fresh ? 'fresh' : 'degraded'
+      if (outcome.kind === 'success') {
+        return settle(operationEpoch, idNumber, kind, { status: 'applied', refresh })
+      }
+      if (outcome.kind === 'transport') {
+        return settle(operationEpoch, idNumber, kind, { status: 'unknown', error: outcome.error, refresh })
+      }
+      if (outcome.kind === 'local-refusal') {
+        return settle(operationEpoch, idNumber, kind, {
+          status: 'rejected',
+          refresh,
+          error: { kind: 'precondition', code: outcome.code, message: outcome.message },
+        })
+      }
+      // Every *dispatched* business refusal needs read-back, not only
+      // conflicts: we already invalidated the very surfaces it depended on.
+      return settle(operationEpoch, idNumber, kind, {
+        status: 'rejected',
+        refresh,
+        error: {
+          kind: 'business',
+          code: outcome.error.code,
+          message: outcome.error.message,
+          ...(outcome.error.expectedRevision === undefined
+            ? {} : { expectedRevision: outcome.error.expectedRevision }),
+          ...(outcome.error.actualRevision === undefined
+            ? {} : { actualRevision: outcome.error.actualRevision }),
+        },
+      })
+    }
+
     const afterFence = lifecycleResult()
     if (afterFence !== undefined) return settle(operationEpoch, idNumber, kind, afterFence)
-    if (deps.getRemote() !== remote || deps.getProtocolStatus() !== 'compatible') {
+    if (deps.getRemote() !== remote) {
       return settle(operationEpoch, idNumber, kind, { status: 'superseded' })
     }
+    if (deps.getProtocolStatus() !== 'compatible') {
+      return finishAfterInvalidate({
+        kind: 'local-refusal',
+        code: 'protocol-unavailable',
+        message: 'The protocol is no longer confirmed compatible before dispatch',
+      })
+    }
     const currentAuthority = deps.getCurrentCreateBasis()
-    if (currentAuthority?.resourceAuthorityId !== frozenBasis.resourceAuthorityId) {
-      return settle(operationEpoch, idNumber, kind, errorResult('resource-authority-unavailable', 'Resource authority changed before dispatch'))
+    if (currentAuthority === undefined) {
+      return finishAfterInvalidate({
+        kind: 'local-refusal',
+        code: 'resource-authority-unavailable',
+        message: 'Fresh Resource authority is unavailable before dispatch',
+      })
+    }
+    if (currentAuthority.resourceAuthorityId !== frozenBasis.resourceAuthorityId) {
+      // The old lane cannot rehydrate a newly observed storage source.
+      return settle(operationEpoch, idNumber, kind, { status: 'superseded' })
     }
     const outcome = await invoke(() => call(remote))
     if (!stillOwns()) return obsolete()
-
-    const shouldRecover = outcome.kind !== 'business' || [
-      'prompt-resource-conflict',
-      'prompt-resource-authority-conflict',
-      'prompt-resource-incarnation-conflict',
-      'prompt-resource-not-found',
-      'prompt-resource-exists',
-    ].includes(outcome.error.code)
-    if (!shouldRecover) {
-      return settle(operationEpoch, idNumber, kind, {
-        status: 'rejected',
-        refresh: 'not-requested',
-        error: { kind: 'business', code: outcome.error.code, message: outcome.error.message },
-      })
-    }
-    state.set({ resource: { status: 'running', id: idNumber, kind, phase: 'rehydrating' } })
-    if (!stillOwns()) return obsolete()
-    let fresh = false
-    try {
-      deps.invalidate(id)
-      if (!stillOwns()) return obsolete()
-      fresh = await deps.rehydrate({
-        id, kind, resourceAuthorityId: frozenBasis.resourceAuthorityId,
-        refreshDocument: kind === 'replace-prompt-resource'
-          || kind === 'set-prompt-resource-content'
-          || (kind !== 'create-prompt-resource' && kind !== 'delete-prompt-resource' && deps.isDocumentCached(id)),
-      })
-    } catch {
-      fresh = false
-    }
-    if (!stillOwns()) return obsolete()
-    const refresh = fresh ? 'fresh' : 'degraded'
-    if (outcome.kind === 'success') return settle(operationEpoch, idNumber, kind, { status: 'applied', refresh })
-    if (outcome.kind === 'transport') return settle(operationEpoch, idNumber, kind, { status: 'unknown', error: outcome.error, refresh })
-    return settle(operationEpoch, idNumber, kind, {
-      status: 'rejected', refresh,
-      error: {
-        kind: 'business', code: outcome.error.code, message: outcome.error.message,
-        ...(outcome.error.expectedRevision === undefined ? {} : { expectedRevision: outcome.error.expectedRevision }),
-        ...(outcome.error.actualRevision === undefined ? {} : { actualRevision: outcome.error.actualRevision }),
-      },
-    })
+    return finishAfterInvalidate(outcome)
   }
 
   const wire = (stamp: ContextManagerClientPromptResourceReadStamp): ContextManagerRemoteResourceMutationBasis => ({
