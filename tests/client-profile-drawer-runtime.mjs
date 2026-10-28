@@ -273,9 +273,10 @@ function createWritableRemoteFixture() {
     },
     replacePromptResource(id, input, basis) {
       return resourceWrite('resource-replace', id, basis, current => {
+        const { description: _oldDescription, ...other } = current
         resources.set(id, {
-          ...current, name: input.name, content: input.content,
-          ...(input.description === undefined ? { description: undefined } : { description: input.description }),
+          ...other, name: input.name, content: input.content,
+          ...(input.description === undefined ? {} : { description: input.description }),
           revision: current.revision + 1,
         })
       })
@@ -290,8 +291,9 @@ function createWritableRemoteFixture() {
     },
     setPromptResourceDescription(id, description, basis) {
       return resourceWrite('resource-description', id, basis, current => {
+        const { description: _oldDescription, ...other } = current
         resources.set(id, {
-          ...current, ...(description === null ? { description: undefined } : { description }),
+          ...other, ...(description === null ? {} : { description }),
           revision: current.revision + 1,
         })
       })
@@ -652,6 +654,7 @@ await act(async () => {
 await settleUI()
 assert.equal(remoteFixture.resourceWrites[3].kind, 'resource-description')
 assert.equal(remoteFixture.resources.get('res-ui').description, undefined)
+assert.equal(Object.hasOwn(remoteFixture.resources.get('res-ui'), 'description'), false)
 
 // An uncertain Host reply must retain a non-retryable draft through close/reopen.
 await act(async () => { buttonByLabel(tree, 'Edit').props.onClick() })
