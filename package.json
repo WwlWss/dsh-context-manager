@@ -45,14 +45,15 @@
     "build": "pnpm run build:host && pnpm run build:client",
     "prepare": "tsdown --config tsdown.prepare.config.ts && node ./scripts/generate-typert.mjs && tsdown --config tsdown.client.config.ts",
     "typecheck": "pnpm run typecheck:host && pnpm run typecheck:client",
-    "test": "pnpm run test:client-model && node --test ./tests/*.test.mjs",
+    "test": "pnpm run test:client-model && node --test ./tests/*.test.mjs && pnpm run test:client-upstream-runtime",
     "check": "pnpm run typecheck && pnpm run clean && pnpm run build && pnpm run test",
     "build:host": "tsdown --config tsdown.config.ts && node ./scripts/generate-typert.mjs",
     "build:client": "tsdown --config tsdown.client.config.ts",
     "typecheck:host": "tsc -p tsconfig.json --noEmit",
     "typecheck:client": "tsc -p tsconfig.client.json --noEmit",
     "typecheck:client-tests": "tsc -p tsconfig.client-model-test.json --noEmit",
-    "test:client-model": "pnpm run typecheck:client-tests && tsdown --config tsdown.client-model-test.config.ts && node --test ./.artifacts/client-model-tests/client-model-runtime.test.mjs ./.artifacts/client-model-tests/client-business-face.test.mjs ./.artifacts/client-model-tests/client-profile-editor.test.mjs ./.artifacts/client-model-tests/client-resource-mutation.test.mjs"
+    "test:client-model": "pnpm run typecheck:client-tests && tsdown --config tsdown.client-model-test.config.ts && node --test ./.artifacts/client-model-tests/client-model-runtime.test.mjs ./.artifacts/client-model-tests/client-business-face.test.mjs ./.artifacts/client-model-tests/client-profile-editor.test.mjs ./.artifacts/client-model-tests/client-resource-mutation.test.mjs",
+    "test:client-upstream-runtime": "node ./tests/client-upstream-runtime.mjs"
   },
   "engines": {
     "node": "^22.19.0 || >=24.0.0"
