@@ -1,4 +1,4 @@
-import { createElement as h, useEffect } from 'react'
+import { createElement as h, useEffect, useRef } from 'react'
 import type { ContextManagerDrawerProps } from './profile-drawer.js'
 import type { ResourceDraft, ResourceNotice } from './resource-editor.js'
 import {
@@ -58,37 +58,70 @@ export function ContextManagerResourceDrawerContent(props: ContextManagerDrawerP
   const canSubmit = draft !== null && draft.blocked === undefined
     && draftCurrent && view.writable && !running
   const selectedId = view.selectedId
+  const mounted = useRef(false)
+  const latestSelection = useRef(selectedId)
+  const latestDraftToken = useRef(draft?.token)
+  const latestDraftBlock = useRef(draft?.blocked)
+  const committing = useRef<number | null>(null)
+  latestSelection.current = selectedId
+  latestDraftToken.current = draft?.token
+  latestDraftBlock.current = draft?.blocked
+
+  useEffect(() => {
+    mounted.current = true
+    return () => { mounted.current = false }
+  }, [])
+
+  // Ignore errors from an obsolete mounted tab / selected row / superseded draft.
+  // A read failure cannot overwrite the uncertain/conflict/degraded write notice.
+  const reportReadFailure = (
+    selectedAtStart: string | undefined,
+    tokenAtStart: number | undefined,
+    code: 'resourceNoticeRefreshFailed' | 'resourceNoticeUnavailable',
+  ) => {
+    if (!mounted.current || latestSelection.current !== selectedAtStart
+      || latestDraftToken.current !== tokenAtStart
+      || latestDraftBlock.current !== undefined) return
+    actions.setResourceNotice({ code, kind: 'warning' })
+  }
 
   // This tab does not add polling or an eager Resource document roster.
   useEffect(() => {
+    let active = true
+    const startToken = latestDraftToken.current
     void props.loadPromptResourceList().catch(() => {
-      actions.setResourceNotice({ code: 'resourceNoticeRefreshFailed', kind: 'error' })
+      if (active) reportReadFailure(selectedId, startToken, 'resourceNoticeRefreshFailed')
     })
+    return () => { active = false }
   }, [props.loadPromptResourceList])
 
   useEffect(() => {
     if (view.selected?.status !== 'usable' || selectedId === undefined) return
+    let active = true
+    const startToken = latestDraftToken.current
     void props.loadPromptResource(selectedId).catch(() => {
-      actions.setResourceNotice({ code: 'resourceNoticeRefreshFailed', kind: 'error' })
+      if (active) reportReadFailure(selectedId, startToken, 'resourceNoticeRefreshFailed')
     })
+    return () => { active = false }
   }, [selectedId, view.selected?.status, props.loadPromptResource])
 
   const refresh = () => {
+    const tokenAtStart = latestDraftToken.current
+    const report = (code: 'resourceNoticeRefreshFailed' | 'resourceNoticeUnavailable') =>
+      reportReadFailure(selectedId, tokenAtStart, code)
     void (async () => {
       const result = await props.loadPromptResourceList()
+      if (!mounted.current || latestSelection.current !== selectedId
+        || latestDraftToken.current !== tokenAtStart) return
       if (result.status !== 'completed') {
-        actions.setResourceNotice({ code: 'resourceNoticeUnavailable', kind: 'warning' })
+        report('resourceNoticeUnavailable')
         return
       }
       if (selectedId !== undefined && view.selected?.status === 'usable') {
         const body = await props.loadPromptResource(selectedId)
-        if (body.status !== 'completed') {
-          actions.setResourceNotice({ code: 'resourceNoticeRefreshFailed', kind: 'warning' })
-        }
+        if (body.status !== 'completed') report('resourceNoticeRefreshFailed')
       }
-    })().catch(() => {
-      actions.setResourceNotice({ code: 'resourceNoticeRefreshFailed', kind: 'error' })
-    })
+    })().catch(() => report('resourceNoticeRefreshFailed'))
   }
 
   const unavailable = () => {
@@ -142,7 +175,7 @@ export function ContextManagerResourceDrawerContent(props: ContextManagerDrawerP
   }
 
   const commit = async () => {
-    if (!canSubmit || draft === null) return
+    if (!canSubmit || draft === null || committing.current !== null) return
     if (draft.kind === 'create') {
       const validation = validateResourceCreateDraft(draft, new Set(view.rows.map(row => row.id)))
       if (validation !== 'valid') {
@@ -152,6 +185,7 @@ export function ContextManagerResourceDrawerContent(props: ContextManagerDrawerP
         return
       }
     }
+    committing.current = draft.token
     try {
       const result = await commitResourceDraft(draft, props.resourceMutations)
       if (result !== undefined) finish(result, draft)
@@ -161,6 +195,8 @@ export function ContextManagerResourceDrawerContent(props: ContextManagerDrawerP
         code: 'resourceNoticeUnknown', kind: 'warning',
         detail: error instanceof Error ? error.message : undefined,
       })
+    } finally {
+      if (committing.current === draft.token) committing.current = null
     }
   }
 
@@ -287,7 +323,7 @@ export function ContextManagerResourceDrawerContent(props: ContextManagerDrawerP
             h('span', { className: styles.label }, t('resourceIncarnation')),
             h('code', { className: styles.value }, selected.incarnationId ?? t('notSet')),
           ),
-          body?.status === 'ready' && !body.stale && view.canEditSelected
+          view.canInspectSelected
             ? h('section', { className: styles.field },
               h('span', { className: styles.label }, t('resourceContent')),
               h('pre', { className: styles.resourceBody }, body.data?.content),
