@@ -2379,6 +2379,41 @@ test('v3 Resource Authority drift across a changes bracket retries even with equ
   detach()
   model.dispose()
 })
+
+test('B2-B0 RED: older A change response cannot roll back a newer B storage authority snapshot', async () => {
+  const { model, remote, detach } = await attachAndReady()
+  const oldA = remote.defaultChanges
+  const nextB = {
+    ...oldA, resourceAuthorityId: 'resource-host-b',
+    generation: oldA.generation + 1,
+    promptResources: oldA.promptResources + 1,
+    runtime: oldA.runtime + 1,
+  }
+  const oldBefore = deferred<RemoteResult<ContextManagerRemoteChangeSnapshot>>()
+  const slowSession = deferred<RemoteResult<ContextManagerRemoteSessionPresetIdentity>>()
+  remote.changesSteps.push(() => oldBefore.promise)
+  remote.sessionSteps.push(() => slowSession.promise)
+  const initialChangeCalls = remote.calls.changes
+  const initialSessionCalls = remote.calls.sessionPreset
+  const old = model.loadSessionPreset('delayed-A')
+  await waitFor(() => remote.calls.changes === initialChangeCalls + 1, 'old A changes request started')
+  remote.defaultChanges = nextB
+  const current = await model.loadAgentSkillRuntime('new-B')
+  assert.equal(current.status, 'completed')
+  assert.equal(model.state.getSnapshot().changes?.resourceAuthorityId, 'resource-host-b')
+  assert.equal(model.state.getSnapshot().changes?.generation, nextB.generation)
+
+  oldBefore.resolve(ok(oldA))
+  await waitFor(() => remote.calls.sessionPreset > initialSessionCalls, 'old request passed changes bracket')
+  assert.equal(model.state.getSnapshot().changes?.resourceAuthorityId, 'resource-host-b')
+  assert.equal(model.state.getSnapshot().changes?.generation, nextB.generation)
+  slowSession.resolve(ok(remote.session))
+  await old
+  assert.equal(model.state.getSnapshot().changes?.resourceAuthorityId, 'resource-host-b')
+  detach()
+  model.dispose()
+})
+
 test('the baseline surface list stays explicit and mutation-free', () => {
   assert.deepEqual(CONTEXT_MANAGER_BASELINE_SURFACES, [
     'profiles',
