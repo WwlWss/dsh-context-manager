@@ -75,6 +75,8 @@ function exampleSnapshot(): ContextManagerClientSnapshot {
       },
     },
     promptPlacement: { status: 'idle', stale: false },
+    resources: { list: { status: 'idle', stale: false }, documents: new Map() },
+    diagnostics: { sessions: new Map(), prompts: new Map(), skills: new Map(), pinned: new Map() },
   }
 }
 
