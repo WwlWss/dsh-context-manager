@@ -448,6 +448,15 @@ await settleUI()
 assert.equal(tree.root.findAllByProps({ 'data-context-manager-new-profile': '' }).length, 1)
 assert.equal(remoteFixture.writes.length, 0)
 
+// M8A2 executable RED in the ACTUAL published DSH React Renderer:
+// the selected usable Profile must expose its PromptBindings section.
+// This is intentionally absent until the M8A2 production implementation.
+assert.equal(
+  tree.root.findAllByProps({ 'data-context-manager-prompt-bindings': '' }).length,
+  1,
+  'M8A2 RED: Profile PromptBindings editor is not yet mounted',
+)
+
 // Create with one explicit, basis-bearing Host write.
 await act(async () => {
   tree.root.findByProps({ 'data-context-manager-new-profile': '' }).props.onClick()
