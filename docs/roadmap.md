@@ -526,7 +526,7 @@ M7B2 is intentionally split by revision domain.
 
 **M7B2-A — Profile Mutation Controller Foundation** is complete in merged PR #29. It adds explicit profile mutations over the B1-1 authoritative model, uses an immutable mutation basis consisting of profile-write-authority `instanceId` plus the Settings persistence revision associated with the state the user actually acted on, keeps one single-flight profile mutation lane, preserves the two-layer Typert/business result boundary, never retries or silently rebases stale/uncertain writes, advances the Context Manager Remote protocol to API version 2 for the basis-bearing profile mutation signatures, and rehydrates authoritative baseline state after confirmed writes, conflicts, or transport-uncertain outcomes.
 
-**M7B2-B** is now split into **B0** (PromptResource Host-side storage Authority, persistent Incarnation, Remote v3, B1-3 read-stamp extension; PR #38 (review remediation; pending final qualification), [plan](m7b2-b0-plan.md)) and **B1** (Resource Mutation Controller and Client Business Face). A Resource write must use the exact basis captured with its edit, never fetch a newer revision at Save time and silently rebase a stale draft. M8A editor starts only after B1.
+**M7B2-B** is complete in merged **B0** (PR #38: PromptResource Host-side Resource Authority, persistent Incarnation, Remote v3, B1-3 read stamps; [plan](m7b2-b0-plan.md)) and **B1** (PR #39: independent Client Resource Mutation Controller and frozen Business Face; [plan](m7b2-b1-plan.md)). PR #39 merged as `a186fda5fe468aabcda1286b25bcc75c2843e91c`; independent `main` Full Qualification #40733595371 passed 86/86. Resource edits always use their captured original basis, never silently recapture a newer revision at Save time. M8A Resource editor is now unblocked.
 
 Native preset copy/remove authoring remains with M8C rather than being pulled forward merely to cover every Host mutation endpoint.
 
@@ -566,10 +566,11 @@ Goal: build focused editors on top of the completed M7 authoritative Client/Draw
 
 ### M8A — PromptResource + PromptBinding editor
 
-- browse/create/edit/delete Prompt Library resources through M6 Remote operations;
-- edit PromptBindings without replacing unknown sibling fields;
-- expose semantic placement and deterministic local ordering;
-- show capability/suppression diagnostics without auto-repairing configured intent.
+The editor work is split by independent mutation domains:
+
+**M8A1 — PromptResource Library editor** (in implementation, Draft PR #40, [capability plan](m8a1-plan.md)): browse valid/invalid Prompt Library records and on-demand bodies; create/edit/delete by explicitly committing one Resource Mutation with an immutable captured edit-time Stamp. Keep draft/notice state in the existing Drawer presentation store; preserve drafts across closing, prevent automatic retries, and surface conflicts/unknown/degraded outcomes without touching Profile bindings.
+
+**M8A2 — Profile PromptBinding editor** (planned): edit Profile PromptBindings using the already separate Profile Mutation Controller, preserving unknown stored siblings; expose semantic placement and deterministic local ordering; show capability/suppression diagnostics without auto-repairing configured intent. Do not treat Resource deletion as automatic ProfileBinding deletion.
 
 ### M8B — Skill policy editor
 
