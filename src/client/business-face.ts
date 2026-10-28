@@ -4,21 +4,38 @@ import type {
   ContextManagerClientProfileMutationBasis,
   ContextManagerClientProfileMutations,
 } from './mutation-types.js'
+import type { ContextManagerClientResourceMutations } from './resource-mutation-types.js'
 
 export type ContextManagerClientBusinessSource = Pick<
   ContextManagerClientModel,
-  'state' | 'mutations' | 'refresh' | 'captureProfileMutationBasis'
+  | 'state'
+  | 'mutations'
+  | 'resourceMutations'
+  | 'refresh'
+  | 'captureProfileMutationBasis'
+  | 'capturePromptResourceCreateBasis'
+  | 'capturePromptResourceReadStamp'
+  | 'loadPromptResourceList'
+  | 'loadPromptResource'
 >
 
 export interface ContextManagerClientBusinessFace {
   readonly hooks: {
     readonly contextManager: ContextManagerClientBusinessSource['state']
     readonly profileMutation: ContextManagerClientBusinessSource['mutations']['state']
+    readonly resourceMutation: ContextManagerClientBusinessSource['resourceMutations']['state']
   }
   readonly refresh: () => Promise<ContextManagerClientReconcileResult>
   readonly captureProfileMutationBasis:
     () => ContextManagerClientProfileMutationBasis | undefined
+  readonly capturePromptResourceCreateBasis:
+    ContextManagerClientBusinessSource['capturePromptResourceCreateBasis']
+  readonly capturePromptResourceReadStamp:
+    ContextManagerClientBusinessSource['capturePromptResourceReadStamp']
+  readonly loadPromptResourceList: ContextManagerClientBusinessSource['loadPromptResourceList']
+  readonly loadPromptResource: ContextManagerClientBusinessSource['loadPromptResource']
   readonly profileMutations: ContextManagerClientProfileMutations
+  readonly resourceMutations: ContextManagerClientResourceMutations
 }
 
 export function createContextManagerClientBusinessFace(
@@ -69,13 +86,42 @@ export function createContextManagerClientBusinessFace(
     ) => source.mutations.removePromptBinding(...args),
   } satisfies ContextManagerClientProfileMutations)
 
+  // Explicit six-method projection. The Controller's internal state/epoch,
+  // attach, dispose and reset never cross the renderer business boundary.
+  const resourceMutations = Object.freeze({
+    createPromptResource: (
+      ...args: Parameters<ContextManagerClientResourceMutations['createPromptResource']>
+    ) => source.resourceMutations.createPromptResource(...args),
+    replacePromptResource: (
+      ...args: Parameters<ContextManagerClientResourceMutations['replacePromptResource']>
+    ) => source.resourceMutations.replacePromptResource(...args),
+    deletePromptResource: (
+      ...args: Parameters<ContextManagerClientResourceMutations['deletePromptResource']>
+    ) => source.resourceMutations.deletePromptResource(...args),
+    setPromptResourceName: (
+      ...args: Parameters<ContextManagerClientResourceMutations['setPromptResourceName']>
+    ) => source.resourceMutations.setPromptResourceName(...args),
+    setPromptResourceDescription: (
+      ...args: Parameters<ContextManagerClientResourceMutations['setPromptResourceDescription']>
+    ) => source.resourceMutations.setPromptResourceDescription(...args),
+    setPromptResourceContent: (
+      ...args: Parameters<ContextManagerClientResourceMutations['setPromptResourceContent']>
+    ) => source.resourceMutations.setPromptResourceContent(...args),
+  } satisfies ContextManagerClientResourceMutations)
+
   return Object.freeze({
     hooks: Object.freeze({
       contextManager: source.state,
       profileMutation: source.mutations.state,
+      resourceMutation: source.resourceMutations.state,
     }),
     refresh: () => source.refresh(),
     captureProfileMutationBasis: () => source.captureProfileMutationBasis(),
+    capturePromptResourceCreateBasis: () => source.capturePromptResourceCreateBasis(),
+    capturePromptResourceReadStamp: (id, from) => source.capturePromptResourceReadStamp(id, from),
+    loadPromptResourceList: () => source.loadPromptResourceList(),
+    loadPromptResource: id => source.loadPromptResource(id),
     profileMutations,
-  })
+    resourceMutations,
+  } satisfies ContextManagerClientBusinessFace)
 }
