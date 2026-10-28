@@ -97,6 +97,35 @@ test('authoritative Resource projection preserves invalid rows and does not edit
   } }, 'alpha').canEditSelected, false)
 })
 
+test('read-only and stale Resource views can inspect matching cached content without permitting edits', () => {
+  const current = snapshot()
+  const readonly = deriveResourceView({
+    ...current,
+    changes: { ...current.changes!, resourceAuthorityId: null },
+  }, 'alpha')
+  assert.equal(readonly.writable, false)
+  assert.equal(readonly.canEditSelected, false)
+  assert.equal(readonly.canInspectSelected, true)
+  assert.equal(readonly.document?.content, DOCUMENT.content)
+
+  const stale = deriveResourceView({
+    ...current,
+    resources: { ...current.resources, list: { ...current.resources.list, stale: true } },
+  }, 'alpha')
+  assert.equal(stale.listFresh, false)
+  assert.equal(stale.canEditSelected, false)
+  assert.equal(stale.canInspectSelected, true)
+
+  const changedDocument = deriveResourceView({
+    ...current,
+    resources: { ...current.resources, documents: new Map([['alpha', {
+      status: 'ready', stale: false,
+      data: { ...DOCUMENT, incarnationId: 'new-after-replace' },
+    }]]) },
+  }, 'alpha')
+  assert.equal(changedDocument.canInspectSelected, false)
+})
+
 test('Resource ID follows PromptLibrary arbitrary-id contract instead of Settings path-key rules', () => {
   const draft: ResourceDraft = {
     kind: 'create', token: 1, basis: CREATE,
