@@ -209,15 +209,34 @@ assert.equal(overlay[0].options.id, 'context-manager-drawer')
 assert.equal(footer[0].inject, undefined)
 assert.equal(typeof overlay[0].inject, 'function')
 const businessFace = overlay[0].inject()
-assert.deepEqual(Object.keys(businessFace).sort(), [
+// M7B0 retained SlotCore must keep resolving the original four-member
+// Business Face, while B2-B1 adds Resource capabilities through the same
+// frozen, retained projection. Assert both backwards continuity and today's
+// *exact* public boundary so new methods are neither silently lost nor leaked.
+const businessKeys = Object.keys(businessFace).sort()
+for (const retained of [
   'captureProfileMutationBasis',
   'hooks',
   'profileMutations',
   'refresh',
+]) {
+  assert.equal(businessKeys.includes(retained), true, `retained Business Face field missing: ${retained}`)
+}
+assert.deepEqual(businessKeys, [
+  'captureProfileMutationBasis',
+  'capturePromptResourceCreateBasis',
+  'capturePromptResourceReadStamp',
+  'hooks',
+  'loadPromptResource',
+  'loadPromptResourceList',
+  'profileMutations',
+  'refresh',
+  'resourceMutations',
 ])
 assert.deepEqual(Object.keys(businessFace.hooks).sort(), [
   'contextManager',
   'profileMutation',
+  'resourceMutation',
 ])
 assert.deepEqual(Object.keys(businessFace.profileMutations).sort(), [
   'addPromptBinding',
@@ -239,6 +258,38 @@ assert.equal(typeof businessFace.hooks.contextManager.getSnapshot, 'function')
 assert.equal(typeof businessFace.hooks.contextManager.subscribe, 'function')
 assert.equal(typeof businessFace.hooks.profileMutation.getSnapshot, 'function')
 assert.equal(typeof businessFace.hooks.profileMutation.subscribe, 'function')
+assert.equal(typeof businessFace.hooks.resourceMutation.getSnapshot, 'function')
+assert.equal(typeof businessFace.hooks.resourceMutation.subscribe, 'function')
+assert.equal(businessFace.hooks.resourceMutation.getSnapshot().resource.status, 'idle')
+assert.deepEqual(Object.keys(businessFace.resourceMutations).sort(), [
+  'createPromptResource',
+  'deletePromptResource',
+  'replacePromptResource',
+  'setPromptResourceContent',
+  'setPromptResourceDescription',
+  'setPromptResourceName',
+])
+for (const key of [
+  'capturePromptResourceCreateBasis',
+  'capturePromptResourceReadStamp',
+  'loadPromptResource',
+  'loadPromptResourceList',
+]) {
+  assert.equal(typeof businessFace[key], 'function', `Resource Business Face function missing: ${key}`)
+}
+for (const key of Object.keys(businessFace.resourceMutations)) {
+  assert.equal(typeof businessFace.resourceMutations[key], 'function', `Resource mutation is not callable: ${key}`)
+}
+assert.equal(Object.isFrozen(businessFace), true)
+assert.equal(Object.isFrozen(businessFace.hooks), true)
+assert.equal(Object.isFrozen(businessFace.profileMutations), true)
+assert.equal(Object.isFrozen(businessFace.resourceMutations), true)
+for (const internal of ['remote', 'state', 'reset', 'dispose', 'attach', 'controller', 'reconcile']) {
+  assert.equal(internal in businessFace, false, `internal leaked into Business Face: ${internal}`)
+}
+for (const internal of ['state', 'reset', 'dispose', 'attach', 'controller']) {
+  assert.equal(internal in businessFace.resourceMutations, false, `internal leaked into Resource facade: ${internal}`)
+}
 assert.equal('state' in businessFace.profileMutations, false)
 assert.equal(footer[0].store, overlay[0].store)
 assert.equal(footer[0].locale, 'context-manager')
@@ -320,4 +371,12 @@ assert.equal(core.entriesOfSlot('sidebar.footer.action').length, 0)
 assert.equal(core.entriesOfSlot('shell.overlay').length, 0)
 assert.equal(locale.has('context-manager'), false)
 assert.equal(remoteDisposed, true)
+assert.equal(businessFace.capturePromptResourceCreateBasis(), undefined)
+assert.equal(businessFace.capturePromptResourceReadStamp('resource', 'list'), undefined)
+assert.equal((await businessFace.loadPromptResourceList()).status, 'disposed')
+assert.equal((await businessFace.resourceMutations.createPromptResource(
+  { resourceAuthorityId: 'client-storage' },
+  'after-dispose',
+  { name: 'No write after dispose', content: 'body' },
+)).status, 'disposed')
 disposeRoot()
