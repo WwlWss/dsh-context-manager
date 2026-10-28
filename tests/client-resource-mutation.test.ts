@@ -263,3 +263,29 @@ test('immutable captured stamp is used on the Host wire even if a synchronous ob
     revision: 5,
   })
 })
+
+test('create and replace capture payload values before synchronous publication can change caller draft', async () => {
+  const f = fixture()
+  const input = { name: 'Original', description: 'unchanged', content: 'Original content' }
+  const unsubscribe = f.handle.controller.state.subscribe(() => {
+    if (f.handle.controller.state.getSnapshot().resource.status === 'running') {
+      input.name = 'Mutated by a subscriber'
+      input.content = 'Unexpected content'
+    }
+  })
+  assert.equal((await f.handle.controller.createPromptResource(f.basis(), 'beta', input)).status, 'applied')
+  unsubscribe()
+  assert.deepEqual(f.calls[0]?.args[0], {
+    name: 'Original', description: 'unchanged', content: 'Original content',
+  })
+
+  const edit = { name: 'Replace', content: 'Body' }
+  const off = f.handle.controller.state.subscribe(() => {
+    if (f.handle.controller.state.getSnapshot().resource.status === 'running') {
+      edit.content = 'Unexpected replacement'
+    }
+  })
+  assert.equal((await f.handle.controller.replacePromptResource(f.stamp, edit)).status, 'applied')
+  off()
+  assert.deepEqual(f.calls[1]?.args[0], { name: 'Replace', content: 'Body' })
+})
