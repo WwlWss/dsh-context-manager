@@ -59,7 +59,7 @@ function editDraft(): Extract<ResourceDraft, { kind: 'edit' }> {
       name: DOCUMENT.name, description: undefined, content: DOCUMENT.content,
     },
     name: DOCUMENT.name, description: '', content: DOCUMENT.content,
-    removeDescription: false,
+    removeDescription: false, descriptionTouched: false,
   }
 }
 
@@ -153,12 +153,12 @@ test('single-field Resource Save chooses one leaf mutation; multi-field chooses 
   await commitResourceDraft(name, f.mutations)
   await commitResourceDraft(body, f.mutations)
   await commitResourceDraft({ ...editDraft(), description: '', original: { ...editDraft().original, description: 'old' }, removeDescription: true }, f.mutations)
-  await commitResourceDraft({ ...editDraft(), description: '', original: { ...editDraft().original, description: undefined }, removeDescription: false }, f.mutations)
+  await commitResourceDraft({ ...editDraft(), description: '', original: { ...editDraft().original, description: undefined }, removeDescription: false, descriptionTouched: true }, f.mutations)
   await commitResourceDraft({ ...editDraft(), name: 'N', content: 'C' }, f.mutations)
   assert.deepEqual(f.calls.map(c => c.method), ['name', 'content', 'description', 'description', 'replace'])
   assert.deepEqual(f.calls[2]?.args, [STAMP, null])
   assert.deepEqual(f.calls[3]?.args, [STAMP, ''])
-  assert.deepEqual(f.calls[4]?.args, [STAMP, { name: 'N', description: undefined, content: 'C' }])
+  assert.deepEqual(f.calls[4]?.args, [STAMP, { name: 'N', content: 'C' }])
   assert.equal(f.calls.length, 5)
 })
 
