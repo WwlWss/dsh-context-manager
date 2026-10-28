@@ -32,6 +32,12 @@ import {
   type ContextManagerClientMutationController,
 } from './mutation-controller.js'
 import type { ContextManagerClientProfileMutationBasis } from './mutation-types.js'
+import {
+  createContextManagerResourceMutationController,
+  type ContextManagerClientResourceMutationController,
+  type ContextManagerResourceRecoveryRequest,
+} from './resource-mutation-controller.js'
+import type { ContextManagerClientResourceCreateBasis } from './resource-mutation-types.js'
 import { mapSurfaces, setBoundedEntry } from './keyed-cache.js'
 import type {
   ContextManagerClientBusinessRemote,
@@ -86,6 +92,7 @@ type ProtocolGuardOutcome =
 export interface ContextManagerClientModel {
   readonly state: SnapshotStore<ContextManagerClientSnapshot>
   readonly mutations: ContextManagerClientMutationController
+  readonly resourceMutations: ContextManagerClientResourceMutationController
   loadPromptResourceList(): Promise<ContextManagerClientLazyReadResult>
   loadPromptResource(id: string): Promise<ContextManagerClientLazyReadResult>
   loadSessionPreset(id: string): Promise<ContextManagerClientLazyReadResult>
@@ -93,6 +100,7 @@ export interface ContextManagerClientModel {
   loadAgentSkillRuntime(id: string): Promise<ContextManagerClientLazyReadResult>
   loadAgentPinnedRuntime(id: string): Promise<ContextManagerClientLazyReadResult>
   capturePromptResourceReadStamp(id: string, source: 'list' | 'document'): ContextManagerClientPromptResourceReadStamp | undefined
+  capturePromptResourceCreateBasis(): ContextManagerClientResourceCreateBasis | undefined
 
   attach(remote: ContextManagerClientBusinessRemote): () => void
   refresh(): Promise<ContextManagerClientReconcileResult>
@@ -280,6 +288,8 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
   let remote: ContextManagerClientBusinessRemote | undefined
   let disposed = false
   let resetMutationController = (): void => {}
+  let resetResourceMutationController = (): void => {}
+  let observeResourceAuthority = (_id: string | null): void => {}
   let attachmentEpoch = 0
   const surfaceEpochs: SurfaceEpochs = {
     profiles: 0,
@@ -455,6 +465,9 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
       diagnostics: { sessions: new Map(), prompts: new Map(), skills: new Map(), pinned: new Map() },
     })
     resetMutationController()
+    // Profile Settings source changes alone do NOT revoke an independent
+    // PromptLibrary mutation. A verified incompatible protocol does.
+    if (protocol.status === 'incompatible') resetResourceMutationController()
   }
 
   const transitionAuthority = (
@@ -484,18 +497,26 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
     next: ContextManagerRemoteChangeSnapshot,
   ): void => {
     if (!isAuthorityCurrent(attachment, authority)) return
+    const before = state.getSnapshot()
+    if (before.instanceId !== next.instanceId) return
+    if (
+      before.changes?.instanceId === next.instanceId
+      && before.changes.generation > next.generation
+    ) return
 
+    // The accepted Resource source transition must fence old Resource writes
+    // before any synchronous observer of the new model snapshot can dispatch.
+    observeResourceAuthority(next.resourceAuthorityId)
+    // Controller state publication may synchronously detach, reattach or
+    // re-enter model reads. Never publish an old snapshot after that callback.
+    if (!isAuthorityCurrent(attachment, authority)) return
     const current = state.getSnapshot()
     if (current.instanceId !== next.instanceId) return
-
     const previous = current.changes
     if (
-      previous !== undefined
-      && previous.instanceId === next.instanceId
+      previous?.instanceId === next.instanceId
       && previous.generation > next.generation
-    ) {
-      return
-    }
+    ) return
 
     const sameInstance = previous?.instanceId === next.instanceId
     const resourceAuthorityChanged = sameInstance && previous.resourceAuthorityId !== next.resourceAuthorityId
@@ -1226,6 +1247,86 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
     })
   }
 
+  const capturePromptResourceCreateBasis = (): ContextManagerClientResourceCreateBasis | undefined => {
+    const snapshot = state.getSnapshot()
+    if (
+      snapshot.attachment !== 'attached'
+      || snapshot.protocol.status !== 'compatible'
+      || snapshot.instanceId === undefined
+      || snapshot.changes?.instanceId !== snapshot.instanceId
+      || typeof snapshot.changes.resourceAuthorityId !== 'string'
+      || snapshot.changes.resourceAuthorityId.length === 0
+    ) return undefined
+    return Object.freeze({ resourceAuthorityId: snapshot.changes.resourceAuthorityId })
+  }
+
+  // B1 owns only a mutation-triggered invalidation bridge. B1-3 remains the
+  // sole publisher of authoritative Resource list and document payloads.
+  const invalidateResourceForMutation = (id: string): void => {
+    keyedOwners.delete(keyOf('list', ''))
+    keyedOwners.delete(keyOf('document', id))
+    const current = state.getSnapshot()
+    const documents = new Map(current.resources.documents)
+    const document = documents.get(id)
+    if (document !== undefined) documents.set(id, markSurfaceStale(document))
+    state.set({
+      ...current,
+      resources: {
+        list: markSurfaceStale(current.resources.list),
+        documents,
+      },
+    })
+  }
+
+  const rehydrateResourceMutation = async (
+    request: ContextManagerResourceRecoveryRequest,
+  ): Promise<boolean> => {
+    // Bounded stabilization, not polling or a fresh write attempt. Both
+    // request ownership and actual surfaces must be authoritative/fresh.
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const listResult = await runLazy('list', '')
+      if (listResult.status !== 'completed') return false
+      const snapshot = state.getSnapshot()
+      const observed = snapshot.changes
+      const list = snapshot.resources.list
+      if (
+        snapshot.attachment !== 'attached'
+        || snapshot.protocol.status !== 'compatible'
+        || observed?.instanceId !== snapshot.instanceId
+        || observed?.resourceAuthorityId !== request.resourceAuthorityId
+      ) return false
+      if (list.status !== 'ready' || list.stale || list.data === undefined) return false
+      const row = list.data.find(item => item.id === request.id)
+      if (row?.status === 'invalid') return false
+      if (!request.refreshDocument || row === undefined || request.kind === 'delete-prompt-resource') {
+        return true
+      }
+
+      const documentResult = await runLazy('document', request.id)
+      if (documentResult.status !== 'completed') return false
+      const latest = state.getSnapshot()
+      const latestList = latest.resources.list
+      const currentRow = latestList.data?.find(item => item.id === request.id)
+      const body = latest.resources.documents.get(request.id)
+      const matches = latest.attachment === 'attached'
+        && latest.protocol.status === 'compatible'
+        && latest.changes?.instanceId === latest.instanceId
+        && latest.changes?.resourceAuthorityId === request.resourceAuthorityId
+        && latestList.status === 'ready'
+        && !latestList.stale
+        && currentRow?.status === 'usable'
+        && body?.status === 'ready'
+        && !body.stale
+        && body.data?.id === request.id
+        && body.data.revision === currentRow.revision
+        && body.data.incarnationId === currentRow.incarnationId
+      if (matches) return true
+      // Another writer may have advanced the Resource cursor between the
+      // metadata and body reads. Only retry the authoritative reads, bounded.
+    }
+    return false
+  }
+
   const attach = (nextRemote: ContextManagerClientBusinessRemote): (() => void) => {
     if (disposed) {
       throw new Error('Context Manager Client model is disposed')
@@ -1253,6 +1354,7 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
       })
     }
     resetMutationController()
+    resetResourceMutationController()
 
     void reconcile(CONTEXT_MANAGER_BASELINE_SURFACES)
 
@@ -1276,6 +1378,7 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
         diagnostics: { sessions: detachMap(current.diagnostics.sessions), prompts: detachMap(current.diagnostics.prompts), skills: detachMap(current.diagnostics.skills), pinned: detachMap(current.diagnostics.pinned) },
       })
       resetMutationController()
+      resetResourceMutationController()
     }
   }
 
@@ -1336,6 +1439,22 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
   const mutations = mutationHandle.controller
   resetMutationController = mutationHandle.reset
 
+  const resourceHandle = createContextManagerResourceMutationController({
+    getRemote: () => remote,
+    getLifecycle: () => (
+      disposed ? 'disposed' : remote === undefined ? 'detached' : 'attached'
+    ),
+    getProtocolStatus: () => state.getSnapshot().protocol.status,
+    getCurrentCreateBasis: capturePromptResourceCreateBasis,
+    getCurrentReadStamp: capturePromptResourceReadStamp,
+    invalidate: invalidateResourceForMutation,
+    rehydrate: rehydrateResourceMutation,
+    isDocumentCached: (id: string) => state.getSnapshot().resources.documents.has(id),
+  })
+  const resourceMutations = resourceHandle.controller
+  resetResourceMutationController = resourceHandle.reset
+  observeResourceAuthority = resourceHandle.observeResourceAuthority
+
   const dispose = (): void => {
     if (disposed) return
     disposed = true
@@ -1357,11 +1476,13 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
       promptPlacement: detachedSurface(current.promptPlacement),
     })
     resetMutationController()
+    resetResourceMutationController()
   }
 
   return Object.freeze({
     state,
     mutations,
+    resourceMutations,
     loadPromptResourceList: () => runLazy('list', ''),
     loadPromptResource: (id: string) => runLazy('document', id),
     loadSessionPreset: (id: string) => runLazy('session', id),
@@ -1369,6 +1490,7 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
     loadAgentSkillRuntime: (id: string) => runLazy('skill', id),
     loadAgentPinnedRuntime: (id: string) => runLazy('pinned', id),
     capturePromptResourceReadStamp,
+    capturePromptResourceCreateBasis,
     attach,
     refresh: () => reconcile(CONTEXT_MANAGER_BASELINE_SURFACES),
     reconcile,

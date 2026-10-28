@@ -83,7 +83,7 @@ function fakeReact() {
 }
 
 function contextManagerRemoteFace() {
-  const change = Object.freeze({
+  let change = Object.freeze({
     instanceId: 'renderer-bridge-host',
     resourceAuthorityId: 'renderer-storage',
     generation: 1,
@@ -92,9 +92,29 @@ function contextManagerRemoteFace() {
     presets: 1,
     runtime: 1,
   })
+  let resourceList = []
   return {
     async protocol() { return { ok: true, value: { apiVersion: 3 } } },
     async changes() { return { ok: true, value: change } },
+    async listPromptResources() {
+      return { ok: true, value: { ok: true, value: resourceList } }
+    },
+    async createPromptResource(id, input, basis) {
+      assert.equal(basis.resourceAuthorityId, 'renderer-storage')
+      resourceList = [{
+        status: 'usable',
+        id,
+        name: input.name,
+        revision: 1,
+        incarnationId: 'renderer-incarnation',
+      }]
+      change = Object.freeze({
+        ...change, generation: change.generation + 1,
+        promptResources: change.promptResources + 1,
+        runtime: change.runtime + 1,
+      })
+      return { ok: true, value: { ok: true, value: { id, revision: 1 } } }
+    },
     async profiles() {
       return {
         ok: true,
@@ -262,6 +282,7 @@ let businessSnapshot = await settleBusinessState(businessFace)
 assert.equal(businessSnapshot.attachment, 'attached')
 assert.equal(businessSnapshot.protocol.status, 'compatible')
 assert.equal(businessFace.hooks.profileMutation.getSnapshot().profile.status, 'idle')
+assert.equal(businessFace.hooks.resourceMutation.getSnapshot().resource.status, 'idle')
 
 const rendererPlugin = await loadRendererClientPlugin()
 assert.deepEqual(rendererPlugin.inject, [])
@@ -290,7 +311,8 @@ function Probe(props) {
   const attachment = props.useContextManager(snapshot => snapshot.attachment)
   const protocol = props.useContextManager(snapshot => snapshot.protocol.status)
   const mutation = props.useProfileMutation(snapshot => snapshot.profile.status)
-  latestProbe = `${attachment}:${protocol}:${mutation}`
+  const resourceMutation = props.useResourceMutation(snapshot => snapshot.resource.status)
+  latestProbe = `${attachment}:${protocol}:${mutation}:${resourceMutation}`
   return React.createElement('span', {
     'data-business-bridge-probe': true,
   }, latestProbe)
@@ -311,7 +333,7 @@ let rendered
 await act(async () => {
   rendered = TestRenderer.create(slots.renderSlot('root', {}))
 })
-assert.equal(latestProbe, 'attached:compatible:idle')
+assert.equal(latestProbe, 'attached:compatible:idle:idle')
 
 const currentBasis = businessFace.captureProfileMutationBasis()
 assert.ok(currentBasis)
@@ -325,7 +347,21 @@ await act(async () => {
 assert.equal(staleResult.status, 'rejected')
 assert.equal(staleResult.error.kind, 'precondition')
 assert.equal(staleResult.error.code, 'profile-basis-stale')
-assert.equal(latestProbe, 'attached:compatible:settled')
+assert.equal(latestProbe, 'attached:compatible:settled:idle')
+
+const resourceCreateBasis = businessFace.capturePromptResourceCreateBasis()
+assert.deepEqual(resourceCreateBasis, { resourceAuthorityId: 'renderer-storage' })
+let resourceResult
+await act(async () => {
+  resourceResult = await businessFace.resourceMutations.createPromptResource(
+    resourceCreateBasis,
+    'renderer-created',
+    { name: 'Renderer Created', content: 'body' },
+  )
+})
+assert.deepEqual(resourceResult, { status: 'applied', refresh: 'fresh' })
+assert.equal(latestProbe, 'attached:compatible:settled:settled')
+assert.equal(businessFace.hooks.contextManager.getSnapshot().resources.list.data?.[0]?.id, 'renderer-created')
 
 await act(async () => {
   await disposePlugin()
@@ -333,13 +369,18 @@ await act(async () => {
 businessSnapshot = businessFace.hooks.contextManager.getSnapshot()
 assert.equal(businessSnapshot.attachment, 'detached')
 assert.equal(businessSnapshot.protocol.status, 'unchecked')
-assert.equal(latestProbe, 'detached:unchecked:idle')
+assert.equal(latestProbe, 'detached:unchecked:idle:idle')
 assert.equal(businessFace.captureProfileMutationBasis(), undefined)
 assert.equal((await businessFace.refresh()).status, 'disposed')
 assert.equal((await businessFace.profileMutations.setProfileName(
   currentBasis,
   'main',
   'After dispose',
+)).status, 'disposed')
+assert.equal((await businessFace.resourceMutations.createPromptResource(
+  resourceCreateBasis,
+  'after-dispose',
+  { name: 'After Dispose', content: 'body' },
 )).status, 'disposed')
 
 await act(async () => {

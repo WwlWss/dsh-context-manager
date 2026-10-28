@@ -11,6 +11,7 @@ import type {
 import type { ContextManagerClientBusinessFace } from '../src/client/business-face.js'
 import type { ContextManagerClientSnapshot } from '../src/client/model-types.js'
 import type { ContextManagerClientMutationSnapshot } from '../src/client/mutation-types.js'
+import type { ContextManagerClientResourceMutationSnapshot } from '../src/client/resource-mutation-types.js'
 import {
   CONTEXT_MANAGER_LOCALE,
   CONTEXT_MANAGER_LOCALES,
@@ -108,6 +109,8 @@ const _attachment: ContextManagerClientSnapshot['attachment'] =
   overlayProps.useContextManager(snapshot => snapshot.attachment)
 const _mutationStatus: ContextManagerClientMutationSnapshot['profile']['status'] =
   overlayProps.useProfileMutation(snapshot => snapshot.profile.status)
+const _resourceMutationStatus: ContextManagerClientResourceMutationSnapshot['resource']['status'] =
+  overlayProps.useResourceMutation(snapshot => snapshot.resource.status)
 void overlayProps.refresh()
 const _basis = overlayProps.captureProfileMutationBasis()
 if (_basis !== undefined) {

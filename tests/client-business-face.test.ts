@@ -8,6 +8,13 @@ import {
   type ContextManagerClientBusinessSource,
 } from '../src/client/business-face.js'
 import type { ContextManagerClientMutationController } from '../src/client/mutation-controller.js'
+import type { ContextManagerClientResourceMutationController } from '../src/client/resource-mutation-controller.js'
+import type {
+  ContextManagerClientResourceMutationSnapshot,
+  ContextManagerClientResourceMutationResult,
+  ContextManagerClientResourceMutations,
+} from '../src/client/resource-mutation-types.js'
+import type { ContextManagerClientPromptResourceReadStamp } from '../src/client/model-types.js'
 import type {
   ContextManagerClientReconcileResult,
   ContextManagerClientSnapshot,
@@ -44,6 +51,24 @@ function createFixture() {
     profile: { status: 'idle' },
   })
   const calls: MutationCall[] = []
+  const resourceState = createSnapshotStore<ContextManagerClientResourceMutationSnapshot>({ resource: { status: 'idle' } })
+  const resourceCalls: Array<{ readonly method: keyof ContextManagerClientResourceMutations; readonly args: readonly unknown[] }> = []
+  const recordResource = (
+    method: keyof ContextManagerClientResourceMutations,
+    args: readonly unknown[],
+  ): ContextManagerClientResourceMutationResult => {
+    resourceCalls.push({ method, args })
+    return APPLIED
+  }
+  const resourceMutations: ContextManagerClientResourceMutationController = {
+    state: resourceState,
+    async createPromptResource(...args) { return recordResource('createPromptResource', args) },
+    async replacePromptResource(...args) { return recordResource('replacePromptResource', args) },
+    async deletePromptResource(...args) { return recordResource('deletePromptResource', args) },
+    async setPromptResourceName(...args) { return recordResource('setPromptResourceName', args) },
+    async setPromptResourceDescription(...args) { return recordResource('setPromptResourceDescription', args) },
+    async setPromptResourceContent(...args) { return recordResource('setPromptResourceContent', args) },
+  }
 
   const record = (
     method: keyof ContextManagerClientProfileMutations,
@@ -88,9 +113,30 @@ function createFixture() {
     revision: 7,
   })
 
+  const resourceStamp: ContextManagerClientPromptResourceReadStamp = {
+    instanceId: 'profile-A',
+    resourceAuthorityId: 'library-A',
+    resourceId: 'alpha',
+    incarnationId: null,
+    revision: 3,
+    source: 'document',
+  }
+  let resourceBasisCaptures = 0
+  const lazyReads: string[] = []
   const source: ContextManagerClientBusinessSource = {
     state,
     mutations,
+    resourceMutations,
+    async loadPromptResourceList() { lazyReads.push('list'); return { status: 'completed' } },
+    async loadPromptResource(id) { lazyReads.push(id); return { status: 'completed' } },
+    capturePromptResourceCreateBasis() {
+      resourceBasisCaptures += 1
+      return { resourceAuthorityId: 'library-A' }
+    },
+    capturePromptResourceReadStamp(id, readSource) {
+      resourceBasisCaptures += 1
+      return id === resourceStamp.resourceId && readSource === resourceStamp.source ? resourceStamp : undefined
+    },
     async refresh() {
       refreshCalls += 1
       return refreshResult
@@ -105,6 +151,11 @@ function createFixture() {
     source,
     state,
     mutationState,
+    resourceState,
+    resourceCalls,
+    resourceStamp,
+    lazyReads,
+    getResourceBasisCaptures: () => resourceBasisCaptures,
     calls,
     refreshResult,
     getRefreshCalls: () => refreshCalls,
@@ -121,9 +172,14 @@ test('business face exposes only the frozen renderer-facing capability projectio
 
   assert.deepEqual(Object.keys(face).sort(), [
     'captureProfileMutationBasis',
+    'capturePromptResourceCreateBasis',
+    'capturePromptResourceReadStamp',
     'hooks',
+    'loadPromptResource',
+    'loadPromptResourceList',
     'profileMutations',
     'refresh',
+    'resourceMutations',
   ])
   assert.deepEqual(Object.keys(face.profileMutations).sort(), [
     'addPromptBinding',
@@ -141,11 +197,23 @@ test('business face exposes only the frozen renderer-facing capability projectio
     'setPromptBindingResourceId',
     'setSkillMode',
   ])
+  assert.deepEqual(Object.keys(face.resourceMutations).sort(), [
+    'createPromptResource',
+    'deletePromptResource',
+    'replacePromptResource',
+    'setPromptResourceContent',
+    'setPromptResourceDescription',
+    'setPromptResourceName',
+  ])
   assert.equal(Object.isFrozen(face), true)
   assert.equal(Object.isFrozen(face.hooks), true)
   assert.equal(Object.isFrozen(face.profileMutations), true)
+  assert.equal(Object.isFrozen(face.resourceMutations), true)
   assert.equal(face.hooks.contextManager, fixture.state)
   assert.equal(face.hooks.profileMutation, fixture.mutationState)
+  assert.equal(face.hooks.resourceMutation, fixture.resourceState)
+  assert.equal('state' in face.resourceMutations, false)
+  assert.notEqual(face.resourceMutations, fixture.source.resourceMutations)
   assert.notEqual(face.profileMutations, fixture.source.mutations)
   assert.equal('state' in face.profileMutations, false)
   for (const lifecycleMember of [
@@ -260,4 +328,37 @@ test('business callbacks stay live and mutation wrappers never recapture or reba
     'removePromptBinding',
   ])
   assert.equal(results.every(result => result === APPLIED), true)
+})
+
+test('Resource Business Face preserves edit-time stamp and explicitly forwards all six methods without recapture', async () => {
+  const f = createFixture()
+  const face = createContextManagerClientBusinessFace(f.source)
+  const createBasis = face.capturePromptResourceCreateBasis()
+  const stamp = face.capturePromptResourceReadStamp('alpha', 'document')
+  assert.deepEqual(createBasis, { resourceAuthorityId: 'library-A' })
+  assert.deepEqual(stamp, f.resourceStamp)
+  assert.ok(createBasis)
+  assert.ok(stamp)
+  const capturedBeforeWrites = f.getResourceBasisCaptures()
+  assert.equal((await face.loadPromptResourceList()).status, 'completed')
+  assert.equal((await face.loadPromptResource('alpha')).status, 'completed')
+  assert.deepEqual(f.lazyReads, ['list', 'alpha'])
+  const input = { name: 'New', content: 'Body' }
+  const results = [
+    await face.resourceMutations.createPromptResource(createBasis, 'created', input),
+    await face.resourceMutations.replacePromptResource(stamp, input),
+    await face.resourceMutations.deletePromptResource(stamp),
+    await face.resourceMutations.setPromptResourceName(stamp, 'Renamed'),
+    await face.resourceMutations.setPromptResourceDescription(stamp, null),
+    await face.resourceMutations.setPromptResourceContent(stamp, 'Body'),
+  ]
+  assert.equal(results.every(x => x === APPLIED), true)
+  assert.equal(f.getResourceBasisCaptures(), capturedBeforeWrites)
+  assert.deepEqual(f.resourceCalls.map(x => x.method), [
+    'createPromptResource', 'replacePromptResource', 'deletePromptResource',
+    'setPromptResourceName', 'setPromptResourceDescription', 'setPromptResourceContent',
+  ])
+  assert.deepEqual(f.resourceCalls[0]?.args[0], createBasis)
+  for (const call of f.resourceCalls.slice(1)) assert.deepEqual(call.args[0], stamp)
+  assert.deepEqual(f.resourceCalls[4]?.args.slice(1), [null])
 })

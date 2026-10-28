@@ -186,11 +186,18 @@ test('M7B0 loader artifact mounts Remote and locale before registering two addit
   const businessFace = entries[1].options.inject()
   assert.deepEqual(Object.keys(businessFace).sort(), [
     'captureProfileMutationBasis',
+    'capturePromptResourceCreateBasis',
+    'capturePromptResourceReadStamp',
     'hooks',
+    'loadPromptResource',
+    'loadPromptResourceList',
     'profileMutations',
     'refresh',
+    'resourceMutations',
   ])
   assert.equal('state' in businessFace.profileMutations, false)
+  assert.equal('state' in businessFace.resourceMutations, false)
+  assert.equal(typeof businessFace.hooks.resourceMutation.getSnapshot, 'function')
   assert.equal(entries[0].options.store, entries[1].options.store)
   assert.equal(entries[0].options.locale, 'context-manager')
   assert.equal(entries[1].options.locale, 'context-manager')
