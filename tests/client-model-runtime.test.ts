@@ -50,6 +50,11 @@ function fail<T>(code = 'test-remote-failure', message = 'test remote failure'):
   } as unknown as RemoteResult<T>
 }
 
+function assertResourceFixture(value: { readonly revision: number; readonly incarnationId: string | null }, source: string): void {
+  assert.ok(Number.isSafeInteger(value.revision) && value.revision > 0, source + ' requires a positive safe revision')
+  assert.ok(value.incarnationId === null || typeof value.incarnationId === 'string', source + ' requires an opaque string or null incarnation')
+}
+
 function businessOk<T>(value: T): ContextManagerRemoteResult<T> {
   return { ok: true, value }
 }
@@ -230,10 +235,14 @@ class ScriptedRemote implements ContextManagerClientBusinessRemote {
 
   listPromptResources() {
     this.calls.listPromptResources += 1
+    for (const row of this.resourceList) {
+      if (row.status === 'usable') assertResourceFixture(row, 'resource directory fixture')
+    }
     return this.take(this.listSteps, businessOk(this.resourceList))
   }
   getPromptResource(_id: string) {
     this.calls.getPromptResource += 1
+    assertResourceFixture(this.resource, 'resource document fixture')
     return this.take(this.resourceSteps, businessOk(this.resource))
   }
   sessionPreset(_id: string) {
@@ -918,7 +927,7 @@ test('the latest same-surface protocol error claims the surface and blocks an ol
 
   snapshot = model.state.getSnapshot()
   assert.equal(snapshot.profiles.status, 'error')
-  assert.equal(snapshot.profiles.error?.code, 'latest-profile-protocol-error')
+  assert.equal(snapshot.profiles.error?.kind === 'remote' ? snapshot.profiles.error.code : undefined, 'latest-profile-protocol-error')
   assert.equal(model.getProfileRevision(), undefined)
 
   detach()
@@ -2289,7 +2298,7 @@ test('keyed caches evict old entries at the documented 32-document and 64-sessio
   const { model, remote, detach } = await attachAndReady()
   for (let i = 0; i < 33; i += 1) {
     const id = 'resource-' + String(i)
-    remote.resource = { id, name: 'Name ' + String(i), content: 'body', revision: i, incarnationId: null + 1 }
+    remote.resource = { id, name: 'Name ' + String(i), content: 'body', revision: i + 1, incarnationId: null }
     assert.equal((await model.loadPromptResource(id)).status, 'completed')
   }
   const documents = model.state.getSnapshot().resources.documents

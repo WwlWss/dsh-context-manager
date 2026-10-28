@@ -28,11 +28,12 @@ const BASIS: ContextManagerClientProfileMutationBasis = Object.freeze({
 function exampleSnapshot(): ContextManagerClientSnapshot {
   return {
     attachment: 'attached',
-    protocol: { status: 'compatible', apiVersion: 2 },
+    protocol: { status: 'compatible', apiVersion: 3 },
     sync: { status: 'idle' },
     instanceId: 'host-a',
     changes: {
       instanceId: 'host-a',
+      resourceAuthorityId: null,
       generation: 1,
       profiles: 1,
       promptResources: 0,
@@ -249,8 +250,9 @@ test('DSH presentation store blocks uncertain replay, and older completions cann
   assert.equal(store.getSnapshot().draft?.blocked, 'unknown')
   store.actions.updateCreate('id', 'illegal-retry')
   assert.equal(store.getSnapshot().draft?.kind, 'create')
-  if (store.getSnapshot().draft?.kind === 'create') {
-    assert.equal(store.getSnapshot().draft.id, 'new')
+  const blockedDraft = store.getSnapshot().draft
+  if (blockedDraft?.kind === 'create') {
+    assert.equal(blockedDraft.id, 'new')
   }
   store.actions.cancelDraft()
   store.actions.beginCreate(BASIS)
