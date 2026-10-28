@@ -2800,6 +2800,87 @@ test('B2-B1 RED: simultaneous actual Profile and Resource writes use independent
   model.dispose()
 })
 
+
+test('B2-B1 known create-exists refusal refreshes List only and never preloads a Document', async () => {
+  const { model, remote, detach } = await attachAndReady()
+  const basis = model.capturePromptResourceCreateBasis()
+  assert.ok(basis)
+  const readCount = remote.calls.getPromptResource
+  const listCount = remote.calls.listPromptResources
+  remote.resourceMutationSteps.push(async () => ok(businessFail('prompt-resource-exists')))
+  const result = await model.resourceMutations.createPromptResource(
+    basis, 'alpha', { name: 'Duplicate', content: 'Content' },
+  )
+  assert.equal(result.status, 'rejected')
+  assert.equal(result.status === 'rejected' ? result.refresh : undefined, 'fresh')
+  assert.equal(remote.calls.resourceMutation, 1)
+  assert.equal(remote.calls.listPromptResources, listCount + 1)
+  assert.equal(remote.calls.getPromptResource, readCount)
+  assert.equal(model.state.getSnapshot().resources.list.stale, false)
+  detach()
+  model.dispose()
+})
+
+test('B2-B1 write-fence reentrant baseline verification causes local refusal, not false Source supersession', async () => {
+  const { model, remote, detach } = await attachAndReady()
+  await model.loadPromptResourceList()
+  const original = model.capturePromptResourceReadStamp('alpha', 'list')
+  assert.ok(original)
+  const listCount = remote.calls.listPromptResources
+  let started = false
+  let checking: Promise<unknown> | undefined
+  const unsub = model.state.subscribe(() => {
+    const snapshot = model.state.getSnapshot()
+    if (!started && snapshot.resources.list.stale && snapshot.resources.list.data !== undefined) {
+      started = true
+      checking = model.refresh()
+    }
+  })
+  const result = await model.resourceMutations.setPromptResourceName(original, 'Not sent')
+  await checking
+  unsub()
+  assert.equal(started, true)
+  assert.equal(result.status, 'rejected')
+  assert.equal(result.status === 'rejected' && result.error.kind === 'precondition'
+    ? result.error.code : undefined, 'protocol-unavailable')
+  assert.equal(remote.calls.resourceMutation, 0)
+  assert.ok(remote.calls.listPromptResources > listCount, 'the stale directory must be re-read')
+  assert.equal(model.resourceMutations.state.getSnapshot().resource.status, 'settled')
+  detach()
+  model.dispose()
+})
+
+test('B2-B1 refused write recovery revokes an older List read before it can overwrite the new Resource', async () => {
+  const { model, remote, detach } = await attachAndReady()
+  await model.loadPromptResourceList()
+  await model.loadPromptResource('alpha')
+  const original = model.capturePromptResourceReadStamp('alpha', 'document')
+  assert.ok(original)
+  const staleList = deferred<RemoteResult<ContextManagerRemoteResult<readonly ContextManagerRemotePromptResourceListItem[]>>>()
+  remote.listSteps.push(() => staleList.promise)
+  const listCount = remote.calls.listPromptResources
+  const pendingList = model.loadPromptResourceList()
+  await waitFor(() => remote.calls.listPromptResources > listCount, 'old in-flight List read')
+  remote.resourceMutationSteps.push(async () => {
+    advanceResourceFixture(remote, {
+      id: 'alpha', name: 'External', content: 'new body', revision: 6,
+      incarnationId: 'fresh-incarnation',
+    })
+    return ok(businessFail('invalid-prompt-resource'))
+  })
+  const result = await model.resourceMutations.setPromptResourceName(original, 'Refused')
+  assert.equal(result.status, 'rejected')
+  assert.equal(result.status === 'rejected' ? result.refresh : undefined, 'fresh')
+  assert.equal(model.state.getSnapshot().resources.list.data?.find(x => x.id === 'alpha')?.status, 'usable')
+  assert.equal(model.capturePromptResourceReadStamp('alpha', 'list')?.incarnationId, 'fresh-incarnation')
+  staleList.resolve(ok(businessOk([{ status: 'usable', id: 'alpha', name: 'Old', revision: 5, incarnationId: null }])))
+  assert.equal((await pendingList).status, 'superseded')
+  assert.equal(model.capturePromptResourceReadStamp('alpha', 'list')?.incarnationId, 'fresh-incarnation')
+  assert.equal(remote.calls.resourceMutation, 1)
+  detach()
+  model.dispose()
+})
+
 test('the baseline surface list stays explicit and mutation-free', () => {
   assert.deepEqual(CONTEXT_MANAGER_BASELINE_SURFACES, [
     'profiles',
