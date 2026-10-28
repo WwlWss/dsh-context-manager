@@ -80,4 +80,5 @@ export interface ContextManagerClientBusinessRemote
   extends ContextManagerClientReadRemote,
     ContextManagerClientResourceReadRemote,
     ContextManagerClientRuntimeReadRemote,
+    ContextManagerClientResourceMutationRemote,
     ContextManagerClientProfileMutationRemote {}
