@@ -168,10 +168,11 @@ export function createContextManagerResourceMutationController(
   const check = (
     basis: ContextManagerClientResourceCreateBasis,
     stamp?: ContextManagerClientPromptResourceReadStamp,
+    skipBusy = false,
   ): ContextManagerClientResourceMutationResult | undefined => {
     const lifecycle = lifecycleResult()
     if (lifecycle !== undefined) return lifecycle
-    if (activeId !== undefined) return errorResult('busy', 'A Resource mutation is already in progress')
+    if (!skipBusy && activeId !== undefined) return errorResult('busy', 'A Resource mutation is already in progress')
     if (deps.getProtocolStatus() !== 'compatible') {
       return errorResult('protocol-unavailable', 'A compatible Remote v3 protocol is required')
     }
@@ -218,11 +219,7 @@ export function createContextManagerResourceMutationController(
     const recheck = (): ContextManagerClientResourceMutationResult | undefined => {
       if (!stillOwns()) return obsolete()
       if (deps.getRemote() !== remote) return { status: 'superseded' }
-      // Busy is this operation itself, so bypass the single-flight check.
-      const saved = activeId
-      activeId = undefined
-      try { return check(frozenBasis, preCallStamp) }
-      finally { activeId = saved }
+      return check(frozenBasis, preCallStamp, true)
     }
     state.set({ resource: { status: 'running', id: idNumber, kind, phase: 'mutating' } })
     const initial = recheck()
@@ -230,8 +227,18 @@ export function createContextManagerResourceMutationController(
 
     // Fence already-started lazy reads before sending any mutation RPC.
     deps.invalidate(id)
-    const beforeCall = recheck()
-    if (beforeCall !== undefined) return settle(operationEpoch, idNumber, kind, beforeCall)
+    // Invalidation intentionally makes the source stamp stale. Do not require
+    // freshness *again* after invalidation; only recheck lifecycle/authority.
+    if (!stillOwns()) return obsolete()
+    const afterFence = lifecycleResult()
+    if (afterFence !== undefined) return settle(operationEpoch, idNumber, kind, afterFence)
+    if (deps.getRemote() !== remote || deps.getProtocolStatus() !== 'compatible') {
+      return settle(operationEpoch, idNumber, kind, { status: 'superseded' })
+    }
+    const currentAuthority = deps.getCurrentCreateBasis()
+    if (currentAuthority?.resourceAuthorityId !== frozenBasis.resourceAuthorityId) {
+      return settle(operationEpoch, idNumber, kind, errorResult('resource-authority-unavailable', 'Resource authority changed before dispatch'))
+    }
     const outcome = await invoke(() => call(remote))
     if (!stillOwns()) return obsolete()
 
