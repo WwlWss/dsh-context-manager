@@ -300,3 +300,45 @@ test('local rejected edit publishes a settled resource operation without Remote 
   assert.equal(operation.status === 'settled' ? operation.result.status : undefined, 'rejected')
   assert.equal(f.calls.length, 0)
 })
+
+test('P2 RED: a definitive invalid-resource refusal performs read-only recovery after dispatch', async () => {
+  const f = fixture()
+  f.setCached(true)
+  f.onWrite(async () => ok(rejected('invalid-prompt-resource')))
+  const result = await f.handle.controller.setPromptResourceName(f.stamp, 'Correctable')
+  assert.equal(result.status, 'rejected')
+  assert.equal(result.status === 'rejected' ? result.refresh : undefined, 'fresh')
+  assert.equal(result.status === 'rejected' && result.error.kind === 'business'
+    ? result.error.code : undefined, 'invalid-prompt-resource')
+  assert.equal(f.calls.length, 1, 'business refusal must never cause a second mutation')
+  assert.equal(f.recoveries.length, 1, 'invalid refusal must rehydrate already invalidated surfaces')
+  assert.equal(f.recoveries[0]?.refreshDocument, true)
+})
+
+test('P2 RED: write-preflight invalidate with transient protocol checking refuses without claiming authority supersession', async () => {
+  const f = fixture()
+  f.setRecovery(false)
+  f.onInvalidate(() => f.setProtocol('checking'))
+  const result = await f.handle.controller.setPromptResourceName(f.stamp, 'Not dispatched')
+  assert.equal(result.status, 'rejected')
+  assert.equal(preconditionCode(result), 'protocol-unavailable')
+  assert.equal(result.status === 'rejected' ? result.refresh : undefined, 'degraded')
+  assert.equal(f.calls.length, 0)
+  assert.equal(f.recoveries.length, 1, 'own invalidation needs a recovery attempt')
+  assert.equal(f.handle.controller.state.getSnapshot().resource.status, 'settled')
+})
+
+test('P2 RED: a known business refusal with recovery failure preserves the original code', async () => {
+  const f = fixture()
+  f.setRecovery(false)
+  f.onWrite(async () => ok(rejected('prompt-resource-path-not-editable')))
+  const result = await f.handle.controller.replacePromptResource(f.stamp, {
+    name: 'Replacement', content: 'Content',
+  })
+  assert.equal(result.status, 'rejected')
+  assert.equal(result.status === 'rejected' && result.error.kind === 'business'
+    ? result.error.code : undefined, 'prompt-resource-path-not-editable')
+  assert.equal(result.status === 'rejected' ? result.refresh : undefined, 'degraded')
+  assert.equal(f.calls.length, 1)
+  assert.equal(f.recoveries.length, 1)
+})
