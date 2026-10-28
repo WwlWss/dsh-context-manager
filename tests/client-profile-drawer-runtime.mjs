@@ -582,6 +582,127 @@ assert.equal(buttonByLabel(tree, 'Save').props.disabled, true)
 assert.ok(renderedText(tree.root).includes('Profile write conflict'))
 await act(async () => { buttonByLabel(tree, 'Discard draft').props.onClick() })
 
+// M8A1: the same retained DSH Renderer opens the Resource library inside
+// the existing Drawer, without moving Profile drafts into the Resource lane.
+await act(async () => {
+  tree.root.findByProps({ 'data-context-manager-tab': 'resources' }).props.onClick()
+})
+await settleUI()
+assert.equal(tree.root.findAllByProps({ 'data-context-manager-resource-editor': '' }).length, 1)
+assert.ok(renderedText(tree.root).includes('Invalid resource record'))
+assert.equal(remoteFixture.resourceWrites.length, 0)
+
+await act(async () => {
+  tree.root.findByProps({ 'data-context-manager-new-resource': '' }).props.onClick()
+})
+await act(async () => {
+  tree.root.findByProps({ id: 'cm-resource-create-id' }).props.onChange({ currentTarget: { value: 'res-ui' } })
+  tree.root.findByProps({ id: 'cm-resource-create-name' }).props.onChange({ currentTarget: { value: 'New Resource' } })
+  tree.root.findByProps({ id: 'cm-resource-create-content' }).props.onChange({ currentTarget: { value: 'Line 1\\nLine 2\\n' } })
+})
+assert.equal(remoteFixture.resourceWrites.length, 0)
+await act(async () => {
+  tree.root.findAllByType('form')[0].props.onSubmit({ preventDefault() {} })
+  for (let i = 0; i < 30; i += 1) await Promise.resolve()
+})
+await settleUI()
+assert.equal(remoteFixture.resourceWrites.length, 1)
+assert.equal(remoteFixture.resourceWrites[0].kind, 'resource-create')
+assert.deepEqual(remoteFixture.resourceWrites[0].basis, { resourceAuthorityId: 'm7c-fixture-resource' })
+assert.equal(remoteFixture.resources.get('res-ui').content, 'Line 1\\nLine 2\\n')
+
+await act(async () => { buttonByLabel(tree, 'Edit').props.onClick() })
+await act(async () => {
+  tree.root.findByProps({ id: 'cm-resource-edit-name' }).props.onChange({ currentTarget: { value: 'Renamed Resource' } })
+  tree.root.findByProps({ id: 'cm-resource-edit-content' }).props.onChange({ currentTarget: { value: 'Exact\\n\\n' } })
+})
+assert.equal(remoteFixture.resourceWrites.length, 1)
+await act(async () => {
+  tree.root.findAllByType('form')[0].props.onSubmit({ preventDefault() {} })
+  for (let i = 0; i < 30; i += 1) await Promise.resolve()
+})
+await settleUI()
+assert.equal(remoteFixture.resourceWrites.length, 2)
+assert.equal(remoteFixture.resourceWrites[1].kind, 'resource-replace')
+assert.equal(remoteFixture.resources.get('res-ui').content, 'Exact\\n\\n')
+assert.equal(remoteFixture.resources.get('res-ui').name, 'Renamed Resource')
+
+await act(async () => { buttonByLabel(tree, 'Edit').props.onClick() })
+await act(async () => { buttonByLabel(tree, 'Explicitly set an empty description string').props.onClick() })
+await act(async () => {
+  tree.root.findAllByType('form')[0].props.onSubmit({ preventDefault() {} })
+  for (let i = 0; i < 30; i += 1) await Promise.resolve()
+})
+await settleUI()
+assert.equal(remoteFixture.resourceWrites[2].kind, 'resource-description')
+assert.equal(remoteFixture.resources.get('res-ui').description, '')
+
+await act(async () => { buttonByLabel(tree, 'Edit').props.onClick() })
+await act(async () => { buttonByLabel(tree, 'Remove description field').props.onClick() })
+await act(async () => {
+  tree.root.findAllByType('form')[0].props.onSubmit({ preventDefault() {} })
+  for (let i = 0; i < 30; i += 1) await Promise.resolve()
+})
+await settleUI()
+assert.equal(remoteFixture.resourceWrites[3].kind, 'resource-description')
+assert.equal(remoteFixture.resources.get('res-ui').description, undefined)
+
+// An uncertain Host reply must retain a non-retryable draft through close/reopen.
+await act(async () => { buttonByLabel(tree, 'Edit').props.onClick() })
+await act(async () => {
+  tree.root.findByProps({ id: 'cm-resource-edit-content' }).props.onChange({ currentTarget: { value: 'Committed but unknown' } })
+})
+remoteFixture.makeUnknownNextResourceWrite()
+const beforeUnknown = remoteFixture.resourceWrites.length
+await act(async () => {
+  tree.root.findAllByType('form')[0].props.onSubmit({ preventDefault() {} })
+  for (let i = 0; i < 30; i += 1) await Promise.resolve()
+})
+await settleUI()
+assert.equal(remoteFixture.resourceWrites.length, beforeUnknown + 1)
+assert.equal(buttonByLabel(tree, 'Save').props.disabled, true)
+await act(async () => { tree.root.findByProps({ 'data-context-manager-tab': 'profiles' }).props.onClick() })
+assert.equal(tree.root.findAllByProps({ 'data-context-manager-resource-editor': '' }).length, 1)
+await act(async () => { trigger().props.onClick() })
+await act(async () => { trigger().props.onClick() })
+assert.equal(tree.root.findAllByProps({ 'data-context-manager-resource-editor': '' }).length, 1)
+assert.equal(buttonByLabel(tree, 'Save').props.disabled, true)
+assert.equal(remoteFixture.resourceWrites.length, beforeUnknown + 1)
+await act(async () => { buttonByLabel(tree, 'Discard draft').props.onClick() })
+
+// An ABA replacement with the same ID/revision but new Incarnation must
+// reject the original editor Stamp and never overwrite the external Resource.
+await act(async () => { buttonByLabel(tree, 'Edit').props.onClick() })
+await act(async () => {
+  tree.root.findByProps({ id: 'cm-resource-edit-name' }).props.onChange({ currentTarget: { value: 'Illegal old edit' } })
+})
+remoteFixture.externalResourceReplacement('res-ui', 'External actor won')
+const beforeConflict = remoteFixture.resourceWrites.length
+await act(async () => {
+  tree.root.findAllByType('form')[0].props.onSubmit({ preventDefault() {} })
+  for (let i = 0; i < 30; i += 1) await Promise.resolve()
+})
+await settleUI()
+assert.equal(remoteFixture.resourceWrites.length, beforeConflict + 1)
+assert.equal(remoteFixture.resources.get('res-ui').name, 'External actor won')
+assert.equal(buttonByLabel(tree, 'Save').props.disabled, true)
+await act(async () => { buttonByLabel(tree, 'Discard draft').props.onClick() })
+
+// The Resource deletion must not cascade to Profile PromptBinding intent.
+remoteFixture.profiles.main.prompts.dangling = {
+  resourceId: 'res-ui', enabled: true, placement: 'before-persona', order: 1,
+}
+await act(async () => { buttonByLabel(tree, 'Delete resource').props.onClick() })
+assert.ok(renderedText(tree.root).includes('It does not delete referring Profile PromptBindings'))
+await act(async () => { buttonByLabel(tree, 'Confirm delete').props.onClick() })
+await settleUI()
+assert.equal(remoteFixture.resources.has('res-ui'), false)
+assert.equal(remoteFixture.profiles.main.prompts.dangling.resourceId, 'res-ui')
+assert.equal(remoteFixture.resourceWrites.at(-1).kind, 'resource-delete')
+await act(async () => { tree.root.findByProps({ 'data-context-manager-tab': 'profiles' }).props.onClick() })
+await settleUI()
+assert.equal(tree.root.findAllByProps({ 'data-context-manager-new-profile': '' }).length, 1)
+
 remoteFixture.setReadOnly(true)
 const overlayFace = injectedBusiness?.()
 assert.ok(overlayFace)
