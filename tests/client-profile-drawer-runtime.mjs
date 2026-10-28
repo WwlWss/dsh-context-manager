@@ -598,7 +598,7 @@ await act(async () => {
 await act(async () => {
   tree.root.findByProps({ id: 'cm-resource-create-id' }).props.onChange({ currentTarget: { value: 'res-ui' } })
   tree.root.findByProps({ id: 'cm-resource-create-name' }).props.onChange({ currentTarget: { value: 'New Resource' } })
-  tree.root.findByProps({ id: 'cm-resource-create-content' }).props.onChange({ currentTarget: { value: 'Line 1\\nLine 2\\n' } })
+  tree.root.findByProps({ id: 'cm-resource-create-content' }).props.onChange({ currentTarget: { value: 'Line 1\nLine 2\n' } })
 })
 assert.equal(remoteFixture.resourceWrites.length, 0)
 await act(async () => {
@@ -609,12 +609,12 @@ await settleUI()
 assert.equal(remoteFixture.resourceWrites.length, 1)
 assert.equal(remoteFixture.resourceWrites[0].kind, 'resource-create')
 assert.deepEqual(remoteFixture.resourceWrites[0].basis, { resourceAuthorityId: 'm7c-fixture-resource' })
-assert.equal(remoteFixture.resources.get('res-ui').content, 'Line 1\\nLine 2\\n')
+assert.equal(remoteFixture.resources.get('res-ui').content, 'Line 1\nLine 2\n')
 
 await act(async () => { buttonByLabel(tree, 'Edit').props.onClick() })
 await act(async () => {
   tree.root.findByProps({ id: 'cm-resource-edit-name' }).props.onChange({ currentTarget: { value: 'Renamed Resource' } })
-  tree.root.findByProps({ id: 'cm-resource-edit-content' }).props.onChange({ currentTarget: { value: 'Exact\\n\\n' } })
+  tree.root.findByProps({ id: 'cm-resource-edit-content' }).props.onChange({ currentTarget: { value: 'Exact\n\n' } })
 })
 assert.equal(remoteFixture.resourceWrites.length, 1)
 await act(async () => {
@@ -624,7 +624,7 @@ await act(async () => {
 await settleUI()
 assert.equal(remoteFixture.resourceWrites.length, 2)
 assert.equal(remoteFixture.resourceWrites[1].kind, 'resource-replace')
-assert.equal(remoteFixture.resources.get('res-ui').content, 'Exact\\n\\n')
+assert.equal(remoteFixture.resources.get('res-ui').content, 'Exact\n\n')
 assert.equal(remoteFixture.resources.get('res-ui').name, 'Renamed Resource')
 
 await act(async () => { buttonByLabel(tree, 'Edit').props.onClick() })
