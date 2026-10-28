@@ -19,6 +19,7 @@ import {
   type ContextManagerRemoteSkillMode,
   type ContextManagerRemotePromptResource,
   type ContextManagerRemotePromptResourceListItem,
+  type ContextManagerRemoteMutationReceipt,
   type ContextManagerRemotePromptResourceInput,
   type ContextManagerRemoteResourceCreateBasis,
   type ContextManagerRemoteResourceMutationBasis,
@@ -1898,6 +1899,28 @@ test('all profile mutation wrappers forward the exact arguments and immutable ba
 })
 
 
+
+function advanceResourceFixture(
+  remote: ScriptedRemote,
+  resource: ContextManagerRemotePromptResource | null,
+): void {
+  remote.resourceList = resource === null ? [] : [{
+    status: 'usable',
+    id: resource.id,
+    name: resource.name,
+    ...(resource.description === undefined ? {} : { description: resource.description }),
+    revision: resource.revision,
+    incarnationId: resource.incarnationId,
+  }]
+  if (resource !== null) remote.resource = resource
+  remote.defaultChanges = {
+    ...remote.defaultChanges,
+    generation: remote.defaultChanges.generation + 1,
+    promptResources: remote.defaultChanges.promptResources + 1,
+    runtime: remote.defaultChanges.runtime + 1,
+  }
+}
+
 test('lazy resource directory and document reads keep revision and content separate', async () => {
   const { model, remote } = await attachAndReady()
   assert.equal(remote.calls.listPromptResources, 0)
@@ -2467,6 +2490,159 @@ test('B2-B0 RED: older A change response cannot roll back a newer B storage auth
   slowSession.resolve(ok(remote.session))
   await old
   assert.equal(model.state.getSnapshot().changes?.resourceAuthorityId, 'resource-host-b')
+  detach()
+  model.dispose()
+})
+
+
+test('B2-B1 create captures Resource Authority without eager Resource directory and recovers metadata only', async () => {
+  const { model, remote, detach } = await attachAndReady()
+  assert.equal(remote.calls.listPromptResources, 0)
+  assert.deepEqual(model.capturePromptResourceCreateBasis(), { resourceAuthorityId: 'resource-host-a' })
+  remote.resourceMutationSteps.push(async () => {
+    remote.resourceList = [{ status: 'usable', id: 'created', name: 'Created', revision: 1, incarnationId: 'new-uuid' }]
+    remote.defaultChanges = { ...remote.defaultChanges, generation: 2, promptResources: 1 }
+    return ok(businessOk({ id: 'created', revision: 1 }))
+  })
+  const result = await model.resourceMutations.createPromptResource(
+    { resourceAuthorityId: 'resource-host-a' },
+    'created',
+    { name: 'Created', content: 'New' },
+  )
+  assert.deepEqual(result, { status: 'applied', refresh: 'fresh' })
+  assert.equal(remote.calls.resourceMutation, 1)
+  assert.equal(remote.calls.getPromptResource, 0)
+  assert.equal(model.state.getSnapshot().resources.list.data?.[0]?.id, 'created')
+  detach()
+  model.dispose()
+})
+
+test('B2-B1 write recovery ignores receipt revision and adopts only B1-3 list/document reads', async () => {
+  const { model, remote, detach } = await attachAndReady()
+  await model.loadPromptResourceList()
+  await model.loadPromptResource('alpha')
+  const stamp = model.capturePromptResourceReadStamp('alpha', 'document')
+  assert.ok(stamp)
+  remote.resourceMutationSteps.push(async () => {
+    advanceResourceFixture(remote, { id: 'alpha', name: 'Fresh', content: 'latest', revision: 6, incarnationId: 'stable-id' })
+    return ok(businessOk({ id: 'alpha', revision: 999 }))
+  })
+  const result = await model.resourceMutations.setPromptResourceName(stamp, 'Fresh')
+  assert.deepEqual(result, { status: 'applied', refresh: 'fresh' })
+  assert.equal(remote.calls.resourceMutation, 1)
+  assert.equal(model.state.getSnapshot().resources.documents.get('alpha')?.data?.content, 'latest')
+  assert.equal(model.state.getSnapshot().resources.documents.get('alpha')?.data?.revision, 6)
+  assert.equal(model.capturePromptResourceReadStamp('alpha', 'document')?.incarnationId, 'stable-id')
+  assert.equal(model.capturePromptResourceReadStamp('alpha', 'document')?.revision, 6)
+  assert.equal(model.resourceMutations.state.getSnapshot().resource.status, 'settled')
+  detach()
+  model.dispose()
+})
+
+test('B2-B1 a pre-write in-flight document read cannot resurrect old body after recovery', async () => {
+  const { model, remote, detach } = await attachAndReady()
+  await model.loadPromptResourceList()
+  const stamp = model.capturePromptResourceReadStamp('alpha', 'list')
+  assert.ok(stamp)
+  const oldRead = deferred<RemoteResult<ContextManagerRemoteResult<ContextManagerRemotePromptResource>>>()
+  remote.resourceSteps.push(() => oldRead.promise)
+  const pendingRead = model.loadPromptResource('alpha')
+  await waitFor(() => remote.calls.getPromptResource >= 1, 'in-flight old body')
+  remote.resourceMutationSteps.push(async () => {
+    advanceResourceFixture(remote, { id: 'alpha', name: 'Current', content: 'new body', revision: 6, incarnationId: null })
+    return ok(businessOk({ id: 'alpha', revision: 6 }))
+  })
+  const result = await model.resourceMutations.setPromptResourceName(stamp, 'Current')
+  assert.deepEqual(result, { status: 'applied', refresh: 'fresh' })
+  assert.equal(model.state.getSnapshot().resources.documents.get('alpha')?.data?.content, 'new body')
+  oldRead.resolve(ok(businessOk({ id: 'alpha', name: 'Old', content: 'old body', revision: 5, incarnationId: null })))
+  assert.equal((await pendingRead).status, 'superseded')
+  assert.equal(model.state.getSnapshot().resources.documents.get('alpha')?.data?.content, 'new body')
+  detach()
+  model.dispose()
+})
+
+test('B2-B1 Profile instance change does not supersede an in-flight Resource write on unchanged storage source', async () => {
+  const { model, remote, detach } = await attachAndReady()
+  await model.loadPromptResourceList()
+  const stamp = model.capturePromptResourceReadStamp('alpha', 'list')
+  assert.ok(stamp)
+  const gate = deferred<RemoteResult<ContextManagerRemoteResult<ContextManagerRemoteMutationReceipt>>>()
+  remote.resourceMutationSteps.push(() => gate.promise)
+  const pending = model.resourceMutations.setPromptResourceName(stamp, 'Good')
+  assert.equal(remote.calls.resourceMutation, 1)
+  remote.defaultChanges = { ...changes('host-b', 2), resourceAuthorityId: 'resource-host-a', promptResources: 1 }
+  await model.refresh()
+  assert.equal(model.state.getSnapshot().instanceId, 'host-b')
+  remote.resourceList = [{ status: 'usable', id: 'alpha', name: 'Good', revision: 6, incarnationId: null }]
+  gate.resolve(ok(businessOk({ id: 'alpha', revision: 6 })))
+  assert.deepEqual(await pending, { status: 'applied', refresh: 'fresh' })
+  assert.equal(remote.calls.resourceMutation, 1)
+  detach()
+  model.dispose()
+})
+
+test('B2-B1 accepted Resource Authority rotation supersedes a delayed write even without Profile instance change', async () => {
+  const { model, remote, detach } = await attachAndReady()
+  await model.loadPromptResourceList()
+  const stamp = model.capturePromptResourceReadStamp('alpha', 'list')
+  assert.ok(stamp)
+  const gate = deferred<RemoteResult<ContextManagerRemoteResult<ContextManagerRemoteMutationReceipt>>>()
+  remote.resourceMutationSteps.push(() => gate.promise)
+  const pending = model.resourceMutations.setPromptResourceName(stamp, 'Old source')
+  assert.equal(remote.calls.resourceMutation, 1)
+  remote.defaultChanges = {
+    ...remote.defaultChanges, generation: 2, resourceAuthorityId: 'resource-host-b',
+    promptResources: 1, runtime: 2,
+  }
+  await model.loadSessionPreset('s')
+  gate.resolve(ok(businessOk({ id: 'alpha', revision: 6 })))
+  assert.deepEqual(await pending, { status: 'superseded' })
+  assert.equal(remote.calls.resourceMutation, 1)
+  assert.equal(model.resourceMutations.state.getSnapshot().resource.status, 'idle')
+  detach()
+  model.dispose()
+})
+
+test('B2-B1 successful deletion stales the old document and refreshes the directory without a missing-document RPC', async () => {
+  const { model, remote, detach } = await attachAndReady()
+  await model.loadPromptResourceList()
+  await model.loadPromptResource('alpha')
+  const stamp = model.capturePromptResourceReadStamp('alpha', 'document')
+  assert.ok(stamp)
+  const readCalls = remote.calls.getPromptResource
+  remote.resourceDeleteSteps.push(async () => {
+    advanceResourceFixture(remote, null)
+    return ok(businessOk({ id: 'alpha' }))
+  })
+  assert.deepEqual(await model.resourceMutations.deletePromptResource(stamp), { status: 'applied', refresh: 'fresh' })
+  assert.deepEqual(model.state.getSnapshot().resources.list.data, [])
+  assert.equal(model.state.getSnapshot().resources.documents.get('alpha')?.stale, true)
+  assert.equal(model.capturePromptResourceReadStamp('alpha', 'document'), undefined)
+  assert.equal(remote.calls.getPromptResource, readCalls)
+  detach()
+  model.dispose()
+})
+
+test('B2-B1 conflict is not retried and unknown remains unknown after valid read recovery', async () => {
+  const { model, remote, detach } = await attachAndReady()
+  await model.loadPromptResourceList()
+  const stamp = model.capturePromptResourceReadStamp('alpha', 'list')
+  assert.ok(stamp)
+  remote.resourceMutationSteps.push(async () => {
+    advanceResourceFixture(remote, { id: 'alpha', name: 'Other', content: 'body', revision: 6, incarnationId: 'new-entity' })
+    return ok(businessFail('prompt-resource-incarnation-conflict'))
+  })
+  const conflict = await model.resourceMutations.setPromptResourceName(stamp, 'Mine')
+  assert.equal(conflict.status, 'rejected')
+  assert.equal(conflict.status === 'rejected' ? conflict.refresh : undefined, 'fresh')
+  assert.equal(remote.calls.resourceMutation, 1)
+  const nextStamp = model.capturePromptResourceReadStamp('alpha', 'list')
+  assert.ok(nextStamp)
+  remote.resourceMutationSteps.push(async () => fail())
+  const unknown = await model.resourceMutations.setPromptResourceName(nextStamp, 'Mine again')
+  assert.equal(unknown.status, 'unknown')
+  assert.equal(remote.calls.resourceMutation, 2)
   detach()
   model.dispose()
 })
