@@ -1,6 +1,6 @@
 # M7B2-B0 — Host-safe PromptResource identity and Remote v3
 
-Status: **Draft / implementation in progress**. Baseline: PR #37 merge commit `d6a6a6bd097cf2ab25604567cbb1589585682cb4`. Followed by B2-B1 mutation controller and M8A UI.
+Status: **PR #38 review remediation complete; Ready full qualification pending**. Baseline: PR #37 merge commit `d6a6a6bd097cf2ab25604567cbb1589585682cb4`. Followed by B2-B1 mutation controller and M8A UI.
 
 ## Why this slice exists
 
@@ -34,6 +34,18 @@ The reserved storage field is `__dshCmResourceIncarnation` (UUID). It is omitted
 **GREEN focused evidence:** [workflow #40530368505](https://github.com/WwlWss/dsh-context-manager/actions/runs/40530368505) passed for the v3 Host/Client contract; later regression expansions cover legacy migration, reserved-field refusal, duplicate IDs, revised source-aware Resource read stamps, and changed Resource Authorities with equal numeric cursors.
 
 This PR is **B0 only**: Host/Remote safety and B1-3 read adapter; B1 will separately add a production Client Resource Mutation Controller, presentation Business Face and explicit recovery flows.
+
+## Review remediation after 86-job baseline
+
+Independent source review on `444edd83c5eef557fe6998e0a76fa4de12a0be77` found three P2 issues/gaps. Changes are deliberately limited to the existing B0 scope:
+
+1. **Resource Authority chronology:** `ContextManagerChangeTracker.syncResourceAuthority()` observes each storage-source lifetime transition. The first observation establishes a baseline without bump. A subsequent `A → null → B` or direct `A → B` transition increments `generation`, `promptResources`, and `runtime` in one `bump()`, while preserving `instanceId`, `profiles`, and `presets`. The existing Client `adoptChanges()` check now rejects delayed older generations without a second protocol or authority state machine.
+2. **Executable Client-test type safety:** `test:client-model` now runs `tsc -p tsconfig.client-model-test.json --noEmit` before `tsdown`. All three Client tests are included, including Profile Editor fixtures. Scripted Resource fixtures additionally assert positive safe revision and `string | null` incarnation. No `any` escape or relaxed compiler options are used to hide errors.
+3. **Remote v3 leaf acceptance:** actual `setPromptResourceName`, `setPromptResourceDescription` (text and explicit `null` removal), and `setPromptResourceContent` calls are verified through `ContextManagerRemoteService`, strict `TypertGatewayService`, and real `ContextManagerPromptLibrary` + `MemoryStorage`. Success increments revision exactly once, does not change incarnation, preserves unknown extensions, and returns distinct authority/incarnation/revision conflict codes without mutating stored content.
+
+**RED evidence**: [#40672392676](https://github.com/WwlWss/dsh-context-manager/actions/runs/40672392676) demonstrates the Host Authority transition cursor failure; [#40672693995](https://github.com/WwlWss/dsh-context-manager/actions/runs/40672693995) demonstrates that strict test TypeScript detects the previously invalid fixture and historical Profile Editor typing. **Focused GREEN evidence**: [#40673438195](https://github.com/WwlWss/dsh-context-manager/actions/runs/40673438195), successful Draft Quick CI with the real Host + Gateway leaf tests and TypeScript checking.
+
+This does **not** change Resource write Basis, published v3 DTO/34-method count, native StorageDomain semantics, B1-3 eager/lazy loading boundaries, or B2-A Profile Mutation. Requalification on the final Ready HEAD is required before merge.
 
 ## Staged implementation
 
