@@ -609,13 +609,18 @@ await act(async () => {
   tree.root.findByProps({ id: 'cm-resource-create-content' }).props.onChange({ currentTarget: { value: 'Line 1\nLine 2\n' } })
 })
 assert.equal(remoteFixture.resourceWrites.length, 0)
+// Two rapid form submits from the same render must not issue two writes or
+// publish an obsolete busy result that overwrites the successful outcome.
 await act(async () => {
-  tree.root.findAllByType('form')[0].props.onSubmit({ preventDefault() {} })
+  const form = tree.root.findAllByType('form')[0]
+  form.props.onSubmit({ preventDefault() {} })
+  form.props.onSubmit({ preventDefault() {} })
   for (let i = 0; i < 30; i += 1) await Promise.resolve()
 })
 await settleUI()
 assert.equal(remoteFixture.resourceWrites.length, 1)
 assert.equal(remoteFixture.resourceWrites[0].kind, 'resource-create')
+assert.ok(renderedText(tree.root).includes('Resource saved and authoritative state refreshed.'))
 assert.deepEqual(remoteFixture.resourceWrites[0].basis, { resourceAuthorityId: 'm7c-fixture-resource' })
 assert.equal(remoteFixture.resources.get('res-ui').content, 'Line 1\nLine 2\n')
 
