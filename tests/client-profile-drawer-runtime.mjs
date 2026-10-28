@@ -124,6 +124,7 @@ function createWritableRemoteFixture() {
   const resources = new Map()
   let resourceCursor = 0
   let unknownNextResourceWrite = false
+  let failNextResourceListRead = false
   const profiles = Object.create(null)
   profiles.main = {
     name: 'Main',
@@ -240,6 +241,10 @@ function createWritableRemoteFixture() {
     },
     async promptPlacement() { return okRead({ status: 'unavailable' }) },
     async listPromptResources() {
+      if (failNextResourceListRead) {
+        failNextResourceListRead = false
+        return rejected('prompt-library-not-ready', 'simulated read-back failure')
+      }
       return accepted([
         ...Array.from(resources.values(), row => ({
           status: 'usable',
@@ -322,6 +327,7 @@ function createWritableRemoteFixture() {
     face, profiles, writes, resources, resourceWrites,
     getDefault: () => defaultId,
     makeUnknownNextResourceWrite() { unknownNextResourceWrite = true },
+    failNextResourceListRead() { failNextResourceListRead = true },
     externalResourceReplacement(id, newName) {
       const old = resources.get(id)
       resources.set(id, { ...old, name: newName, incarnationId: 'new-incarnation-' + id })
@@ -687,6 +693,30 @@ assert.equal(remoteFixture.resourceWrites.length, beforeConflict + 1)
 assert.equal(remoteFixture.resources.get('res-ui').name, 'External actor won')
 assert.equal(buttonByLabel(tree, 'Save').props.disabled, true)
 await act(async () => { buttonByLabel(tree, 'Discard draft').props.onClick() })
+
+// An acknowledged write with a failed authoritative List read is *applied*
+// but degraded. The UI must never replay it; explicit refresh is read-only.
+await act(async () => { buttonByLabel(tree, 'Edit').props.onClick() })
+await act(async () => {
+  tree.root.findByProps({ id: 'cm-resource-edit-content' }).props.onChange({
+    currentTarget: { value: 'Committed with degraded read-back' },
+  })
+})
+remoteFixture.failNextResourceListRead()
+const beforeDegraded = remoteFixture.resourceWrites.length
+await act(async () => {
+  tree.root.findAllByType('form')[0].props.onSubmit({ preventDefault() {} })
+  for (let i = 0; i < 30; i += 1) await Promise.resolve()
+})
+await settleUI()
+assert.equal(remoteFixture.resourceWrites.length, beforeDegraded + 1)
+assert.equal(remoteFixture.resources.get('res-ui').content, 'Committed with degraded read-back')
+assert.equal(buttonByLabel(tree, 'Save').props.disabled, true)
+assert.ok(renderedText(tree.root).includes('read-back incomplete'))
+await act(async () => { buttonByLabel(tree, 'Discard draft').props.onClick() })
+await act(async () => { buttonByLabel(tree, 'Refresh').props.onClick() })
+await settleUI()
+assert.equal(remoteFixture.resourceWrites.length, beforeDegraded + 1)
 
 // The Resource deletion must not cascade to Profile PromptBinding intent.
 remoteFixture.profiles.main.prompts.dangling = {
