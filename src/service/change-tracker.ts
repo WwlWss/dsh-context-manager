@@ -37,6 +37,8 @@ export class ContextManagerChangeTracker extends Service {
   private readonly ownerCtx: Context
   private authorityInitialized = false
   private profileAuthority: string | undefined
+  private resourceAuthorityInitialized = false
+  private resourceAuthority: string | null = null
   private generation = 0
   private profiles = 0
   private promptResources = 0
@@ -77,8 +79,7 @@ export class ContextManagerChangeTracker extends Service {
 
   snapshot(): ContextManagerChangeSnapshot {
     this.syncAuthority()
-    const promptLibrary = this.ownerCtx.get('dshContextPromptLibrary') as { resourceWriteAuthority(): string | undefined } | undefined
-    const resourceAuthorityId = promptLibrary?.resourceWriteAuthority?.() ?? null
+    const resourceAuthorityId = this.syncResourceAuthority()
     return Object.freeze({
       instanceId: this.instanceId,
       resourceAuthorityId,
@@ -100,6 +101,32 @@ export class ContextManagerChangeTracker extends Service {
 
   markRuntime(): void {
     this.bump({ runtime: true })
+  }
+
+  /**
+   * Resource storage attachment is independent of Profile Settings identity.
+   * Publish each observed source-lifetime transition with a higher generation,
+   * so a delayed changes() response cannot move the Client back to an older
+   * resource authority while its numeric resource cursor stays unchanged.
+   */
+  private syncResourceAuthority(): string | null {
+    const library = this.ownerCtx.get('dshContextPromptLibrary') as
+      | { resourceWriteAuthority(): string | undefined }
+      | undefined
+    const next = library?.resourceWriteAuthority?.() ?? null
+
+    if (!this.resourceAuthorityInitialized) {
+      this.resourceAuthorityInitialized = true
+      this.resourceAuthority = next
+      return next
+    }
+
+    if (next !== this.resourceAuthority) {
+      this.resourceAuthority = next
+      this.bump({ promptResources: true, runtime: true })
+    }
+
+    return next
   }
 
   private syncAuthority(): void {
