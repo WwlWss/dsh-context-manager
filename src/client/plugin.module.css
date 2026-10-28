@@ -323,3 +323,66 @@
     max-height: 100px;
   }
 }
+
+/* M8A1 uses the same Drawer token palette and existing resource layout. */
+.workspace {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.tabs {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+  padding-top: 12px;
+  border-bottom: 1px solid var(--dsw-alias-border-l1);
+}
+
+.tab,
+.tabActive {
+  border: 1px solid transparent;
+  border-bottom: 2px solid transparent;
+  border-radius: 8px 8px 0 0;
+  padding: 10px 12px;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  cursor: pointer;
+  font: inherit;
+}
+
+.tabActive {
+  border-color: var(--dsw-alias-border-l1);
+  border-bottom-color: var(--dsw-alias-label-primary);
+  color: var(--dsw-alias-label-primary);
+  background: var(--dsw-alias-bg-layer-1);
+  font-weight: 600;
+}
+
+.tab:focus-visible,
+.tabActive:focus-visible {
+  outline: 2px solid var(--dsw-alias-label-primary);
+  outline-offset: 2px;
+}
+
+.resourceTextarea {
+  min-height: 185px;
+  font-family: inherit;
+  white-space: pre-wrap;
+  tab-size: 2;
+}
+
+.resourceBody {
+  overflow: auto;
+  max-height: 30vh;
+  margin: 0;
+  padding: 10px;
+  border-radius: 8px;
+  border: 1px solid var(--dsw-alias-border-l1);
+  background: var(--dsw-alias-bg-layer-1);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font: inherit;
+}

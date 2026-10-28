@@ -7,6 +7,7 @@ export default defineConfig({
     'client-business-face.test': 'tests/client-business-face.test.ts',
     'client-profile-editor.test': 'tests/client-profile-editor.test.ts',
     'client-resource-mutation.test': 'tests/client-resource-mutation.test.ts',
+    'client-resource-editor.test': 'tests/client-resource-editor.test.ts',
   },
   outDir: '.artifacts/client-model-tests',
   format: 'esm',

@@ -12,6 +12,43 @@ export type ContextManagerLocaleKey =
   | 'closeAria'
   | 'foundationMessage'
   | 'profilesTitle'
+  | 'resourcesTitle'
+  | 'resourceDetails'
+  | 'resourceNew'
+  | 'resourceCreateTitle'
+  | 'resourceNoItems'
+  | 'resourceSelectHint'
+  | 'resourceLoading'
+  | 'resourceReadError'
+  | 'resourceStale'
+  | 'resourceReadOnly'
+  | 'resourceInvalid'
+  | 'resourceDocumentLoading'
+  | 'resourceDocumentError'
+  | 'resourceContent'
+  | 'resourceRevision'
+  | 'resourceIncarnation'
+  | 'resourceDelete'
+  | 'resourceDeleteTitle'
+  | 'resourceDeleteHint'
+  | 'resourceDeleteBindingsHint'
+  | 'resourceBodyExactHint'
+  | 'resourceSetEmptyDescription'
+  | 'resourceRemoveDescriptionHint'
+  | 'resourceDraftBlockedHint'
+  | 'resourceNoticeSaved'
+  | 'resourceNoticeDegraded'
+  | 'resourceNoticeConflict'
+  | 'resourceNoticeStale'
+  | 'resourceNoticeUnknown'
+  | 'resourceNoticeBusy'
+  | 'resourceNoticeUnavailable'
+  | 'resourceNoticeInvalid'
+  | 'resourceNoticeExists'
+  | 'resourceNoticeNotEditable'
+  | 'resourceNoticeFailed'
+  | 'resourceNoticeDraftActive'
+  | 'resourceNoticeRefreshFailed'
   | 'profileDetails'
   | 'refresh'
   | 'hostDetached'
@@ -100,6 +137,43 @@ export const CONTEXT_MANAGER_LOCALES = Object.freeze({
     closeAria: "关闭上下文管理器",
     foundationMessage: "Web 客户端基础已启用。配置文件控件将在后续里程碑中加入。",
     profilesTitle: "配置文件",
+    resourcesTitle: "提示词资源",
+    resourceDetails: "资源详情",
+    resourceNew: "新建资源",
+    resourceCreateTitle: "创建 PromptResource",
+    resourceNoItems: "暂无 PromptResource。",
+    resourceSelectHint: "选择资源以读取正文，或创建新资源。",
+    resourceLoading: "正在读取资源列表……",
+    resourceReadError: "资源列表读取失败，可手动刷新。",
+    resourceStale: "资源列表已过期；编辑已禁用。",
+    resourceReadOnly: "资源来源不可写或尚未确认，编辑暂不可用。",
+    resourceInvalid: "无效资源记录",
+    resourceDocumentLoading: "正在按需读取正文……",
+    resourceDocumentError: "正文不可用，请刷新后重试。",
+    resourceContent: "正文（保留原始换行与空白）",
+    resourceRevision: "修订号",
+    resourceIncarnation: "资源实例标识",
+    resourceDelete: "删除资源",
+    resourceDeleteTitle: "确认删除此 PromptResource？",
+    resourceDeleteHint: "这会删除 Host 中的资源内容；不会自动删除引用它的 Profile PromptBinding。",
+    resourceDeleteBindingsHint: "引用此资源的 Profile PromptBinding 仍将保留，并可能显示缺失资源诊断。",
+    resourceBodyExactHint: "保存时保留所有空格、换行与末尾换行，不自动清洗内容。",
+    resourceSetEmptyDescription: "将描述显式设为空字符串",
+    resourceRemoveDescriptionHint: "本次保存将移除可选的描述字段。",
+    resourceDraftBlockedHint: "草稿已保留，但写入依据需要重新核实，不能自动重复保存。可刷新查看权威版本，再明确放弃草稿。",
+    resourceNoticeSaved: "资源写入完成，权威数据已刷新。",
+    resourceNoticeDegraded: "资源写入已确认，但重新读取未完成；已阻止再次提交。",
+    resourceNoticeConflict: "资源版本、实例或来源冲突；旧草稿不能直接重试。",
+    resourceNoticeStale: "原始资源写入依据已过期；请核对并重新开始编辑。",
+    resourceNoticeUnknown: "资源写入结果未知；已阻止重复提交。",
+    resourceNoticeBusy: "另一个资源写入仍在执行。",
+    resourceNoticeUnavailable: "Host / Resource Authority 暂不可用，无法安全提交。",
+    resourceNoticeInvalid: "PromptResource 数据无效。",
+    resourceNoticeExists: "资源 ID 已存在。",
+    resourceNoticeNotEditable: "当前资源存储路径不可通过普通编辑修改。",
+    resourceNoticeFailed: "资源操作失败。",
+    resourceNoticeDraftActive: "请先完成或放弃当前草稿，再切换页面或资源。",
+    resourceNoticeRefreshFailed: "资源读取失败；原草稿保持不变。",
     profileDetails: "配置详情",
     refresh: "刷新",
     hostDetached: "未连接到 DSH Host。",
@@ -179,6 +253,43 @@ export const CONTEXT_MANAGER_LOCALES = Object.freeze({
     closeAria: "Close Context Manager",
     foundationMessage: "Web client foundation is active. Profile controls arrive in later milestones.",
     profilesTitle: "Profiles",
+    resourcesTitle: "Prompt Resources",
+    resourceDetails: "Resource details",
+    resourceNew: "New resource",
+    resourceCreateTitle: "Create PromptResource",
+    resourceNoItems: "No PromptResources found.",
+    resourceSelectHint: "Select a resource to load its body, or create a new one.",
+    resourceLoading: "Loading resource directory…",
+    resourceReadError: "Resource directory read failed. Refresh to retry.",
+    resourceStale: "Resource directory is stale; editing is disabled.",
+    resourceReadOnly: "The Resource source is unavailable or not confirmed writable.",
+    resourceInvalid: "Invalid resource record",
+    resourceDocumentLoading: "Loading the resource body on demand…",
+    resourceDocumentError: "Resource body unavailable. Refresh to retry.",
+    resourceContent: "Content (exact whitespace and newlines)",
+    resourceRevision: "Revision",
+    resourceIncarnation: "Incarnation",
+    resourceDelete: "Delete resource",
+    resourceDeleteTitle: "Delete this PromptResource?",
+    resourceDeleteHint: "This removes the Host resource. It does not delete referring Profile PromptBindings.",
+    resourceDeleteBindingsHint: "Profile PromptBindings that reference this Resource remain and may report missing resources.",
+    resourceBodyExactHint: "Spaces, newlines and trailing newlines are preserved on Save; content is never trimmed.",
+    resourceSetEmptyDescription: "Explicitly set an empty description string",
+    resourceRemoveDescriptionHint: "Saving will remove the optional description field.",
+    resourceDraftBlockedHint: "This draft is preserved but must not be replayed. Refresh authoritative data, then explicitly discard and edit again.",
+    resourceNoticeSaved: "Resource saved and authoritative state refreshed.",
+    resourceNoticeDegraded: "Write confirmed, but read-back incomplete. Resubmission is blocked.",
+    resourceNoticeConflict: "Resource revision, incarnation or source conflict. The old draft cannot be retried.",
+    resourceNoticeStale: "The original Resource write basis is stale. Review and begin a new edit.",
+    resourceNoticeUnknown: "Write outcome unknown. Automatic replay is blocked.",
+    resourceNoticeBusy: "Another Resource mutation is running.",
+    resourceNoticeUnavailable: "Host / Resource Authority not available for a safe write.",
+    resourceNoticeInvalid: "Invalid PromptResource input or stored record.",
+    resourceNoticeExists: "A Resource already exists with this ID.",
+    resourceNoticeNotEditable: "This Resource storage path cannot be edited normally.",
+    resourceNoticeFailed: "Resource operation failed.",
+    resourceNoticeDraftActive: "Save or discard the active draft before switching tabs or resources.",
+    resourceNoticeRefreshFailed: "Resource read failed; the draft was preserved.",
     profileDetails: "Profile details",
     refresh: "Refresh",
     hostDetached: "DSH Host is not connected.",

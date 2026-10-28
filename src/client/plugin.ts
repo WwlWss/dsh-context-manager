@@ -27,6 +27,7 @@ import {
   ContextManagerProfileDrawerContent,
   type ContextManagerDrawerProps,
 } from './profile-drawer.js'
+import { ContextManagerResourceDrawerContent } from './resource-drawer.js'
 import styles from './plugin.module.css'
 
 type TriggerProps = ComposedProps<
@@ -50,6 +51,33 @@ function ContextManagerTrigger(props: TriggerProps) {
     'data-context-manager-trigger': '',
     onClick: actions.toggle,
   }, wide ? t('title') : t('compactTitle'))
+}
+
+/** Tabs share one apply-lifetime local Presentation Store; drafts outlive panel close. */
+function ContextManagerDrawerBody(props: ContextManagerDrawerProps) {
+  const pane = props.useStore(state => state.pane)
+  const { actions, t } = props
+  return createElement('div', { className: styles.workspace },
+    createElement('nav', { className: styles.tabs, 'aria-label': t('title') },
+      createElement('button', {
+        type: 'button',
+        className: pane === 'profiles' ? styles.tabActive : styles.tab,
+        'aria-current': pane === 'profiles' ? 'page' : undefined,
+        'data-context-manager-tab': 'profiles',
+        onClick: () => actions.selectPane('profiles'),
+      }, t('profilesTitle')),
+      createElement('button', {
+        type: 'button',
+        className: pane === 'resources' ? styles.tabActive : styles.tab,
+        'aria-current': pane === 'resources' ? 'page' : undefined,
+        'data-context-manager-tab': 'resources',
+        onClick: () => actions.selectPane('resources'),
+      }, t('resourcesTitle')),
+    ),
+    pane === 'profiles'
+      ? createElement(ContextManagerProfileDrawerContent, props)
+      : createElement(ContextManagerResourceDrawerContent, props),
+  )
 }
 
 function ContextManagerDrawer(props: ContextManagerDrawerProps) {
@@ -117,7 +145,7 @@ function ContextManagerDrawer(props: ContextManagerDrawerProps) {
           onClick: actions.close,
         }, t('close')),
       ),
-      createElement(ContextManagerProfileDrawerContent, props),
+      createElement(ContextManagerDrawerBody, props),
     ),
   )
 }
