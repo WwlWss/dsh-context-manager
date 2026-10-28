@@ -16,6 +16,15 @@ const id = '  Prompt 日本語  '
 const initialContent = '  leading\r\n中文\n日本語 😀 {{variable}} {{unknown}}\ntrailing  '
 const changedContent = '\r\n changed exactly \n'
 
+function createBasis(library) { return { resourceAuthorityId: library.resourceWriteAuthority() } }
+function resourceBasis(library, id) {
+  const resource = library.get(id).resource
+  return {
+    resourceAuthorityId: library.resourceWriteAuthority(), resourceId: id,
+    incarnationId: resource.__dshCmResourceIncarnation ?? null, revision: resource.revision,
+  }
+}
+
 async function mount() {
   const ctx = new Context()
   await ctx.plugin(Storage)
@@ -33,7 +42,7 @@ try {
       description: '',
       content: initialContent,
       authoredExtension: { retained: true },
-    })
+    }, createBasis(first.library))
     assert.deepEqual(created, { id, revision: 1 })
     assert.equal(first.library.get(id).resource.content, initialContent)
 
@@ -59,11 +68,12 @@ try {
     assert.equal(reopened.resource.description, '')
     assert.equal(reopened.resource.content, initialContent)
     assert.equal(reopened.resource.revision, 1)
+    assert.match(reopened.resource.__dshCmResourceIncarnation, /^[0-9a-f-]{36}$/i)
     assert.deepEqual(reopened.resource.authoredExtension, { retained: true })
     assert.deepEqual(reopened.resource.futureField, { opaque: ['keep', 1, { nested: true }] })
     assert.equal(second.library.list().find(item => item.id === 'malformed').status, 'invalid')
 
-    const updated = await second.library.setPromptContent(id, changedContent, 1)
+    const updated = await second.library.setPromptContent(id, changedContent, resourceBasis(second.library, id))
     assert.deepEqual(updated, { id, revision: 2 })
     const afterUpdate = second.library.get(id).resource
     assert.equal(afterUpdate.content, changedContent)

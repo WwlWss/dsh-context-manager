@@ -24,7 +24,7 @@ test('git-install prepare emits the declared runtime entry', async () => {
   await access(path.resolve(root, './lib/client.js.map'))
   const remote = await import(pathToFileURL(path.resolve(root, packageJson.exports['./remote'].default)).href)
   assert.equal(remote.TYPERT_REMOTE.package, 'dsh-context-manager')
-  assert.equal(remote.TYPERT_REMOTE.descriptors.length, 31)
+  assert.equal(remote.TYPERT_REMOTE.descriptors.length, 34)
   assert.deepEqual(
     remote.TYPERT_REMOTE.descriptors.map(item => item.method).sort(),
     [
@@ -58,6 +58,9 @@ test('git-install prepare emits the declared runtime entry', async () => {
       'setPromptBindingOrder',
       'setPromptBindingPlacement',
       'setPromptBindingResourceId',
+      'setPromptResourceContent',
+      'setPromptResourceDescription',
+      'setPromptResourceName',
       'setSkillMode',
     ],
   )

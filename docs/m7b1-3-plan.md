@@ -1,6 +1,6 @@
 # M7B1-3 — Lazy PromptResource and keyed Runtime Client reads
 
-**Status:** implementation in progress. Parent: [M7B1](m7b1-plan.md). Dependency for M7B2-B and M8A.
+**Status:** complete in merged PR #37; independent `main` post-merge full qualification #40520448305 passed 86/86. Parent: [M7B1](m7b1-plan.md). Foundation for M7B2-B and M8A. B2-B0's Resource Authority/Incarnation expansion is a subsequent Draft PR #38, not a feature of the merged B1-3 baseline.
 
 ## Scope
 

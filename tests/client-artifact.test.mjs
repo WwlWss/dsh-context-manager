@@ -18,6 +18,7 @@ function fakeReact() {
 function contextManagerRemoteFace() {
   const change = Object.freeze({
     instanceId: 'client-test-host',
+    resourceAuthorityId: 'artifact-resource-a',
     generation: 1,
     profiles: 1,
     promptResources: 0,
@@ -25,7 +26,7 @@ function contextManagerRemoteFace() {
     runtime: 1,
   })
   return {
-    async protocol() { return { ok: true, value: { apiVersion: 2 } } },
+    async protocol() { return { ok: true, value: { apiVersion: 3 } } },
     async changes() { return { ok: true, value: change } },
     async profiles() {
       return {
@@ -133,7 +134,7 @@ test('M7B0 loader artifact mounts Remote and locale before registering two addit
     async $mount(contribution) {
       lifecycle.push('remote:mount')
       assert.equal(contribution.package, 'dsh-context-manager')
-      assert.equal(contribution.descriptors.length, 31)
+      assert.equal(contribution.descriptors.length, 34)
       return async () => { lifecycle.push('remote:dispose') }
     },
   }

@@ -498,6 +498,7 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
     }
 
     const sameInstance = previous?.instanceId === next.instanceId
+    const resourceAuthorityChanged = sameInstance && previous.resourceAuthorityId !== next.resourceAuthorityId
     state.set({
       ...current,
       changes: next,
@@ -510,10 +511,10 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
       promptPlacement: sameInstance && previous.runtime !== next.runtime
         ? markSurfaceStale(current.promptPlacement)
         : current.promptPlacement,
-      resources: sameInstance && previous.promptResources !== next.promptResources
+      resources: sameInstance && (previous.promptResources !== next.promptResources || resourceAuthorityChanged)
         ? { list: markSurfaceStale(current.resources.list), documents: staleMap(current.resources.documents) }
         : current.resources,
-      diagnostics: sameInstance && previous.runtime !== next.runtime
+      diagnostics: sameInstance && (previous.runtime !== next.runtime || resourceAuthorityChanged)
         ? {
             sessions: staleMap(current.diagnostics.sessions),
             prompts: staleMap(current.diagnostics.prompts),
@@ -1138,8 +1139,10 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
         const latest = state.getSnapshot().changes
         if (
           cursorForKind(kind, before.value) !== cursorForKind(kind, after.value)
+          || before.value.resourceAuthorityId !== after.value.resourceAuthorityId
           || latest?.instanceId !== after.value.instanceId
           || latest === undefined
+          || latest.resourceAuthorityId !== after.value.resourceAuthorityId
           || cursorForKind(kind, latest) !== cursorForKind(kind, after.value)
         ) continue
         const surface = read.ok
@@ -1149,7 +1152,7 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
           if (!read.ok) publishList(surface as ContextManagerClientSurface<readonly ContextManagerRemotePromptResourceListItem[]>)
           else {
             const entries = read.value as readonly ContextManagerRemotePromptResourceListItem[]
-            const revisions = new Map(entries.filter(x => x.status === 'usable').map(x => [x.id, x.revision]))
+            const revisions = new Map(entries.filter(x => x.status === 'usable').map(x => [x.id, { revision: x.revision, incarnationId: x.incarnationId }]))
             const snapshot = state.getSnapshot()
             state.set({
               ...snapshot,
@@ -1157,8 +1160,10 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
                 list: surface as ContextManagerClientSurface<readonly ContextManagerRemotePromptResourceListItem[]>,
                 documents: mapSurfaces(snapshot.resources.documents, document => {
                   const record = document.data
-                  return record !== undefined && revisions.get(record.id) !== record.revision
-                    ? markSurfaceStale(document) : document
+                  const known = record === undefined ? undefined : revisions.get(record.id)
+                  return record !== undefined && (
+                    known === undefined || known.revision !== record.revision || known.incarnationId !== record.incarnationId
+                  ) ? markSurfaceStale(document) : document
                 }),
               },
             })
@@ -1190,20 +1195,35 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
   ): ContextManagerClientPromptResourceReadStamp | undefined => {
     const snapshot = state.getSnapshot()
     if (snapshot.attachment !== 'attached' || snapshot.protocol.status !== 'compatible'
-      || snapshot.instanceId === undefined || snapshot.changes?.instanceId !== snapshot.instanceId) return undefined
+      || snapshot.instanceId === undefined || snapshot.changes?.instanceId !== snapshot.instanceId
+      || snapshot.changes.resourceAuthorityId === null) return undefined
     let revision: number | undefined
+    let incarnationId: string | null | undefined
     if (source === 'document') {
       const surface = snapshot.resources.documents.get(id)
-      if (surface?.status === 'ready' && !surface.stale && surface.data?.id === id) revision = surface.data.revision
+      if (surface?.status === 'ready' && !surface.stale && surface.data?.id === id) {
+        revision = surface.data.revision
+        incarnationId = surface.data.incarnationId
+      }
     } else {
       const surface = snapshot.resources.list
       if (surface.status === 'ready' && !surface.stale) {
         const row = surface.data?.find(item => item.id === id)
-        if (row?.status === 'usable') revision = row.revision
+        if (row?.status === 'usable') {
+          revision = row.revision
+          incarnationId = row.incarnationId
+        }
       }
     }
-    if (revision === undefined || !Number.isSafeInteger(revision) || revision < 1) return undefined
-    return Object.freeze({ instanceId: snapshot.instanceId, resourceId: id, revision, source })
+    if (revision === undefined || incarnationId === undefined || !Number.isSafeInteger(revision) || revision < 1) return undefined
+    return Object.freeze({
+      instanceId: snapshot.instanceId,
+      resourceAuthorityId: snapshot.changes.resourceAuthorityId,
+      resourceId: id,
+      incarnationId,
+      revision,
+      source,
+    })
   }
 
   const attach = (nextRemote: ContextManagerClientBusinessRemote): (() => void) => {

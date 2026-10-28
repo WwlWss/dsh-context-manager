@@ -90,7 +90,11 @@ class FakePrompts extends Service {
   constructor(ctx) {
     super(ctx, 'dshContextPromptLibrary')
     this.rows = new Map()
+    this.storageIdentity = 'matrix-storage-authority'
+    this.creationSequence = 0
   }
+
+  resourceWriteAuthority() { return this.storageIdentity }
 
   list() {
     return [...this.rows.entries()].map(([id, resource]) => ({
@@ -99,6 +103,7 @@ class FakePrompts extends Service {
       name: resource.name,
       ...(resource.description === undefined ? {} : { description: resource.description }),
       revision: resource.revision,
+      incarnationId: resource.__dshCmResourceIncarnation ?? null,
     }))
   }
 
@@ -112,31 +117,78 @@ class FakePrompts extends Service {
     return { id, resource: structuredClone(resource) }
   }
 
-  async createPrompt(id, input) {
-    this.rows.set(id, { ...structuredClone(input), revision: 1 })
+  assertAuthority(basis) {
+    if (basis?.resourceAuthorityId !== this.storageIdentity) {
+      const error = new Error('Prompt Library authority changed')
+      error.code = 'prompt-resource-authority-conflict'
+      throw error
+    }
+  }
+
+  assertMutation(id, basis) {
+    this.assertAuthority(basis)
+    const current = this.get(id).resource
+    if (basis.resourceId !== id) {
+      const error = new Error('Resource ID mismatched')
+      error.code = 'invalid-prompt-resource'
+      throw error
+    }
+    if ((current.__dshCmResourceIncarnation ?? null) !== basis.incarnationId) {
+      const error = new Error('Resource was recreated')
+      error.code = 'prompt-resource-incarnation-conflict'
+      throw error
+    }
+    if (current.revision !== basis.revision) {
+      const error = new Error('stale prompt')
+      error.code = 'prompt-resource-conflict'
+      throw error
+    }
+    return current
+  }
+
+  async createPrompt(id, input, basis) {
+    this.assertAuthority(basis)
+    if (this.rows.has(id)) {
+      const error = new Error('duplicate Prompt ID')
+      error.code = 'prompt-resource-exists'
+      throw error
+    }
+    this.creationSequence += 1
+    this.rows.set(id, {
+      ...structuredClone(input),
+      revision: 1,
+      __dshCmResourceIncarnation: '00000000-0000-4000-8000-' + String(this.creationSequence).padStart(12, '0'),
+      opaqueExtension: { retained: true },
+    })
     return { id, revision: 1 }
   }
 
-  async replacePrompt(id, input, expectedRevision) {
-    const current = this.rows.get(id)
-    if (current.revision !== expectedRevision) {
-      const error = new Error('stale prompt')
-      error.code = 'prompt-resource-conflict'
-      throw error
-    }
+  async replacePrompt(id, input, basis) {
+    const current = this.assertMutation(id, basis)
     const revision = current.revision + 1
-    this.rows.set(id, { ...current, ...structuredClone(input), revision })
+    const { name: _name, description: _description, content: _content, revision: _revision, ...extensions } = current
+    this.rows.set(id, { ...extensions, ...structuredClone(input), revision })
     return { id, revision }
   }
 
-  async deletePrompt(id, expectedRevision) {
-    const current = this.rows.get(id)
-    if (current.revision !== expectedRevision) {
-      const error = new Error('stale prompt')
-      error.code = 'prompt-resource-conflict'
-      throw error
-    }
+  async deletePrompt(id, basis) {
+    this.assertMutation(id, basis)
     this.rows.delete(id)
+  }
+
+  async setPromptName(id, name, basis) {
+    const current = this.assertMutation(id, basis)
+    return this.replacePrompt(id, { name, content: current.content, ...(current.description === undefined ? {} : { description: current.description }) }, basis)
+  }
+
+  async setPromptDescription(id, description, basis) {
+    const current = this.assertMutation(id, basis)
+    return this.replacePrompt(id, { name: current.name, content: current.content, ...(description === undefined ? {} : { description }) }, basis)
+  }
+
+  async setPromptContent(id, content, basis) {
+    const current = this.assertMutation(id, basis)
+    return this.replacePrompt(id, { name: current.name, content, ...(current.description === undefined ? {} : { description: current.description }) }, basis)
   }
 }
 
@@ -255,6 +307,7 @@ class FakeChanges extends Service {
   snapshot() {
     return {
       instanceId: 'runtime-matrix',
+      resourceAuthorityId: 'matrix-storage-authority',
       generation: 9,
       profiles: 1,
       promptResources: 2,
@@ -288,8 +341,8 @@ await mount(TypertGatewayService)
 
 const disposeContribution = ctx.typert.register(TYPERT)
 try {
-  assert.equal(TYPERT.invocations.length, 31)
-  assert.equal(TYPERT_REMOTE.descriptors.length, 31)
+  assert.equal(TYPERT.invocations.length, 34)
+  assert.equal(TYPERT_REMOTE.descriptors.length, 34)
   for (const invocation of TYPERT.invocations) {
     assertDualStrictCodec(invocation.result, `Host ${invocation.method} result`)
     for (const parameter of invocation.parameters) {
@@ -385,9 +438,83 @@ try {
   const promptCreated = await ctx.typertGateway.invoke({
     namespace: 'contextManager',
     method: 'createPromptResource',
-    args: { id: 'p', input: { name: 'Prompt', content: 'body' } },
+    args: { id: 'p', input: { name: 'Prompt', content: 'body' }, basis: { resourceAuthorityId: changeSnapshot.resourceAuthorityId } },
   })
   assert.deepEqual(promptCreated, { ok: true, value: { id: 'p', revision: 1 } })
+
+  // Run actual strict v3 Typert invoke paths, not just descriptor counting.
+  const promptCall = (method, args) => ctx.typertGateway.invoke({
+    namespace: 'contextManager', method, args,
+  })
+  const readPrompt = async () => {
+    const result = await promptCall('getPromptResource', { id: 'p' })
+    assert.equal(result.ok, true)
+    return result.value
+  }
+  const promptBasis = async () => {
+    const current = await readPrompt()
+    return {
+      resourceAuthorityId: changeSnapshot.resourceAuthorityId,
+      resourceId: 'p',
+      incarnationId: current.incarnationId,
+      revision: current.revision,
+    }
+  }
+  let basis = await promptBasis()
+  const incarnation = basis.incarnationId
+
+  const oldAuthority = await promptCall('setPromptResourceName', {
+    id: 'p', name: 'unsafe', basis: { ...basis, resourceAuthorityId: 'retired-storage-authority' },
+  })
+  assert.equal(oldAuthority.ok, false)
+  assert.equal(oldAuthority.error.code, 'prompt-resource-authority-conflict')
+
+  const oldIncarnation = await promptCall('setPromptResourceContent', {
+    id: 'p', content: 'unsafe', basis: {
+      ...basis, incarnationId: 'bbba5b4a-afc2-475c-8c37-ab3d3277e241',
+    },
+  })
+  assert.equal(oldIncarnation.ok, false)
+  assert.equal(oldIncarnation.error.code, 'prompt-resource-incarnation-conflict')
+
+  const staleRevision = await promptCall('setPromptResourceDescription', {
+    id: 'p', description: 'unsafe', basis: { ...basis, revision: basis.revision + 1 },
+  })
+  assert.equal(staleRevision.ok, false)
+  assert.equal(staleRevision.error.code, 'prompt-resource-conflict')
+  assert.equal((await readPrompt()).revision, 1)
+
+  const renamed = await promptCall('setPromptResourceName', {
+    id: 'p', name: 'Renamed', basis,
+  })
+  assert.deepEqual(renamed, { ok: true, value: { id: 'p', revision: 2 } })
+  basis = await promptBasis()
+
+  const described = await promptCall('setPromptResourceDescription', {
+    id: 'p', description: 'set via gateway', basis,
+  })
+  assert.deepEqual(described, { ok: true, value: { id: 'p', revision: 3 } })
+  assert.equal((await readPrompt()).description, 'set via gateway')
+  basis = await promptBasis()
+
+  const cleared = await promptCall('setPromptResourceDescription', {
+    id: 'p', description: null, basis,
+  })
+  assert.deepEqual(cleared, { ok: true, value: { id: 'p', revision: 4 } })
+  assert.equal((await readPrompt()).description, undefined)
+  assert.equal(Object.hasOwn(ctx.dshContextPromptLibrary.rows.get('p'), 'description'), false)
+  basis = await promptBasis()
+
+  const revised = await promptCall('setPromptResourceContent', {
+    id: 'p', content: 'new content via strict gateway', basis,
+  })
+  assert.deepEqual(revised, { ok: true, value: { id: 'p', revision: 5 } })
+  const afterLeaf = await readPrompt()
+  assert.equal(afterLeaf.name, 'Renamed')
+  assert.equal(afterLeaf.content, 'new content via strict gateway')
+  assert.equal(afterLeaf.incarnationId, incarnation)
+  assert.equal(afterLeaf.description, undefined)
+  assert.deepEqual(ctx.dshContextPromptLibrary.rows.get('p').opaqueExtension, { retained: true })
 
   const presets = await ctx.typertGateway.invoke({
     namespace: 'contextManager',
@@ -483,6 +610,7 @@ try {
     args: {},
   }), {
     instanceId: 'runtime-matrix',
+    resourceAuthorityId: 'matrix-storage-authority',
     generation: 9,
     profiles: 1,
     promptResources: 2,

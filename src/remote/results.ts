@@ -27,6 +27,8 @@ const BUSINESS_CODES = new Set<ContextManagerRemoteErrorCode>([
   'prompt-resource-exists',
   'prompt-resource-not-found',
   'prompt-resource-conflict',
+  'prompt-resource-authority-conflict',
+  'prompt-resource-incarnation-conflict',
   'prompt-resource-path-not-editable',
   'invalid-prompt-resource',
   'invalid-schema-version',

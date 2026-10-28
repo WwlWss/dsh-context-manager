@@ -15,6 +15,7 @@ function fakeReact() {
 function contextManagerRemoteFace() {
   const change = Object.freeze({
     instanceId: 'client-test-host',
+    resourceAuthorityId: 'client-storage',
     generation: 1,
     profiles: 1,
     promptResources: 0,
@@ -22,7 +23,7 @@ function contextManagerRemoteFace() {
     runtime: 1,
   })
   return {
-    async protocol() { return { ok: true, value: { apiVersion: 2 } } },
+    async protocol() { return { ok: true, value: { apiVersion: 3 } } },
     async changes() { return { ok: true, value: change } },
     async profiles() {
       return {
@@ -195,7 +196,7 @@ const locale = createLocale()
 const disposePlugin = await plugin.apply(pluginCapableContext({ remote, slots: createSlotsFace(core), locale }))
 
 assert.equal(mountedContribution?.package, 'dsh-context-manager')
-assert.equal(mountedContribution?.descriptors?.length, 31)
+assert.equal(mountedContribution?.descriptors?.length, 34)
 assert.equal(locale.has('context-manager'), true)
 
 const footer = core.entriesOfSlot('sidebar.footer.action')

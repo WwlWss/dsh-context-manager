@@ -87,7 +87,9 @@ export interface ContextManagerClientDiagnosticState {
 
 export interface ContextManagerClientPromptResourceReadStamp {
   readonly instanceId: string
+  readonly resourceAuthorityId: string
   readonly resourceId: string
+  readonly incarnationId: string | null
   readonly revision: number
   readonly source: 'list' | 'document'
 }

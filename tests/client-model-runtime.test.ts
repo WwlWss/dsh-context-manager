@@ -50,6 +50,11 @@ function fail<T>(code = 'test-remote-failure', message = 'test remote failure'):
   } as unknown as RemoteResult<T>
 }
 
+function assertResourceFixture(value: { readonly revision: number; readonly incarnationId: string | null }, source: string): void {
+  assert.ok(Number.isSafeInteger(value.revision) && value.revision > 0, source + ' requires a positive safe revision')
+  assert.ok(value.incarnationId === null || typeof value.incarnationId === 'string', source + ' requires an opaque string or null incarnation')
+}
+
 function businessOk<T>(value: T): ContextManagerRemoteResult<T> {
   return { ok: true, value }
 }
@@ -90,6 +95,7 @@ function changes(
 ): ContextManagerRemoteChangeSnapshot {
   return {
     instanceId,
+    resourceAuthorityId: 'resource-host-a',
     generation,
     profiles,
     promptResources: 0,
@@ -217,8 +223,8 @@ class ScriptedRemote implements ContextManagerClientBusinessRemote {
     return this.take(this.placementSteps, this.defaultPlacement)
   }
 
-  resourceList: readonly ContextManagerRemotePromptResourceListItem[] = [{ status: 'usable', id: 'alpha', name: 'Alpha', revision: 5 }]
-  resource: ContextManagerRemotePromptResource = { id: 'alpha', name: 'Alpha', content: 'body', revision: 5 }
+  resourceList: readonly ContextManagerRemotePromptResourceListItem[] = [{ status: 'usable', id: 'alpha', name: 'Alpha', revision: 5, incarnationId: null }]
+  resource: ContextManagerRemotePromptResource = { id: 'alpha', name: 'Alpha', content: 'body', revision: 5, incarnationId: null }
   session: ContextManagerRemoteSessionPresetIdentity = { status: 'known', sessionId: 's', presetId: null }
   prompt: ContextManagerRemotePromptRuntimeInspection = { status: 'runtime-unavailable' }
   skill: ContextManagerRemoteSkillRuntimeInspection = { status: 'runtime-unavailable' }
@@ -229,10 +235,14 @@ class ScriptedRemote implements ContextManagerClientBusinessRemote {
 
   listPromptResources() {
     this.calls.listPromptResources += 1
+    for (const row of this.resourceList) {
+      if (row.status === 'usable') assertResourceFixture(row, 'resource directory fixture')
+    }
     return this.take(this.listSteps, businessOk(this.resourceList))
   }
   getPromptResource(_id: string) {
     this.calls.getPromptResource += 1
+    assertResourceFixture(this.resource, 'resource document fixture')
     return this.take(this.resourceSteps, businessOk(this.resource))
   }
   sessionPreset(_id: string) {
@@ -917,7 +927,7 @@ test('the latest same-surface protocol error claims the surface and blocks an ol
 
   snapshot = model.state.getSnapshot()
   assert.equal(snapshot.profiles.status, 'error')
-  assert.equal(snapshot.profiles.error?.code, 'latest-profile-protocol-error')
+  assert.equal(snapshot.profiles.error?.kind === 'remote' ? snapshot.profiles.error.code : undefined, 'latest-profile-protocol-error')
   assert.equal(model.getProfileRevision(), undefined)
 
   detach()
@@ -1847,7 +1857,7 @@ test('lazy resource directory and document reads keep revision and content separ
   assert.equal((await model.loadPromptResourceList()).status, 'completed')
   assert.equal(remote.calls.getPromptResource, 0)
   assert.deepEqual(model.capturePromptResourceReadStamp('alpha', 'list'), {
-    instanceId: 'host-a', resourceId: 'alpha', revision: 5, source: 'list',
+    instanceId: 'host-a', resourceAuthorityId: 'resource-host-a', resourceId: 'alpha', incarnationId: null, revision: 5, source: 'list',
   })
   assert.equal((await model.loadPromptResource('alpha')).status, 'completed')
   assert.equal(model.state.getSnapshot().resources.documents.get('alpha')?.data?.content, 'body')
@@ -1872,11 +1882,11 @@ test('newer same-key requests own publication while different diagnostic keys re
   remote.resourceSteps.push(() => old.promise)
   const first = model.loadPromptResource('alpha')
   await waitFor(() => remote.calls.getPromptResource === 1, 'first keyed request')
-  remote.resource = { id: 'alpha', name: 'New', content: 'new', revision: 6 }
+  remote.resource = { id: 'alpha', name: 'New', content: 'new', revision: 6, incarnationId: null }
   const second = model.loadPromptResource('alpha')
   await waitFor(() => remote.calls.getPromptResource === 2, 'second keyed request')
   await second
-  old.resolve(ok(businessOk({ id: 'alpha', name: 'Old', content: 'old', revision: 5 })))
+  old.resolve(ok(businessOk({ id: 'alpha', name: 'Old', content: 'old', revision: 5, incarnationId: null })))
   assert.equal((await first).status, 'superseded')
   assert.equal(model.state.getSnapshot().resources.documents.get('alpha')?.data?.content, 'new')
   assert.equal((await model.loadSessionPreset('s')).status, 'completed')
@@ -1938,7 +1948,7 @@ test('invalid resource summaries have no editable revision stamp and exact strin
   remote.resourceList = [{ status: 'invalid', id: '__proto__', message: 'invalid stored resource' }]
   await model.loadPromptResourceList()
   assert.equal(model.capturePromptResourceReadStamp('__proto__', 'list'), undefined)
-  remote.resource = { id: '__proto__', name: 'Special', content: 'exact', revision: 2 }
+  remote.resource = { id: '__proto__', name: 'Special', content: 'exact', revision: 2, incarnationId: null }
   await model.loadPromptResource('__proto__')
   assert.equal(model.state.getSnapshot().resources.documents.get('__proto__')?.data?.content, 'exact')
   assert.equal(model.capturePromptResourceReadStamp('__proto__', 'document')?.revision, 2)
@@ -1948,7 +1958,7 @@ test('invalid resource summaries have no editable revision stamp and exact strin
 test('a resource list revision change invalidates only a mismatched cached document', async () => {
   const { model, remote } = await attachAndReady()
   await model.loadPromptResource('alpha')
-  remote.resourceList = [{ status: 'usable', id: 'alpha', name: 'Alpha', revision: 6 }]
+  remote.resourceList = [{ status: 'usable', id: 'alpha', name: 'Alpha', revision: 6, incarnationId: null }]
   await model.loadPromptResourceList()
   const snapshot = model.state.getSnapshot()
   assert.equal(snapshot.resources.list.stale, false)
@@ -1964,8 +1974,8 @@ test('a changed resource cursor during a read retries before accepting resource 
   remote.defaultChanges = { ...oldChanges, generation: 2, promptResources: 1 }
   remote.changesSteps.push(async () => ok(oldChanges))
   remote.changesSteps.push(async () => ok(remote.defaultChanges))
-  remote.resourceSteps.push(async () => ok(businessOk({ id: 'alpha', name: 'Old', content: 'old', revision: 1 })))
-  remote.resource = { id: 'alpha', name: 'New', content: 'new', revision: 2 }
+  remote.resourceSteps.push(async () => ok(businessOk({ id: 'alpha', name: 'Old', content: 'old', revision: 1, incarnationId: null })))
+  remote.resource = { id: 'alpha', name: 'New', content: 'new', revision: 2, incarnationId: null }
   const result = await model.loadPromptResource('alpha')
   assert.equal(result.status, 'completed')
   assert.equal(remote.calls.getPromptResource, 2)
@@ -1976,8 +1986,8 @@ test('a changed resource cursor during a read retries before accepting resource 
 test('lazy-first Host authority replacement invalidates old caches and rehydrates baseline', async () => {
   const { model, remote } = await attachAndReady()
   await model.loadPromptResource('alpha')
-  remote.defaultChanges = { instanceId: 'host-b', generation: 1, profiles: 1, promptResources: 0, presets: 1, runtime: 1 }
-  remote.resource = { id: 'alpha', name: 'New Host', content: 'host-b', revision: 1 }
+  remote.defaultChanges = { instanceId: 'host-b', resourceAuthorityId: 'resource-host-b', generation: 1, profiles: 1, promptResources: 0, presets: 1, runtime: 1 }
+  remote.resource = { id: 'alpha', name: 'New Host', content: 'host-b', revision: 1, incarnationId: null }
   assert.equal((await model.loadPromptResource('alpha')).status, 'completed')
   await waitFor(() => {
     const snapshot = model.state.getSnapshot()
@@ -2288,7 +2298,7 @@ test('keyed caches evict old entries at the documented 32-document and 64-sessio
   const { model, remote, detach } = await attachAndReady()
   for (let i = 0; i < 33; i += 1) {
     const id = 'resource-' + String(i)
-    remote.resource = { id, name: 'Name ' + String(i), content: 'body', revision: i + 1 }
+    remote.resource = { id, name: 'Name ' + String(i), content: 'body', revision: i + 1, incarnationId: null }
     assert.equal((await model.loadPromptResource(id)).status, 'completed')
   }
   const documents = model.state.getSnapshot().resources.documents
@@ -2324,6 +2334,91 @@ test('a continuously moving keyed cursor exhausts exactly three stabilizations w
   assert.equal(remote.calls.getPromptResource, before + 3)
   assert.equal(model.state.getSnapshot().resources.documents.get('alpha')?.error?.kind, 'unstable-snapshot')
   assert.equal(model.capturePromptResourceReadStamp('alpha', 'document'), undefined)
+  detach()
+  model.dispose()
+})
+
+
+test('v3 Resource Authority changes stale only Resource caches even with unchanged numeric cursors', async () => {
+  const { model, remote, detach } = await attachAndReady()
+  await model.loadPromptResourceList()
+  await model.loadPromptResource('alpha')
+  await model.loadAgentSkillRuntime('a')
+  const oldStamp = model.capturePromptResourceReadStamp('alpha', 'document')
+  assert.equal(oldStamp?.resourceAuthorityId, 'resource-host-a')
+  remote.defaultChanges = { ...remote.defaultChanges, resourceAuthorityId: 'resource-host-b' }
+  await model.loadSessionPreset('s')
+  assert.equal(model.state.getSnapshot().resources.list.stale, true)
+  assert.equal(model.state.getSnapshot().resources.documents.get('alpha')?.stale, true)
+  assert.equal(model.state.getSnapshot().diagnostics.skills.get('a')?.stale, true)
+  assert.equal(model.state.getSnapshot().profiles.stale, false)
+  assert.equal(model.capturePromptResourceReadStamp('alpha', 'document'), undefined)
+  await model.loadPromptResource('alpha')
+  assert.equal(model.capturePromptResourceReadStamp('alpha', 'document')?.resourceAuthorityId, 'resource-host-b')
+  detach()
+  model.dispose()
+})
+
+test('v3 directory incarnation change stales an equal-revision cached resource body', async () => {
+  const { model, remote, detach } = await attachAndReady()
+  await model.loadPromptResourceList()
+  await model.loadPromptResource('alpha')
+  assert.equal(model.state.getSnapshot().resources.documents.get('alpha')?.stale, false)
+  remote.resourceList = [{ status: 'usable', id: 'alpha', name: 'replacement', revision: 5,
+    incarnationId: '11b15985-e54c-4af1-88bb-e3dfed584678' }]
+  await model.loadPromptResourceList()
+  assert.equal(model.state.getSnapshot().resources.list.stale, false)
+  assert.equal(model.state.getSnapshot().resources.documents.get('alpha')?.stale, true)
+  assert.equal(model.capturePromptResourceReadStamp('alpha', 'document'), undefined)
+  assert.equal(model.capturePromptResourceReadStamp('alpha', 'list')?.incarnationId, '11b15985-e54c-4af1-88bb-e3dfed584678')
+  detach()
+  model.dispose()
+})
+
+test('v3 Resource Authority drift across a changes bracket retries even with equal numeric cursor', async () => {
+  const { model, remote, detach } = await attachAndReady()
+  const before = remote.defaultChanges
+  const after = { ...before, resourceAuthorityId: 'resource-host-b' }
+  remote.changesSteps.push(async () => ok(before), async () => ok(after))
+  remote.defaultChanges = after
+  const initialCalls = remote.calls.getPromptResource
+  await model.loadPromptResource('alpha')
+  assert.equal(remote.calls.getPromptResource, initialCalls + 2)
+  assert.equal(model.capturePromptResourceReadStamp('alpha', 'document')?.resourceAuthorityId, 'resource-host-b')
+  detach()
+  model.dispose()
+})
+
+test('B2-B0 RED: older A change response cannot roll back a newer B storage authority snapshot', async () => {
+  const { model, remote, detach } = await attachAndReady()
+  const oldA = remote.defaultChanges
+  const nextB = {
+    ...oldA, resourceAuthorityId: 'resource-host-b',
+    generation: oldA.generation + 1,
+    promptResources: oldA.promptResources + 1,
+    runtime: oldA.runtime + 1,
+  }
+  const oldBefore = deferred<RemoteResult<ContextManagerRemoteChangeSnapshot>>()
+  const slowSession = deferred<RemoteResult<ContextManagerRemoteSessionPresetIdentity>>()
+  remote.changesSteps.push(() => oldBefore.promise)
+  remote.sessionSteps.push(() => slowSession.promise)
+  const initialChangeCalls = remote.calls.changes
+  const initialSessionCalls = remote.calls.sessionPreset
+  const old = model.loadSessionPreset('delayed-A')
+  await waitFor(() => remote.calls.changes === initialChangeCalls + 1, 'old A changes request started')
+  remote.defaultChanges = nextB
+  const current = await model.loadAgentSkillRuntime('new-B')
+  assert.equal(current.status, 'completed')
+  assert.equal(model.state.getSnapshot().changes?.resourceAuthorityId, 'resource-host-b')
+  assert.equal(model.state.getSnapshot().changes?.generation, nextB.generation)
+
+  oldBefore.resolve(ok(oldA))
+  await waitFor(() => remote.calls.sessionPreset > initialSessionCalls, 'old request passed changes bracket')
+  assert.equal(model.state.getSnapshot().changes?.resourceAuthorityId, 'resource-host-b')
+  assert.equal(model.state.getSnapshot().changes?.generation, nextB.generation)
+  slowSession.resolve(ok(remote.session))
+  await old
+  assert.equal(model.state.getSnapshot().changes?.resourceAuthorityId, 'resource-host-b')
   detach()
   model.dispose()
 })

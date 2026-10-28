@@ -1,4 +1,4 @@
-export const CONTEXT_MANAGER_REMOTE_API_VERSION = 2
+export const CONTEXT_MANAGER_REMOTE_API_VERSION = 3
 
 export interface ContextManagerRemoteProtocol {
   readonly apiVersion: number
@@ -6,6 +6,16 @@ export interface ContextManagerRemoteProtocol {
 
 export interface ContextManagerRemoteProfileMutationBasis {
   readonly instanceId: string
+  readonly revision: number
+}
+
+export interface ContextManagerRemoteResourceCreateBasis {
+  readonly resourceAuthorityId: string
+}
+
+export interface ContextManagerRemoteResourceMutationBasis extends ContextManagerRemoteResourceCreateBasis {
+  readonly resourceId: string
+  readonly incarnationId: string | null
   readonly revision: number
 }
 
@@ -88,6 +98,7 @@ export type ContextManagerRemotePromptResourceListItem =
       readonly name: string
       readonly description?: string
       readonly revision: number
+      readonly incarnationId: string | null
     }
   | {
       readonly status: 'invalid'
@@ -101,6 +112,7 @@ export interface ContextManagerRemotePromptResource {
   readonly description?: string
   readonly content: string
   readonly revision: number
+  readonly incarnationId: string | null
 }
 
 export interface ContextManagerRemoteMutationReceipt {
@@ -137,6 +149,8 @@ export type ContextManagerRemoteErrorCode =
   | 'prompt-resource-exists'
   | 'prompt-resource-not-found'
   | 'prompt-resource-conflict'
+  | 'prompt-resource-authority-conflict'
+  | 'prompt-resource-incarnation-conflict'
   | 'prompt-resource-path-not-editable'
   | 'invalid-prompt-resource'
   | 'invalid-schema-version'
@@ -455,6 +469,7 @@ export type ContextManagerRemotePinnedSkillInspection =
 
 export interface ContextManagerRemoteChangeSnapshot {
   readonly instanceId: string
+  readonly resourceAuthorityId: string | null
   readonly generation: number
   readonly profiles: number
   readonly promptResources: number

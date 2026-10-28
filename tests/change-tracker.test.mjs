@@ -172,6 +172,18 @@ test('profile Settings commits invalidate profiles, preset resolution, and runti
   assert.equal(after.promptResources, before.promptResources)
 })
 
+function createResourceBasis(library) {
+  return { resourceAuthorityId: library.resourceWriteAuthority() }
+}
+function editResourceBasis(library, id, revision) {
+  const entry = library.list().find(row => row.id === id)
+  return {
+    resourceAuthorityId: library.resourceWriteAuthority(), resourceId: id,
+    incarnationId: entry?.incarnationId ?? null,
+    revision: revision ?? entry?.revision ?? 1,
+  }
+}
+
 test('PromptResource successful durable mutations bump promptResources and runtime exactly once', async (t) => {
   const ctx = new Context()
   t.after(() => ctx.fiber.dispose())
@@ -184,7 +196,7 @@ test('PromptResource successful durable mutations bump promptResources and runti
   await libraryFiber
 
   let before = ctx.dshContextChanges.snapshot()
-  await ctx.dshContextPromptLibrary.createPrompt('p', { name: 'P', content: 'one' })
+  await ctx.dshContextPromptLibrary.createPrompt('p', { name: 'P', content: 'one' }, createResourceBasis(ctx.dshContextPromptLibrary))
   let after = ctx.dshContextChanges.snapshot()
   assert.equal(after.generation, before.generation + 1)
   assert.equal(after.promptResources, before.promptResources + 1)
@@ -192,12 +204,12 @@ test('PromptResource successful durable mutations bump promptResources and runti
 
   before = after
   await assert.rejects(
-    ctx.dshContextPromptLibrary.createPrompt('p', { name: 'dup', content: 'x' }),
+    ctx.dshContextPromptLibrary.createPrompt('p', { name: 'dup', content: 'x' }, createResourceBasis(ctx.dshContextPromptLibrary)),
     error => error instanceof ContextManagerError && error.code === 'prompt-resource-exists',
   )
   assert.deepEqual(ctx.dshContextChanges.snapshot(), before)
 
-  await ctx.dshContextPromptLibrary.setPromptContent('p', 'two', 1)
+  await ctx.dshContextPromptLibrary.setPromptContent('p', 'two', editResourceBasis(ctx.dshContextPromptLibrary, 'p', 1))
   after = ctx.dshContextChanges.snapshot()
   assert.equal(after.generation, before.generation + 1)
   assert.equal(after.promptResources, before.promptResources + 1)
@@ -205,12 +217,12 @@ test('PromptResource successful durable mutations bump promptResources and runti
 
   before = after
   await assert.rejects(
-    ctx.dshContextPromptLibrary.setPromptName('p', 'stale', 1),
+    ctx.dshContextPromptLibrary.setPromptName('p', 'stale', editResourceBasis(ctx.dshContextPromptLibrary, 'p', 1)),
     error => error instanceof ContextManagerError && error.code === 'prompt-resource-conflict',
   )
   assert.deepEqual(ctx.dshContextChanges.snapshot(), before)
 
-  await ctx.dshContextPromptLibrary.deletePrompt('p', 2)
+  await ctx.dshContextPromptLibrary.deletePrompt('p', editResourceBasis(ctx.dshContextPromptLibrary, 'p', 2))
   after = ctx.dshContextChanges.snapshot()
   assert.equal(after.generation, before.generation + 1)
   assert.equal(after.promptResources, before.promptResources + 1)
@@ -308,4 +320,92 @@ test('change tracker instance identity is stable for one service lifetime and ch
 
   await secondFiber.dispose()
   await ctx.fiber.dispose()
+})
+
+
+test('B2-B0 RED: Resource storage source transitions advance global and resource/runtime cursors, not Profile identity', async (t) => {
+  const ctx = new Context()
+  t.after(() => ctx.fiber.dispose())
+  const storage = ctx.plugin(MemoryStorageDomain)
+  await storage
+  const trackerFiber = ctx.plugin(ContextManagerChangeTracker)
+  await trackerFiber
+  const initial = ctx.dshContextChanges.snapshot()
+  assert.equal(initial.resourceAuthorityId, null)
+
+  const libraryA = ctx.plugin(ContextManagerPromptLibrary)
+  await libraryA
+  const mounted = ctx.dshContextChanges.snapshot()
+  assert.ok(mounted.resourceAuthorityId)
+  assert.equal(mounted.generation, initial.generation + 1)
+  assert.equal(mounted.promptResources, initial.promptResources + 1)
+  assert.equal(mounted.runtime, initial.runtime + 1)
+  assert.equal(mounted.instanceId, initial.instanceId)
+  assert.equal(mounted.profiles, initial.profiles)
+  assert.equal(mounted.presets, initial.presets)
+  assert.deepEqual(ctx.dshContextChanges.snapshot(), mounted)
+
+  await libraryA.dispose()
+  const unmounted = ctx.dshContextChanges.snapshot()
+  assert.equal(unmounted.resourceAuthorityId, null)
+  assert.equal(unmounted.generation, mounted.generation + 1)
+  assert.equal(unmounted.promptResources, mounted.promptResources + 1)
+  assert.equal(unmounted.runtime, mounted.runtime + 1)
+  assert.equal(unmounted.instanceId, initial.instanceId)
+  assert.equal(unmounted.profiles, initial.profiles)
+  assert.equal(unmounted.presets, initial.presets)
+
+  const libraryB = ctx.plugin(ContextManagerPromptLibrary)
+  await libraryB
+  const remounted = ctx.dshContextChanges.snapshot()
+  assert.notEqual(remounted.resourceAuthorityId, mounted.resourceAuthorityId)
+  assert.equal(remounted.generation, unmounted.generation + 1)
+  assert.equal(remounted.promptResources, unmounted.promptResources + 1)
+  assert.equal(remounted.runtime, unmounted.runtime + 1)
+  assert.equal(remounted.instanceId, initial.instanceId)
+  assert.equal(remounted.profiles, initial.profiles)
+  assert.equal(remounted.presets, initial.presets)
+  assert.deepEqual(ctx.dshContextChanges.snapshot(), remounted)
+})
+
+test('B2-B0 RED: first snapshot of an already mounted library initializes without artificial generation bump', async (t) => {
+  const ctx = new Context()
+  t.after(() => ctx.fiber.dispose())
+  await ctx.plugin(MemoryStorageDomain)
+  await ctx.plugin(ContextManagerPromptLibrary)
+  await ctx.plugin(ContextManagerChangeTracker)
+  const first = ctx.dshContextChanges.snapshot()
+  assert.equal(typeof first.resourceAuthorityId, 'string')
+  assert.equal(first.generation, 0)
+  assert.equal(first.promptResources, 0)
+  assert.equal(first.runtime, 0)
+  assert.deepEqual(ctx.dshContextChanges.snapshot(), first)
+})
+
+
+test('B2-B0: direct Resource A-to-B remount without intermediate snapshot advances one cursor step', async (t) => {
+  const ctx = new Context()
+  t.after(() => ctx.fiber.dispose())
+  await ctx.plugin(MemorySettings, {})
+  await ctx.plugin(ContextManagerService)
+  await ctx.plugin(MemoryStorageDomain)
+  await ctx.plugin(ContextManagerChangeTracker)
+  const libraryA = ctx.plugin(ContextManagerPromptLibrary)
+  await libraryA
+  const before = ctx.dshContextChanges.snapshot()
+  assert.ok(before.resourceAuthorityId)
+
+  await libraryA.dispose()
+  const libraryB = ctx.plugin(ContextManagerPromptLibrary)
+  await libraryB
+  const after = ctx.dshContextChanges.snapshot()
+  assert.ok(after.resourceAuthorityId)
+  assert.notEqual(after.resourceAuthorityId, before.resourceAuthorityId)
+  assert.equal(after.generation, before.generation + 1)
+  assert.equal(after.promptResources, before.promptResources + 1)
+  assert.equal(after.runtime, before.runtime + 1)
+  assert.equal(after.instanceId, before.instanceId)
+  assert.equal(after.profiles, before.profiles)
+  assert.equal(after.presets, before.presets)
+  assert.deepEqual(ctx.dshContextChanges.snapshot(), after)
 })

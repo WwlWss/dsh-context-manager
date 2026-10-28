@@ -85,6 +85,7 @@ function fakeReact() {
 function contextManagerRemoteFace() {
   const change = Object.freeze({
     instanceId: 'renderer-bridge-host',
+    resourceAuthorityId: 'renderer-storage',
     generation: 1,
     profiles: 1,
     promptResources: 0,
@@ -92,7 +93,7 @@ function contextManagerRemoteFace() {
     runtime: 1,
   })
   return {
-    async protocol() { return { ok: true, value: { apiVersion: 2 } } },
+    async protocol() { return { ok: true, value: { apiVersion: 3 } } },
     async changes() { return { ok: true, value: change } },
     async profiles() {
       return {

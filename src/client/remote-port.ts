@@ -11,6 +11,11 @@ import type {
   ContextManagerRemotePromptPlacementCapability,
   ContextManagerRemoteProtocol,
   ContextManagerRemoteResult,
+  ContextManagerRemoteMutationReceipt,
+  ContextManagerRemoteDeleteReceipt,
+  ContextManagerRemotePromptResourceInput,
+  ContextManagerRemoteResourceCreateBasis,
+  ContextManagerRemoteResourceMutationBasis,
   ContextManagerRemoteSkillMode,
   ContextManagerRemotePromptResource,
   ContextManagerRemotePromptResourceListItem,
@@ -38,6 +43,16 @@ export interface ContextManagerClientRuntimeReadRemote {
   inspectPromptRuntime(agentId: string): Promise<RemoteResult<ContextManagerRemotePromptRuntimeInspection>>
   inspectSkillRuntime(agentId: string): Promise<RemoteResult<ContextManagerRemoteSkillRuntimeInspection>>
   inspectPinnedSkillRuntime(agentId: string): Promise<RemoteResult<ContextManagerRemotePinnedSkillInspection>>
+}
+
+type ResourceMutationResult = Promise<RemoteResult<ContextManagerRemoteResult<ContextManagerRemoteMutationReceipt>>>
+export interface ContextManagerClientResourceMutationRemote {
+  createPromptResource(id: string, input: ContextManagerRemotePromptResourceInput, basis: ContextManagerRemoteResourceCreateBasis): ResourceMutationResult
+  replacePromptResource(id: string, input: ContextManagerRemotePromptResourceInput, basis: ContextManagerRemoteResourceMutationBasis): ResourceMutationResult
+  deletePromptResource(id: string, basis: ContextManagerRemoteResourceMutationBasis): Promise<RemoteResult<ContextManagerRemoteResult<ContextManagerRemoteDeleteReceipt>>>
+  setPromptResourceName(id: string, name: string, basis: ContextManagerRemoteResourceMutationBasis): ResourceMutationResult
+  setPromptResourceDescription(id: string, description: string | null, basis: ContextManagerRemoteResourceMutationBasis): ResourceMutationResult
+  setPromptResourceContent(id: string, content: string, basis: ContextManagerRemoteResourceMutationBasis): ResourceMutationResult
 }
 
 type ProfileMutationResult = Promise<

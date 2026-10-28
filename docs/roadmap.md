@@ -515,9 +515,9 @@ B1-1 is complete in merged PR #27: the Client now owns a React-free authoritativ
 
 **B1-2 is complete in PR #30.** It bridges that stable business model plus the merged profile mutation controller through the retained Slot/renderer `inject.hooks` boundary without copying authoritative data into presentation state or reintroducing package-owned React subscription machinery. See [m7b1-2-plan.md](m7b1-2-plan.md).
 
-**B1-3 implementation is in Draft PR #37, and was not a dependency for the completed Profile-only M7C slice.** M7C Core is complete in merged PR #33 using B1-1/B1-2/B2-A Profile state/mutations. Its completion does not imply PromptResource or keyed Session/Agent diagnostic support. Remaining Client-model work is explicit:
+**B1-3 is complete in merged PR #37** (independent main Full Qualification #40520448305 passed 86/86). M7C Core is complete in merged PR #33 using B1-1/B1-2/B2-A Profile state/mutations. B1-3 adds lazily loaded PromptResource and keyed Session/Agent diagnostic data to the Client Model; exposure in the UI remains a separate milestone.
 
-- **B1-3 (Draft PR #37)** — implement separately invalidated/lazy PromptResource state plus keyed Session/Agent diagnostics and source-aware resource read stamps; the change is not merged or final-qualified yet. [Implementation contract](m7b1-3-plan.md);
+- **B1-3 (merged PR #37)** — separately invalidated/lazy PromptResource state plus keyed Session/Agent diagnostics and source-aware read stamps are qualified. [Implementation contract](m7b1-3-plan.md);
 - polling/focus/reconnect refresh remains a later lifecycle slice and must keep change cursors as invalidation hints only.
 
 ### M7B2 — Mutation controller
@@ -526,13 +526,13 @@ M7B2 is intentionally split by revision domain.
 
 **M7B2-A — Profile Mutation Controller Foundation** is complete in merged PR #29. It adds explicit profile mutations over the B1-1 authoritative model, uses an immutable mutation basis consisting of profile-write-authority `instanceId` plus the Settings persistence revision associated with the state the user actually acted on, keeps one single-flight profile mutation lane, preserves the two-layer Typert/business result boundary, never retries or silently rebases stale/uncertain writes, advances the Context Manager Remote protocol to API version 2 for the basis-bearing profile mutation signatures, and rehydrates authoritative baseline state after confirmed writes, conflicts, or transport-uncertain outcomes.
 
-**M7B2-B — PromptResource mutation controller** is deferred until B1-3 owns the exact revision associated with the resource snapshot/draft being edited. It must not fetch a new revision at save time and silently rebase a stale draft.
+**M7B2-B** is now split into **B0** (PromptResource Host-side storage Authority, persistent Incarnation, Remote v3, B1-3 read-stamp extension; PR #38 (review remediation; pending final qualification), [plan](m7b2-b0-plan.md)) and **B1** (Resource Mutation Controller and Client Business Face). A Resource write must use the exact basis captured with its edit, never fetch a newer revision at Save time and silently rebase a stale draft. M8A editor starts only after B1.
 
 Native preset copy/remove authoring remains with M8C rather than being pulled forward merely to cover every Host mutation endpoint.
 
 ### M7C — Profile Drawer — complete in merged PR #33
 
-The Profile-only M7C Core uses authoritative B1-1/B1-2 Profile/Preset data and B2-A mutation callbacks. It delivers actual edit/save/conflict UI (not just the previous shell mockup) with immutable edit-time authority/revision basis and native DSH Renderer interactions. B1-3's PromptResource and keyed Session/Agent diagnostic reads remain deferred. [Implementation contract](m7c-plan.md).
+The Profile-only M7C Core uses authoritative B1-1/B1-2 Profile/Preset data and B2-A mutation callbacks. It delivers actual edit/save/conflict UI (not just the previous shell mockup) with immutable edit-time authority/revision basis and native DSH Renderer interactions. B1-3's PromptResource and keyed Session/Agent reads have now merged; their editor/diagnostic UI remains deferred. [Implementation contract](m7c-plan.md).
 
 - profile list and selection;
 - create/delete and metadata/base-preset editing already supported by Remote;

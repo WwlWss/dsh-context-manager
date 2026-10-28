@@ -5,6 +5,8 @@ import type { PromptStorageDomainSpec } from '../adapters/storage-domain.js'
 export const PROMPT_LIBRARY_DOMAIN_NAME = 'dsh_context_manager_prompts'
 export const PROMPT_LIBRARY_TABLE_NAME = 'resources'
 export const PROMPT_LIBRARY_DOMAIN_VERSION = 1
+// Reserved Host-owned field, never user-settable through structured authoring.
+export const PROMPT_RESOURCE_INCARNATION_FIELD = '__dshCmResourceIncarnation'
 export type StoredPromptPayload = unknown
 
 export interface PromptResource {
@@ -12,6 +14,7 @@ export interface PromptResource {
   readonly description?: string
   readonly content: string
   readonly revision: number
+  readonly [PROMPT_RESOURCE_INCARNATION_FIELD]?: string
   readonly [key: string]: unknown
 }
 
@@ -19,10 +22,21 @@ export const PROMPT_RESOURCE_SCHEMA: z.ZodType<PromptResource> = z.object({
   name: z.string(),
   description: z.string().optional(),
   content: z.string(),
-  revision: z.number().int().positive(),
+  revision: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
+  [PROMPT_RESOURCE_INCARNATION_FIELD]: z.string().uuid().optional(),
 }).passthrough()
 
 export type PromptResourceId = string
+
+export interface PromptResourceCreateBasis {
+  readonly resourceAuthorityId: string
+}
+
+export interface PromptResourceMutationBasis extends PromptResourceCreateBasis {
+  readonly resourceId: PromptResourceId
+  readonly incarnationId: string | null
+  readonly revision: number
+}
 
 export interface PromptResourceSnapshot {
   readonly id: PromptResourceId
@@ -35,6 +49,7 @@ export interface UsablePromptResourceSummary {
   readonly name: string
   readonly description?: string
   readonly revision: number
+  readonly incarnationId: string | null
 }
 
 export interface InvalidPromptResourceSummary {

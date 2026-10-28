@@ -97,7 +97,7 @@ test('built host entry exposes the Context Manager Host service contracts', asyn
   assert.equal(typeof entry.ContextManagerPresetAuthoring, 'function')
   assert.equal(typeof entry.ContextManagerPromptLibrary, 'function')
   assert.equal(typeof entry.ContextManagerRemoteService, 'function')
-  assert.equal(entry.CONTEXT_MANAGER_REMOTE_API_VERSION, 2)
+  assert.equal(entry.CONTEXT_MANAGER_REMOTE_API_VERSION, 3)
   assert.equal(entry.ContextManagerSessionPreset, undefined)
   assert.equal(entry.CONTEXT_MANAGER_SETTINGS_NAMESPACE, 'dsh-context-manager')
 })
@@ -174,6 +174,9 @@ test('generated M6C Host Typert surface stays isolated from M2-M5 services', asy
     'setPromptBindingOrder',
     'setPromptBindingPlacement',
     'setPromptBindingResourceId',
+    'setPromptResourceContent',
+    'setPromptResourceDescription',
+    'setPromptResourceName',
     'setSkillMode',
   ])
 
@@ -197,7 +200,7 @@ test('generated M7B2 Remote contribution exposes exactly the strict business sur
   const remote = await import(pathToFileURL(fromRoot(packageJson.exports['./remote'].default)).href)
   const contribution = remote.TYPERT_REMOTE
   assert.equal(contribution.package, 'dsh-context-manager')
-  assert.equal(contribution.descriptors.length, 31)
+  assert.equal(contribution.descriptors.length, 34)
 
   const methods = contribution.descriptors.map(item => item.method).sort()
   assert.deepEqual(methods, [
@@ -231,6 +234,9 @@ test('generated M7B2 Remote contribution exposes exactly the strict business sur
     'setPromptBindingOrder',
     'setPromptBindingPlacement',
     'setPromptBindingResourceId',
+    'setPromptResourceContent',
+    'setPromptResourceDescription',
+    'setPromptResourceName',
     'setSkillMode',
   ])
 
@@ -253,8 +259,8 @@ test('generated M7B2 Remote contribution exposes exactly the strict business sur
   const protocol = contribution.descriptors.find(item => item.method === 'protocol')
   assert.ok(protocol)
   assert.deepEqual(protocol.parameters, [])
-  assert.equal(protocol.result.schema.safeParse({ apiVersion: 2 }).success, true)
-  assert.equal(protocol.result.schema.safeParse({ apiVersion: '2' }).success, false)
+  assert.equal(protocol.result.schema.safeParse({ apiVersion: 3 }).success, true)
+  assert.equal(protocol.result.schema.safeParse({ apiVersion: '3' }).success, false)
 
   const presets = contribution.descriptors.find(item => item.method === 'presets')
   assert.ok(presets)

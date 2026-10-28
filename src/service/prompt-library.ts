@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto'
 import { Service, type Context } from '@deepseek-ai/cordis'
 
 import { openPromptStorage, type PromptStorageTable } from '../adapters/storage-domain.js'
@@ -6,9 +7,12 @@ import { assertJsonDataShape, isPlainObject } from '../domain/storage.js'
 import {
   PROMPT_LIBRARY_DOMAIN_SPEC,
   PROMPT_LIBRARY_TABLE_NAME,
+  PROMPT_RESOURCE_INCARNATION_FIELD,
   PROMPT_RESOURCE_INPUT_SCHEMA,
   PROMPT_RESOURCE_SCHEMA,
   type PromptMutationReceipt,
+  type PromptResourceCreateBasis,
+  type PromptResourceMutationBasis,
   type PromptResource,
   type PromptResourceId,
   type PromptResourceInput,
@@ -39,6 +43,7 @@ export class ContextManagerPromptLibrary extends Service {
   static inject = ['storageDomain']
 
   private table?: PromptStorageTable<PromptResourceId, StoredPromptPayload>
+  private storageAuthorityId?: string
   private operationTail: Promise<void> = Promise.resolve()
 
   constructor(ctx: Context) {
@@ -48,10 +53,17 @@ export class ContextManagerPromptLibrary extends Service {
   protected async [Service.init](): Promise<void> {
     const storage = await openPromptStorage<PromptResourceId, StoredPromptPayload>(this.ctx, PROMPT_LIBRARY_DOMAIN_SPEC, PROMPT_LIBRARY_TABLE_NAME)
     this.table = storage.table
+    this.storageAuthorityId = randomUUID()
     this.ctx.effect(() => async () => {
+      this.storageAuthorityId = undefined
       this.table = undefined
       await storage.close()
     }, 'dshContextPromptLibrary.domainClose')
+  }
+
+  /** Identity of the currently opened Prompt Library storage-source lifetime. */
+  resourceWriteAuthority(): string | undefined {
+    return this.table === undefined ? undefined : this.storageAuthorityId
   }
 
   list(): readonly PromptResourceListItem[] {
@@ -65,6 +77,7 @@ export class ContextManagerPromptLibrary extends Service {
         name: resource.name,
         ...(resource.description === undefined ? {} : { description: resource.description }),
         revision: resource.revision,
+        incarnationId: resource[PROMPT_RESOURCE_INCARNATION_FIELD] ?? null,
       })
     }))
   }
@@ -78,22 +91,23 @@ export class ContextManagerPromptLibrary extends Service {
     }
   }
 
-  async createPrompt(id: PromptResourceId, input: PromptResourceInput): Promise<PromptMutationReceipt> {
+  async createPrompt(id: PromptResourceId, input: PromptResourceInput, basis: PromptResourceCreateBasis): Promise<PromptMutationReceipt> {
     if (typeof id !== 'string') throw invalidPromptResource(new TypeError('prompt resource id must be a string'))
     const parsed = this.parseInput(input)
     return await this.enqueueOperation(async () => {
+      this.assertAuthority(basis)
       const table = this.requireTable()
       if (table.get(id) !== undefined) throw new ContextManagerError('prompt-resource-exists', `prompt resource ${JSON.stringify(id)} already exists`)
-      const resource: PromptResource = { ...parsed, revision: 1 }
+      const resource: PromptResource = { ...parsed, revision: 1, [PROMPT_RESOURCE_INCARNATION_FIELD]: randomUUID() }
       await table.put(id, resource)
       this.markPromptResourcesChanged()
       return receiptOf(id, 1)
     })
   }
 
-  async replacePrompt(id: PromptResourceId, input: PromptResourceInput, expectedRevision: number): Promise<PromptMutationReceipt> {
+  async replacePrompt(id: PromptResourceId, input: PromptResourceInput, basis: PromptResourceMutationBasis): Promise<PromptMutationReceipt> {
     const parsed = this.parseInput(input)
-    return await this.updateStored(id, expectedRevision, (current, revision) => {
+    return await this.updateStored(id, basis, (current, revision) => {
       const object = this.requireEditableObject(id, current)
       const { name: _oldName, description: _oldDescription, content: _oldContent, revision: _oldRevision, ...oldExtensions } = object
       const { name, description, content, ...newExtensions } = parsed
@@ -101,30 +115,31 @@ export class ContextManagerPromptLibrary extends Service {
     })
   }
 
-  async setPromptName(id: PromptResourceId, name: string, expectedRevision: number): Promise<PromptMutationReceipt> {
+  async setPromptName(id: PromptResourceId, name: string, basis: PromptResourceMutationBasis): Promise<PromptMutationReceipt> {
     if (typeof name !== 'string') throw invalidPromptResource(new TypeError('prompt name must be a string'))
-    return await this.updateStored(id, expectedRevision, (current, revision) => ({ ...this.requireEditableObject(id, current), name, revision: revision + 1 }))
+    return await this.updateStored(id, basis, (current, revision) => ({ ...this.requireEditableObject(id, current), name, revision: revision + 1 }))
   }
 
-  async setPromptDescription(id: PromptResourceId, description: string | undefined, expectedRevision: number): Promise<PromptMutationReceipt> {
+  async setPromptDescription(id: PromptResourceId, description: string | undefined, basis: PromptResourceMutationBasis): Promise<PromptMutationReceipt> {
     if (description !== undefined && typeof description !== 'string') throw invalidPromptResource(new TypeError('prompt description must be a string when present'))
-    return await this.updateStored(id, expectedRevision, (current, revision) => {
+    return await this.updateStored(id, basis, (current, revision) => {
       const { description: _oldDescription, ...rest } = this.requireEditableObject(id, current)
       return description === undefined ? { ...rest, revision: revision + 1 } : { ...rest, description, revision: revision + 1 }
     })
   }
 
-  async setPromptContent(id: PromptResourceId, content: string, expectedRevision: number): Promise<PromptMutationReceipt> {
+  async setPromptContent(id: PromptResourceId, content: string, basis: PromptResourceMutationBasis): Promise<PromptMutationReceipt> {
     if (typeof content !== 'string') throw invalidPromptResource(new TypeError('prompt content must be a string'))
-    return await this.updateStored(id, expectedRevision, (current, revision) => ({ ...this.requireEditableObject(id, current), content, revision: revision + 1 }))
+    return await this.updateStored(id, basis, (current, revision) => ({ ...this.requireEditableObject(id, current), content, revision: revision + 1 }))
   }
 
-  async deletePrompt(id: PromptResourceId, expectedRevision: number): Promise<void> {
+  async deletePrompt(id: PromptResourceId, basis: PromptResourceMutationBasis): Promise<void> {
     await this.enqueueOperation(async () => {
+      this.assertAuthority(basis)
       const table = this.requireTable()
       const current = table.get(id)
       if (current === undefined) throw this.notFound(id)
-      this.assertRevision(id, this.requireRevision(id, current), expectedRevision)
+      this.assertMutationBasis(id, current, basis)
       const deleted = await table.delete(id)
       if (!deleted) throw this.notFound(id)
       this.markPromptResourcesChanged()
@@ -132,8 +147,10 @@ export class ContextManagerPromptLibrary extends Service {
   }
 
   private parseInput(input: PromptResourceInput): PromptResourceInput {
-    if (typeof input === 'object' && input !== null && Object.hasOwn(input, 'revision')) {
-      throw invalidPromptResource(new TypeError('prompt resource revision is library-owned'))
+    if (typeof input === 'object' && input !== null && (
+      Object.hasOwn(input, 'revision') || Object.hasOwn(input, PROMPT_RESOURCE_INCARNATION_FIELD)
+    )) {
+      throw invalidPromptResource(new TypeError('prompt resource revision and incarnation are library-owned'))
     }
     try {
       const parsed = PROMPT_RESOURCE_INPUT_SCHEMA.parse(input)
@@ -163,7 +180,7 @@ export class ContextManagerPromptLibrary extends Service {
 
   private requireRevision(id: PromptResourceId, raw: StoredPromptPayload): number {
     const object = this.requireEditableObject(id, raw)
-    if (!Number.isInteger(object.revision) || (object.revision as number) < 1) {
+    if (!Number.isSafeInteger(object.revision) || (object.revision as number) < 1) {
       throw new ContextManagerError('prompt-resource-path-not-editable', `prompt resource ${JSON.stringify(id)} has no usable positive-integer revision fence`)
     }
     return object.revision as number
@@ -173,20 +190,58 @@ export class ContextManagerPromptLibrary extends Service {
     return new ContextManagerError('prompt-resource-not-found', `prompt resource ${JSON.stringify(id)} does not exist`)
   }
 
-  private assertRevision(id: PromptResourceId, currentRevision: number, expectedRevision: number): void {
-    if (!Number.isInteger(expectedRevision) || expectedRevision < 1) throw new ContextManagerError('invalid-prompt-resource', `expected revision for prompt resource ${JSON.stringify(id)} must be a positive integer`)
-    if (currentRevision !== expectedRevision) throw new ContextManagerError('prompt-resource-conflict', `prompt resource ${JSON.stringify(id)} revision conflict: expected ${String(expectedRevision)}, current ${String(currentRevision)}`)
+  private assertAuthority(basis: PromptResourceCreateBasis): void {
+    if (typeof basis?.resourceAuthorityId !== 'string' || basis.resourceAuthorityId.length === 0) {
+      throw invalidPromptResource(new TypeError('a Resource Authority basis is required'))
+    }
+    if (basis.resourceAuthorityId !== this.resourceWriteAuthority()) {
+      throw new ContextManagerError('prompt-resource-authority-conflict', 'Prompt Library storage-source authority changed')
+    }
   }
 
-  private async updateStored(id: PromptResourceId, expectedRevision: number, update: (current: StoredPromptPayload, revision: number) => StoredPromptPayload): Promise<PromptMutationReceipt> {
+  private requireIncarnation(id: PromptResourceId, raw: StoredPromptPayload): string | null {
+    const object = this.requireEditableObject(id, raw)
+    const stored = object[PROMPT_RESOURCE_INCARNATION_FIELD]
+    if (stored === undefined) return null
+    if (typeof stored !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(stored)) {
+      throw new ContextManagerError('prompt-resource-path-not-editable', `resource ${JSON.stringify(id)} has an invalid reserved incarnation field`)
+    }
+    return stored
+  }
+
+  private assertMutationBasis(id: PromptResourceId, raw: StoredPromptPayload, basis: PromptResourceMutationBasis): number {
+    this.assertAuthority(basis)
+    if (basis.resourceId !== id || (basis.incarnationId !== null && typeof basis.incarnationId !== 'string')) {
+      throw invalidPromptResource(new TypeError('a matching resource identity basis is required'))
+    }
+    const revision = this.requireRevision(id, raw)
+    const incarnationId = this.requireIncarnation(id, raw)
+    if (incarnationId !== basis.incarnationId) {
+      throw new ContextManagerError('prompt-resource-incarnation-conflict', `prompt resource ${JSON.stringify(id)} was replaced after the edit began`)
+    }
+    if (!Number.isSafeInteger(basis.revision) || basis.revision < 1) {
+      throw invalidPromptResource(new TypeError('resource mutation revision must be a positive safe integer'))
+    }
+    if (revision !== basis.revision) {
+      throw new ContextManagerError('prompt-resource-conflict', `prompt resource ${JSON.stringify(id)} revision conflict: expected ${String(basis.revision)}, current ${String(revision)}`)
+    }
+    return revision
+  }
+
+  private async updateStored(id: PromptResourceId, basis: PromptResourceMutationBasis, update: (current: StoredPromptPayload, revision: number) => StoredPromptPayload): Promise<PromptMutationReceipt> {
     return await this.enqueueOperation(async () => {
+      this.assertAuthority(basis)
       const table = this.requireTable()
       if (table.get(id) === undefined) throw this.notFound(id)
       let nextRevision = 0
       await table.update(id, (current) => {
-        const revision = this.requireRevision(id, current)
-        this.assertRevision(id, revision, expectedRevision)
-        const next = update(current, revision)
+        const revision = this.assertMutationBasis(id, current, basis)
+        if (revision === Number.MAX_SAFE_INTEGER) {
+          throw new ContextManagerError('prompt-resource-path-not-editable', `resource ${JSON.stringify(id)} revision has reached the safe-integer limit`)
+        }
+        const next = this.requireEditableObject(id, update(current, revision))
+        // Also migrate pre-B2-B resources without scanning/updating them at startup.
+        next[PROMPT_RESOURCE_INCARNATION_FIELD] = basis.incarnationId ?? randomUUID()
         assertJsonDataShape(next)
         nextRevision = revision + 1
         return next

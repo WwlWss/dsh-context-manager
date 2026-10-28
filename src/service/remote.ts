@@ -53,6 +53,8 @@ import {
   type ContextManagerRemotePromptPlacement,
   type ContextManagerRemotePromptPlacementCapability,
   type ContextManagerRemotePromptRuntimeInspection,
+  type ContextManagerRemoteResourceCreateBasis,
+  type ContextManagerRemoteResourceMutationBasis,
   type ContextManagerRemotePromptResource,
   type ContextManagerRemotePromptResourceInput,
   type ContextManagerRemotePromptResourceListItem,
@@ -288,41 +290,52 @@ export class ContextManagerRemoteService extends TypertRemoteService {
   }
 
   @Remote
-  async createPromptResource(
-    id: string,
-    input: ContextManagerRemotePromptResourceInput,
-  ): Promise<ContextManagerRemoteResult<ContextManagerRemoteMutationReceipt>> {
+  async createPromptResource(id: string, input: ContextManagerRemotePromptResourceInput, basis: ContextManagerRemoteResourceCreateBasis): Promise<ContextManagerRemoteResult<ContextManagerRemoteMutationReceipt>> {
     return businessResult(async () => {
-      const receipt = await this.promptPort().createPrompt(id, input)
+      const receipt = await this.promptPort().createPrompt(id, input, basis)
       return Object.freeze({ id: receipt.id, revision: receipt.revision })
     })
   }
 
   @Remote
-  async replacePromptResource(
-    id: string,
-    input: ContextManagerRemotePromptResourceInput,
-    expectedRevision: number,
-  ): Promise<ContextManagerRemoteResult<ContextManagerRemoteMutationReceipt>> {
-    const invalid = this.promptRevisionError<ContextManagerRemoteMutationReceipt>(expectedRevision)
+  async replacePromptResource(id: string, input: ContextManagerRemotePromptResourceInput, basis: ContextManagerRemoteResourceMutationBasis): Promise<ContextManagerRemoteResult<ContextManagerRemoteMutationReceipt>> {
+    const invalid = this.promptRevisionError<ContextManagerRemoteMutationReceipt>(basis)
     if (invalid !== undefined) return invalid
     return businessResult(async () => {
-      const receipt = await this.promptPort().replacePrompt(id, input, expectedRevision)
+      const receipt = await this.promptPort().replacePrompt(id, input, basis)
       return Object.freeze({ id: receipt.id, revision: receipt.revision })
     })
   }
 
   @Remote
-  async deletePromptResource(
-    id: string,
-    expectedRevision: number,
-  ): Promise<ContextManagerRemoteResult<ContextManagerRemoteDeleteReceipt>> {
-    const invalid = this.promptRevisionError<ContextManagerRemoteDeleteReceipt>(expectedRevision)
+  async deletePromptResource(id: string, basis: ContextManagerRemoteResourceMutationBasis): Promise<ContextManagerRemoteResult<ContextManagerRemoteDeleteReceipt>> {
+    const invalid = this.promptRevisionError<ContextManagerRemoteDeleteReceipt>(basis)
     if (invalid !== undefined) return invalid
     return businessResult(async () => {
-      await this.promptPort().deletePrompt(id, expectedRevision)
+      await this.promptPort().deletePrompt(id, basis)
       return Object.freeze({ id })
     })
+  }
+
+  @Remote
+  async setPromptResourceName(id: string, name: string, basis: ContextManagerRemoteResourceMutationBasis): Promise<ContextManagerRemoteResult<ContextManagerRemoteMutationReceipt>> {
+    const invalid = this.promptRevisionError<ContextManagerRemoteMutationReceipt>(basis)
+    if (invalid !== undefined) return invalid
+    return businessResult(async () => this.promptPort().setPromptName(id, name, basis))
+  }
+
+  @Remote
+  async setPromptResourceDescription(id: string, description: string | null, basis: ContextManagerRemoteResourceMutationBasis): Promise<ContextManagerRemoteResult<ContextManagerRemoteMutationReceipt>> {
+    const invalid = this.promptRevisionError<ContextManagerRemoteMutationReceipt>(basis)
+    if (invalid !== undefined) return invalid
+    return businessResult(async () => this.promptPort().setPromptDescription(id, description === null ? undefined : description, basis))
+  }
+
+  @Remote
+  async setPromptResourceContent(id: string, content: string, basis: ContextManagerRemoteResourceMutationBasis): Promise<ContextManagerRemoteResult<ContextManagerRemoteMutationReceipt>> {
+    const invalid = this.promptRevisionError<ContextManagerRemoteMutationReceipt>(basis)
+    if (invalid !== undefined) return invalid
+    return businessResult(async () => this.promptPort().setPromptContent(id, content, basis))
   }
 
   @Remote
@@ -401,6 +414,7 @@ export class ContextManagerRemoteService extends TypertRemoteService {
       const snapshot = this.changePort().snapshot()
       return Object.freeze({
         instanceId: snapshot.instanceId,
+        resourceAuthorityId: snapshot.resourceAuthorityId,
         generation: snapshot.generation,
         profiles: snapshot.profiles,
         promptResources: snapshot.promptResources,
@@ -522,9 +536,9 @@ export class ContextManagerRemoteService extends TypertRemoteService {
   }
 
   private promptRevisionError<T>(
-    expectedRevision: number,
+    basis: ContextManagerRemoteResourceMutationBasis,
   ): ContextManagerRemoteResult<T> | undefined {
-    const invalid = invalidRevision(expectedRevision)
+    const invalid = invalidRevision(basis?.revision)
     return invalid === undefined ? undefined : fail(invalid)
   }
 
