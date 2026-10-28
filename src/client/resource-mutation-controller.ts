@@ -304,13 +304,15 @@ export function createContextManagerResourceMutationController(
       // The synchronous call owns an immutable wire basis even if a store
       // subscriber mutates its editable draft object before Remote dispatch.
       const captured = Object.freeze({ resourceAuthorityId: basis?.resourceAuthorityId })
+      const capturedInput = Object.freeze({ ...input })
       return run('create-prompt-resource', captured, id, undefined,
-        remote => remote.createPromptResource(id, input, createWire(captured)))
+        remote => remote.createPromptResource(id, capturedInput, createWire(captured)))
     },
     replacePromptResource: (stamp, input) => {
       const captured = Object.freeze({ ...stamp })
+      const capturedInput = Object.freeze({ ...input })
       return run('replace-prompt-resource', captured, captured.resourceId, captured,
-        remote => remote.replacePromptResource(captured.resourceId, input, wire(captured)))
+        remote => remote.replacePromptResource(captured.resourceId, capturedInput, wire(captured)))
     },
     deletePromptResource: stamp => {
       const captured = Object.freeze({ ...stamp })
