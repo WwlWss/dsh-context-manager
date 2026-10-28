@@ -208,7 +208,8 @@ test('presentation store keeps Resource draft across close/reopen and prevents t
   store.actions.open()
   assert.equal(store.getSnapshot().pane, 'resources')
   assert.equal(store.getSnapshot().resourceDraft?.kind, 'create')
-  assert.equal(store.getSnapshot().resourceDraft?.content, 'exact\n')
+  const reopenedDraft = store.getSnapshot().resourceDraft
+  assert.equal(reopenedDraft?.kind === 'create' ? reopenedDraft.content : undefined, 'exact\n')
   store.actions.selectPane('profiles')
   assert.equal(store.getSnapshot().pane, 'resources')
   store.actions.selectResource('another')
@@ -217,7 +218,8 @@ test('presentation store keeps Resource draft across close/reopen and prevents t
   assert.ok(token)
   store.actions.blockResourceDraft(token, 'unknown', { code: 'resourceNoticeUnknown', kind: 'warning' })
   store.actions.updateResourceCreate('id', 'not-allowed')
-  assert.equal(store.getSnapshot().resourceDraft?.id, 'original')
+  const blockedDraft = store.getSnapshot().resourceDraft
+  assert.equal(blockedDraft?.kind === 'create' ? blockedDraft.id : undefined, 'original')
   store.actions.cancelResourceDraft()
   store.actions.selectPane('profiles')
   assert.equal(store.getSnapshot().pane, 'profiles')
