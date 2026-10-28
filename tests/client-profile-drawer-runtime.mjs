@@ -120,6 +120,10 @@ function createWritableRemoteFixture() {
   let unknownNextWrite = false
   let readOnly = false
   const writes = []
+  const resourceWrites = []
+  const resources = new Map()
+  let resourceCursor = 0
+  let unknownNextResourceWrite = false
   const profiles = Object.create(null)
   profiles.main = {
     name: 'Main',
@@ -156,6 +160,34 @@ function createWritableRemoteFixture() {
   const okRead = value => ({ ok: true, value })
   const accepted = value => okRead({ ok: true, value })
   const rejected = (code, message) => okRead({ ok: false, error: { code, message } })
+  async function resourceWrite(kind, id, basis, update) {
+    resourceWrites.push({ kind, id, basis })
+    if (basis.resourceAuthorityId !== 'm7c-fixture-resource') {
+      return rejected('prompt-resource-authority-conflict', 'resource source changed')
+    }
+    const current = resources.get(id)
+    if (kind === 'resource-create') {
+      if (current !== undefined) return rejected('prompt-resource-exists', 'duplicate Resource ID')
+    } else {
+      if (current === undefined) return rejected('prompt-resource-not-found', 'missing Resource')
+      if (basis.incarnationId !== current.incarnationId) {
+        return rejected('prompt-resource-incarnation-conflict', 'resource incarnation changed')
+      }
+      if (basis.revision !== current.revision) {
+        return rejected('prompt-resource-conflict', 'resource revision changed')
+      }
+    }
+    update(current)
+    resourceCursor += 1
+    change += 1
+    if (unknownNextResourceWrite) {
+      unknownNextResourceWrite = false
+      throw new Error('Resource committed but Host response was dropped')
+    }
+    const next = resources.get(id)
+    return accepted(kind === 'resource-delete' ? { id } : { id, revision: next.revision })
+  }
+
   async function write(kind, basis, update) {
     writes.push({ kind, basis })
     if (readOnly) return rejected('persistence-read-only', 'read-only')
@@ -182,7 +214,7 @@ function createWritableRemoteFixture() {
         resourceAuthorityId: 'm7c-fixture-resource',
         generation: change,
         profiles: change,
-        promptResources: 0,
+        promptResources: resourceCursor,
         presets: change,
         runtime: change,
       })
@@ -207,6 +239,63 @@ function createWritableRemoteFixture() {
       })
     },
     async promptPlacement() { return okRead({ status: 'unavailable' }) },
+    async listPromptResources() {
+      return accepted([
+        ...Array.from(resources.values(), row => ({
+          status: 'usable',
+          id: row.id,
+          name: row.name,
+          ...(row.description === undefined ? {} : { description: row.description }),
+          revision: row.revision,
+          incarnationId: row.incarnationId,
+        })),
+        { status: 'invalid', id: 'corrupt-resource', message: 'Stored record cannot be parsed' },
+      ])
+    },
+    async getPromptResource(id) {
+      const record = resources.get(id)
+      return record === undefined
+        ? rejected('prompt-resource-not-found', 'missing Resource')
+        : accepted({ ...record })
+    },
+    createPromptResource(id, input, basis) {
+      return resourceWrite('resource-create', id, basis, () => {
+        resources.set(id, { id, name: input.name,
+          ...(input.description === undefined ? {} : { description: input.description }),
+          content: input.content, revision: 1, incarnationId: 'uuid-' + id,
+        })
+      })
+    },
+    replacePromptResource(id, input, basis) {
+      return resourceWrite('resource-replace', id, basis, current => {
+        resources.set(id, {
+          ...current, name: input.name, content: input.content,
+          ...(input.description === undefined ? { description: undefined } : { description: input.description }),
+          revision: current.revision + 1,
+        })
+      })
+    },
+    deletePromptResource(id, basis) {
+      return resourceWrite('resource-delete', id, basis, () => { resources.delete(id) })
+    },
+    setPromptResourceName(id, name, basis) {
+      return resourceWrite('resource-name', id, basis, current => {
+        resources.set(id, { ...current, name, revision: current.revision + 1 })
+      })
+    },
+    setPromptResourceDescription(id, description, basis) {
+      return resourceWrite('resource-description', id, basis, current => {
+        resources.set(id, {
+          ...current, ...(description === null ? { description: undefined } : { description }),
+          revision: current.revision + 1,
+        })
+      })
+    },
+    setPromptResourceContent(id, content, basis) {
+      return resourceWrite('resource-content', id, basis, current => {
+        resources.set(id, { ...current, content, revision: current.revision + 1 })
+      })
+    },
     createProfile(id, input, basis) {
       return write('create', basis, () => { profiles[id] = { ...input, skills: {}, prompts: {} } })
     },
@@ -230,8 +319,15 @@ function createWritableRemoteFixture() {
     },
   }
   return {
-    face, profiles, writes,
+    face, profiles, writes, resources, resourceWrites,
     getDefault: () => defaultId,
+    makeUnknownNextResourceWrite() { unknownNextResourceWrite = true },
+    externalResourceReplacement(id, newName) {
+      const old = resources.get(id)
+      resources.set(id, { ...old, name: newName, incarnationId: 'new-incarnation-' + id })
+      resourceCursor += 1
+      change += 1
+    },
     makeUnknownNextWrite() { unknownNextWrite = true },
     externalRename(id, name) {
       // A distinct Settings writer updates the authoritative revision
