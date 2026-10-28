@@ -79,6 +79,8 @@ export interface ResourceView {
   readonly canRead: boolean
   readonly listFresh: boolean
   readonly writable: boolean
+  /** A detached/read-only or stale List may still show matching cached body for inspection. */
+  readonly canInspectSelected: boolean
   readonly canEditSelected: boolean
 }
 
@@ -103,12 +105,12 @@ export function deriveResourceView(
     && snapshot.changes?.instanceId === snapshot.instanceId
     && typeof snapshot.changes.resourceAuthorityId === 'string'
     && snapshot.changes.resourceAuthorityId.length > 0
-  const canEditSelected = writable
-    && selected?.status === 'usable'
+  const canInspectSelected = selected?.status === 'usable'
     && documentSurface?.status === 'ready' && !documentSurface.stale
     && document?.id === selected.id
     && document.revision === selected.revision
     && document.incarnationId === selected.incarnationId
+  const canEditSelected = writable && canInspectSelected
   return {
     rows,
     selectedId,
@@ -117,6 +119,7 @@ export function deriveResourceView(
     listFresh,
     canRead: surface.data !== undefined,
     writable,
+    canInspectSelected,
     canEditSelected,
   }
 }
