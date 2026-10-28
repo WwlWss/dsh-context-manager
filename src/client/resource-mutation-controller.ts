@@ -218,6 +218,9 @@ export function createContextManagerResourceMutationController(
     const preCallStamp = stamp === undefined ? undefined : frozenBasis as ContextManagerClientPromptResourceReadStamp
     const recheck = (): ContextManagerClientResourceMutationResult | undefined => {
       if (!stillOwns()) return obsolete()
+      // Distinguish a real detach/disposal from attachment supersession.
+      const lifetime = lifecycleResult()
+      if (lifetime !== undefined) return lifetime
       if (deps.getRemote() !== remote) return { status: 'superseded' }
       return check(frozenBasis, preCallStamp, true)
     }
@@ -297,18 +300,38 @@ export function createContextManagerResourceMutationController(
 
   const controller: ContextManagerClientResourceMutationController = {
     state,
-    createPromptResource: (basis, id, input) => run('create-prompt-resource', basis, id, undefined,
-      remote => remote.createPromptResource(id, input, createWire(basis))),
-    replacePromptResource: (stamp, input) => run('replace-prompt-resource', stamp, stamp.resourceId, stamp,
-      remote => remote.replacePromptResource(stamp.resourceId, input, wire(stamp))),
-    deletePromptResource: stamp => run('delete-prompt-resource', stamp, stamp.resourceId, stamp,
-      remote => remote.deletePromptResource(stamp.resourceId, wire(stamp))),
-    setPromptResourceName: (stamp, name) => run('set-prompt-resource-name', stamp, stamp.resourceId, stamp,
-      remote => remote.setPromptResourceName(stamp.resourceId, name, wire(stamp))),
-    setPromptResourceDescription: (stamp, description) => run('set-prompt-resource-description', stamp, stamp.resourceId, stamp,
-      remote => remote.setPromptResourceDescription(stamp.resourceId, description, wire(stamp))),
-    setPromptResourceContent: (stamp, content) => run('set-prompt-resource-content', stamp, stamp.resourceId, stamp,
-      remote => remote.setPromptResourceContent(stamp.resourceId, content, wire(stamp))),
+    createPromptResource: (basis, id, input) => {
+      // The synchronous call owns an immutable wire basis even if a store
+      // subscriber mutates its editable draft object before Remote dispatch.
+      const captured = Object.freeze({ resourceAuthorityId: basis?.resourceAuthorityId })
+      return run('create-prompt-resource', captured, id, undefined,
+        remote => remote.createPromptResource(id, input, createWire(captured)))
+    },
+    replacePromptResource: (stamp, input) => {
+      const captured = Object.freeze({ ...stamp })
+      return run('replace-prompt-resource', captured, captured.resourceId, captured,
+        remote => remote.replacePromptResource(captured.resourceId, input, wire(captured)))
+    },
+    deletePromptResource: stamp => {
+      const captured = Object.freeze({ ...stamp })
+      return run('delete-prompt-resource', captured, captured.resourceId, captured,
+        remote => remote.deletePromptResource(captured.resourceId, wire(captured)))
+    },
+    setPromptResourceName: (stamp, name) => {
+      const captured = Object.freeze({ ...stamp })
+      return run('set-prompt-resource-name', captured, captured.resourceId, captured,
+        remote => remote.setPromptResourceName(captured.resourceId, name, wire(captured)))
+    },
+    setPromptResourceDescription: (stamp, description) => {
+      const captured = Object.freeze({ ...stamp })
+      return run('set-prompt-resource-description', captured, captured.resourceId, captured,
+        remote => remote.setPromptResourceDescription(captured.resourceId, description, wire(captured)))
+    },
+    setPromptResourceContent: (stamp, content) => {
+      const captured = Object.freeze({ ...stamp })
+      return run('set-prompt-resource-content', captured, captured.resourceId, captured,
+        remote => remote.setPromptResourceContent(captured.resourceId, content, wire(captured)))
+    },
   }
   Object.freeze(controller)
   return Object.freeze({ controller, reset, observeResourceAuthority })
