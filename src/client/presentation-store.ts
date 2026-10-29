@@ -233,12 +233,13 @@ export function createContextManagerPresentationStore() {
         }
         state.notice = null
       },
-      updatePromptBindingCreate(state,
+      updatePromptBindingCreate(state, token: number,
         field: 'bindingId' | 'resourceId' | 'enabled' | 'placement' | 'orderText',
         value: string | boolean,
       ) {
         const draft = state.draft
-        if (draft?.kind !== 'prompt-binding-create' || draft.blocked) return
+        if (draft?.kind !== 'prompt-binding-create' || draft.token !== token
+          || draft.blocked !== undefined || draft.submitting) return
         if (field === 'enabled' && typeof value === 'boolean') draft.enabled = value
         else if (field === 'placement' && typeof value === 'string'
           && (['before-persona', 'after-persona', 'before-tool-guidance',
@@ -290,9 +291,10 @@ export function createContextManagerPresentationStore() {
         }
         state.notice = null
       },
-      updatePromptBindingField(state, value: string | boolean) {
+      updatePromptBindingField(state, token: number, value: string | boolean) {
         const draft = state.draft
-        if (draft?.kind !== 'prompt-binding-edit-field' || draft.blocked) return
+        if (draft?.kind !== 'prompt-binding-edit-field' || draft.token !== token
+          || draft.blocked !== undefined || draft.submitting) return
         if (draft.field === 'enabled') {
           if (typeof value !== 'boolean') return
           draft.value = value
@@ -335,22 +337,25 @@ export function createContextManagerPresentationStore() {
         if (state.draft?.token !== token || !state.draft.kind.startsWith('prompt-binding-')) return
         state.draft.blocked = reason
       },
-      updateCreate(state, field: 'id' | 'name' | 'description' | 'basePreset', value: string) {
-        if (state.draft?.kind !== 'create' || state.draft.blocked) return
+      updateCreate(state, token: number, field: 'id' | 'name' | 'description' | 'basePreset', value: string) {
+        if (state.draft?.kind !== 'create' || state.draft.token !== token
+          || state.draft.blocked !== undefined || state.draft.submitting) return
         state.draft[field] = value
         state.notice = null
       },
-      updateField(state, value: string) {
-        if (state.draft?.kind !== 'edit-field' || state.draft.blocked) return
+      updateField(state, token: number, value: string) {
+        if (state.draft?.kind !== 'edit-field' || state.draft.token !== token
+          || state.draft.blocked !== undefined || state.draft.submitting) return
         state.draft.value = value
         state.draft.removeDescription = false
         state.notice = null
       },
-      markDescriptionRemoved(state) {
+      markDescriptionRemoved(state, token: number) {
         if (
           state.draft?.kind !== 'edit-field'
           || state.draft.field !== 'description'
-          || state.draft.blocked
+          || state.draft.token !== token
+          || state.draft.blocked !== undefined || state.draft.submitting
         ) return
         state.draft.removeDescription = true
         state.notice = null
@@ -429,13 +434,15 @@ export function createContextManagerPresentationStore() {
         }
         state.resourceNotice = null
       },
-      updateResourceCreate(state, field: 'id' | 'name' | 'description' | 'content', value: string) {
-        if (state.resourceDraft?.kind !== 'create' || state.resourceDraft.blocked) return
+      updateResourceCreate(state, token: number, field: 'id' | 'name' | 'description' | 'content', value: string) {
+        if (state.resourceDraft?.kind !== 'create' || state.resourceDraft.token !== token
+          || state.resourceDraft.blocked !== undefined || state.resourceDraft.submitting) return
         state.resourceDraft[field] = value
         state.resourceNotice = null
       },
-      updateResourceEdit(state, field: 'name' | 'description' | 'content', value: string) {
-        if (state.resourceDraft?.kind !== 'edit' || state.resourceDraft.blocked) return
+      updateResourceEdit(state, token: number, field: 'name' | 'description' | 'content', value: string) {
+        if (state.resourceDraft?.kind !== 'edit' || state.resourceDraft.token !== token
+          || state.resourceDraft.blocked !== undefined || state.resourceDraft.submitting) return
         state.resourceDraft[field] = value
         if (field === 'description') {
           state.resourceDraft.descriptionTouched = true
@@ -443,14 +450,16 @@ export function createContextManagerPresentationStore() {
         }
         state.resourceNotice = null
       },
-      markResourceDescriptionRemoved(state) {
-        if (state.resourceDraft?.kind !== 'edit' || state.resourceDraft.blocked) return
+      markResourceDescriptionRemoved(state, token: number) {
+        if (state.resourceDraft?.kind !== 'edit' || state.resourceDraft.token !== token
+          || state.resourceDraft.blocked !== undefined || state.resourceDraft.submitting) return
         state.resourceDraft.removeDescription = true
         state.resourceDraft.descriptionTouched = true
         state.resourceNotice = null
       },
-      markResourceDescriptionEmpty(state) {
-        if (state.resourceDraft?.kind !== 'edit' || state.resourceDraft.blocked) return
+      markResourceDescriptionEmpty(state, token: number) {
+        if (state.resourceDraft?.kind !== 'edit' || state.resourceDraft.token !== token
+          || state.resourceDraft.blocked !== undefined || state.resourceDraft.submitting) return
         state.resourceDraft.description = ''
         state.resourceDraft.removeDescription = false
         state.resourceDraft.descriptionTouched = true
