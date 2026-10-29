@@ -6,6 +6,8 @@ import { createContextManagerPresentationStore } from '../src/client/presentatio
 import type { ResourceDraft } from '../src/client/resource-editor.js'
 import {
   deriveResourceView,
+  isResourceBeginCurrent,
+  isResourceCreateBeginCurrent,
   isResourceDraftCurrent,
   validateResourceCreateDraft,
   resourceEditChanges,
@@ -335,4 +337,50 @@ test('M8A2 Fix4 RED: all blocked Resource receipts survive ordinary Store action
     actions.selectPane('profiles')
     assert.equal(store.getSnapshot().pane, 'profiles')
   }
+})
+
+
+test('M8A2 Fix4: Resource Begin validates rendered version, source and incarnation without object-reuse requirement', () => {
+  const old = snapshot()
+  const selected = deriveResourceView(old, 'alpha').selected
+  const document = deriveResourceView(old, 'alpha').document
+  assert.equal(isResourceBeginCurrent(old, selected, STAMP, document), true)
+  assert.equal(isResourceBeginCurrent(old, selected, { ...STAMP, source: 'list' }), true)
+  assert.equal(isResourceBeginCurrent(old, selected, { ...STAMP, source: 'document' }), false)
+  assert.equal(isResourceBeginCurrent(old, selected, { ...STAMP, revision: 6 }, document), false)
+  assert.equal(isResourceBeginCurrent(old, selected, { ...STAMP, incarnationId: 'new-incarnation' }, document), false)
+  assert.equal(isResourceBeginCurrent(old, selected, { ...STAMP, resourceAuthorityId: 'another-authority' }, document), false)
+  assert.equal(isResourceCreateBeginCurrent(old, CREATE), true)
+  assert.equal(isResourceCreateBeginCurrent(old, { resourceAuthorityId: 'another-authority' }), false)
+  assert.equal(isResourceBeginCurrent(old, selected, { ...STAMP, instanceId: 'different-profile-instance' }, document), true,
+    'Resource Stamp does not borrow Profile instanceId as Resource authority')
+  const current = {
+    ...old,
+    resources: {
+      list: {
+        ...old.resources.list,
+        data: old.resources.list.data?.map(row => ({ ...row })),
+      },
+      documents: new Map([['alpha', {
+        status: 'ready' as const, stale: false, data: { ...DOCUMENT },
+      }]]),
+    },
+  }
+  const refreshed = deriveResourceView(current, 'alpha')
+  assert.equal(isResourceBeginCurrent(current, refreshed.selected, STAMP, refreshed.document), true,
+    'new JS objects from an unchanged authoritative Resource version remain editable')
+  assert.equal(isResourceBeginCurrent(current, selected, STAMP, document), false,
+    'one render cannot smuggle stale List/Document references into a different snapshot')
+  const shiftedAuthority = {
+    ...old,
+    changes: { ...old.changes!, resourceAuthorityId: 'new-resource-authority' },
+  }
+  assert.equal(isResourceBeginCurrent(shiftedAuthority, selected, STAMP, document), false)
+  assert.equal(isResourceCreateBeginCurrent(shiftedAuthority, CREATE), false)
+  const unrelatedProfile = {
+    ...old, instanceId: 'new-profile-instance',
+    changes: { ...old.changes!, instanceId: 'new-profile-instance' },
+  }
+  assert.equal(isResourceBeginCurrent(unrelatedProfile, selected, STAMP, document), true,
+    'Profile instance rotation is not by itself a Resource authority rotation')
 })
