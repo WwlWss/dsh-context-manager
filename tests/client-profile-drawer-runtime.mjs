@@ -1347,6 +1347,51 @@ assert.equal(remoteFixture.writes.length, beforeOldProfileBegin,
   'M8A2 Fix4 GREEN: old Default toggle must issue zero Profile writes')
 assert.equal(remoteFixture.getDefault(), 'external-default')
 
+// Fix5 RED: a historical Profile whose Settings path key is __proto__ is
+// readable but cannot enter an Edit/Delete flow that Host will always reject.
+// Ordinary special keys such as constructor remain valid authoring targets.
+for (const id of ['__proto__', 'constructor']) {
+  Object.defineProperty(remoteFixture.profiles, id, {
+    value: { name: 'Special profile ' + id, basePreset: 'native', skills: {}, prompts: {} },
+    enumerable: true, configurable: true, writable: true,
+  })
+}
+await act(async () => { await injectedBusiness?.()?.refresh() })
+await settleUI()
+const unsafeProfileRow = tree.root.findAll(node =>
+  node.type === 'button' && Object.hasOwn(node.props, 'aria-current')
+  && renderedText(node).includes('__proto__')
+)[0]
+assert.ok(unsafeProfileRow, 'historical __proto__ Profile remains readable')
+await act(async () => { unsafeProfileRow.props.onClick() })
+await settleUI()
+const unsafeProfileEdit = buttonByLabel(tree, 'Edit', 0)
+const unsafeProfileDelete = buttonByLabel(tree, 'Delete profile')
+assert.equal(unsafeProfileEdit.props.disabled, true,
+  'Host-unsafe Profile ID must have no editable field action')
+assert.equal(unsafeProfileDelete.props.disabled, true,
+  'Host-unsafe Profile ID must have no structural Delete action')
+const priorUnsafeWrites = remoteFixture.writes.length
+await act(async () => {
+  unsafeProfileEdit.props.onClick()
+  unsafeProfileDelete.props.onClick()
+})
+assert.equal(registeredOverlayStore.readLiveSnapshot()?.draft, null,
+  'a retained disabled unsafe Profile handler must not create a draft')
+assert.equal(remoteFixture.writes.length, priorUnsafeWrites)
+const safeSpecialProfileRow = tree.root.findAll(node =>
+  node.type === 'button' && Object.hasOwn(node.props, 'aria-current')
+  && renderedText(node).includes('constructor')
+)[0]
+assert.ok(safeSpecialProfileRow)
+await act(async () => { safeSpecialProfileRow.props.onClick() })
+await settleUI()
+assert.equal(buttonByLabel(tree, 'Delete profile').props.disabled, false,
+  'constructor is a valid Profile path key and must not be overblocked')
+await act(async () => { buttonByLabel(tree, 'Delete profile').props.onClick() })
+assert.equal(registeredOverlayStore.readLiveSnapshot()?.draft?.kind, 'confirm-delete')
+await act(async () => { buttonByLabel(tree, 'Cancel').props.onClick() })
+
 remoteFixture.setReadOnly(true)
 const overlayFace = injectedBusiness?.()
 assert.ok(overlayFace)
