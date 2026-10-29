@@ -1,0 +1,49 @@
+name: M8A2 Fix3 published Renderer RED-GREEN (temporary)
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - .github/workflows/m8a2-published-preflight.yml
+      - tests/client-profile-drawer-runtime.mjs
+
+permissions:
+  contents: read
+
+jobs:
+  retained-renderer:
+    name: M8A2 published DSH 0.1.2 Renderer and Remote v3 probe
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22.20.0
+      - name: Enable pinned pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.7.0 --activate
+      - name: Install exact committed artifact toolchain
+        run: pnpm install --frozen-lockfile
+      - name: Overlay only the published Client/Renderer runtime in disposable CI workspace
+        run: |
+          pnpm add --ignore-scripts --save-dev --save-exact \
+            @deepseek-ai/cordis@4.0.2 \
+            @deepseek-ai/dsh-invariants@0.1.2-rc.1 \
+            @deepseek-ai/dsh-client-store@0.1.2-rc.1 \
+            @deepseek-ai/dsh-client-locale@0.1.2-rc.1 \
+            @deepseek-ai/dsh-client-ui-slots@0.1.2-rc.1 \
+            @deepseek-ai/dsh-client-ui-renderer@0.1.2-rc.1 \
+            @deepseek-ai/dsh-client-ui-sidebar@0.1.2-rc.1 \
+            @deepseek-ai/dsh-client-ui-layout@0.1.2-rc.1 \
+            @deepseek-ai/dsh-typert-protocol@0.1.2-rc.1 \
+            @types/react@18.3.31 \
+            react@18.3.1 \
+            react-dom@18.3.1 \
+            react-test-renderer@18.3.1
+      - name: Execute actual published SlotCore / React Renderer bridge
+        run: node ./tests/client-renderer-bridge-runtime.mjs
+      - name: Execute actual published Renderer Profile and Resource Drawer interactions
+        run: node ./tests/client-profile-drawer-runtime.mjs
+
