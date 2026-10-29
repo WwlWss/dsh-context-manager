@@ -46,6 +46,15 @@ export function terminalProfileNotice(
   return isPromptBindingDraft(state.draft) ? state.draft.terminalNotice : undefined
 }
 
+/** Resource terminal results have the same first-receipt priority as Profile
+ * Binding results: later read failures and disabled UI callbacks cannot
+ * reinterpret a known Host outcome. */
+export function terminalResourceNotice(
+  state: Pick<ContextManagerPresentationState, 'resourceDraft'>,
+): ResourceNotice | undefined {
+  return state.resourceDraft?.terminalNotice
+}
+
 function notifyOccupiedProfileDraft(state: ContextManagerPresentationState): void {
   if (terminalProfileNotice(state) !== undefined) return
   state.notice = { code: 'noticeDraftActive', kind: 'warning' }
@@ -142,7 +151,7 @@ export function createContextManagerPresentationStore() {
               notifyOccupiedProfileDraft(state)
             }
           } else {
-            state.resourceNotice = { code: 'resourceNoticeDraftActive', kind: 'warning' }
+            notifyOccupiedResourceDraft(state)
           }
           return
         }
@@ -407,7 +416,7 @@ export function createContextManagerPresentationStore() {
       },
       selectResource(state, id: string | null) {
         if (state.resourceDraft !== null) {
-          state.resourceNotice = { code: 'resourceNoticeDraftActive', kind: 'warning' }
+          notifyOccupiedResourceDraft(state)
           return
         }
         state.selectedResourceId = id
@@ -500,13 +509,16 @@ export function createContextManagerPresentationStore() {
         if (state.resourceDraft?.token === token) state.resourceDraft.submitting = false
       },
       blockResourceDraft(state, token: number, reason: ResourceDraftBlock, notice: ResourceNotice | null) {
-        if (state.resourceDraft?.token !== token) return
+        if (state.resourceDraft?.token !== token
+          || state.resourceDraft.blocked !== undefined) return
         state.resourceDraft.blocked = reason
         state.resourceDraft.submitting = false
+        if (notice !== null) state.resourceDraft.terminalNotice = { ...notice }
         state.resourceNotice = notice
       },
       completeResourceDraft(state, token: number, notice: ResourceNotice | null, selectId?: string | null) {
-        if (state.resourceDraft?.token !== token) return
+        if (state.resourceDraft?.token !== token
+          || state.resourceDraft.blocked !== undefined) return
         state.resourceDraft = null
         if (selectId !== undefined) state.selectedResourceId = selectId
         state.resourceNotice = notice
@@ -524,6 +536,7 @@ export function createContextManagerPresentationStore() {
         state.resourceNotice = null
       },
       setResourceNotice(state, notice: ResourceNotice | null) {
+        if (terminalResourceNotice(state) !== undefined) return
         state.resourceNotice = notice
       },
       setNotice(state, notice: ProfileNotice | null) {
