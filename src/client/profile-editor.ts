@@ -16,13 +16,12 @@ interface DraftBase {
   blocked?: ProfileDraftBlock
   /** Presentation-only synchronous submission claim; never Host authority. */
   submitting?: boolean
-}
-
-/** Presentation-only terminal notice tied to an exact Binding draft token.
- * This never carries write authority or modifies Host/Remote mutation results. */
-interface BindingDraftBase extends DraftBase {
+  /** First confirmed/uncertain terminal receipt belongs to this exact Profile
+   * draft token, including legacy M7C and M8A2 Binding drafts. Never Host authority. */
   terminalNotice?: ProfileNotice
 }
+
+type BindingDraftBase = DraftBase
 
 export type PromptBindingEditField = 'resourceId' | 'enabled' | 'placement' | 'order'
 
