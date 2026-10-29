@@ -38,6 +38,8 @@ export interface ResourceNotice {
 interface ResourceDraftBase {
   readonly token: number
   blocked?: ResourceDraftBlock
+  /** Presentation-only synchronous submission claim; never Host authority. */
+  submitting?: boolean
 }
 
 export type ResourceDraft =
