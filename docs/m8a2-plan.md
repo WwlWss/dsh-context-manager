@@ -1,6 +1,6 @@
 # M8A2 — Profile PromptBinding Editor (Capability Contract)
 
-**Status:** published Host/Renderer focused preflight **PASS**; strictly typed and executed M8A2 **RED** captured; **no M8A2 production implementation yet**. This Draft is intentionally failing the new feature assertions until GREEN. Full Qualification is not yet eligible.  
+**Status:** **Draft GREEN implementation:** RED evidence preserved; Client PromptBinding section, shared Profile drafts and single-RPC saves implemented. Latest Draft Quick [#40824336748](https://github.com/WwlWss/dsh-context-manager/actions/runs/40824336748) and focused published Renderer/Settings matrix [#40824336712](https://github.com/WwlWss/dsh-context-manager/actions/runs/40824336712) **PASS on 95b80345**. Independent Strict Review and Ready Full Qualification are **not started**. Do not merge yet.  
 **Base:** merged M8A1 PR #40, `main` commit `e37fa7284cbed4ae8b8cc92969f6d75bb147d9ea`; independent post-merge Full Qualification [#40754041892](https://github.com/WwlWss/dsh-context-manager/actions/runs/40754041892) completed with **86/86 jobs successful, zero failed/skipped**.  
 **Branch:** `feat/m8a2-prompt-binding-editor`. This branch/one eventual Draft PR remains the single delivery vehicle from plan through qualification.  
 **Ownership:** M8A2 edits **Profile-local PromptBindings** through the existing **Profile** write domain. M8A1 edits **PromptResources** through the independent **Resource** write domain.
@@ -260,6 +260,33 @@ All assertions below are required at their **claimed evidence class**; a fake Re
 - [Real Renderer RED #40766350142](https://github.com/WwlWss/dsh-context-manager/actions/runs/40766350142) at the same HEAD: published Renderer bridge step **PASS**, then the mounted usable Profile has **0** `data-context-manager-prompt-bindings` sections where the test requires **1**. Exact failure: `M8A2 RED: Profile PromptBindings editor is not yet mounted`. The first baseline Renderer success was already archived, so this is a new feature RED rather than a loader failure.
 - The subsequent focused Host matrix #40766652925 again has all three modern Host jobs PASS and the Renderer job deliberately RED. All M8A2 RED tests remain in the branch for subsequent GREEN. A Draft Quick failure **must not** be mistaken for a completed Full qualification.
 
-### 10.4 Next allowed operation
+### 10.4 Historical RED-to-GREEN handoff (now completed)
 
 Begin the focused **GREEN** implementation only after retaining this evidence: add the typed Profile-local Binding draft variants/actions, pure editor functions, and the selected-Profile child UI using the six existing Profile mutations. Keep **the original edit-time Profile Basis**, no implicit multi-field RPC, no second Profile lane, no Resource writes, no automatic retry, no synthetic Agent-effective diagnostic and no silent ID normalization. Expand the real Renderer RED tests from the initial missing-section assertion to the exact six mutation operations, conflicts and lifecycle. Then execute targeted GREEN and Draft Quick, run independent Strict Review, mark Ready only after confirmed P1/P2 remediation, and proceed through the full fail-closed gates.
+
+
+## 11. Draft GREEN implementation and qualification record (2026-10-29 CST)
+
+**Current scope:** Draft PR #41 contains the M8A2 Profile-local Binding UI and only Client/presentation, tests, localizations, this plan and temporary preflight workflow. There is no Host or Remote API v4 change, no new Settings write contract, no new Profile or Resource Controller lane, and no weakened main CI matrix. This section supersedes the historical RED-only next-operation notes in §10.4.
+
+### 11.1 Delivered implementation
+
+- Shared typed Binding create/edit-field/delete drafts use one existing Profile draft union, immutable captured instanceId + Settings revision, shared tokens and blocked outcome kinds; legacy M7C core Profile flows remain distinct.
+- The existing presentation store receives Binding begin/update/notice actions; drafts persist through Drawer close, forbid tab/record switching, and token-guard late notice publication.
+- The pure Binding editor validates exact Binding IDs (including empty and whitespace), rejects only __proto__ as a Settings path key, preserves exact Resource string values, parses signed decimal safe integers, and provides stable order-then-code-unit-ID sorting and advisory Resource/Placement projections. -0 is canonicalized to numeric 0 because published DSH Settings persists JSON numbers and loses the negative-zero distinction; other signed safe integers retain their values.
+- The Hook-safe selected-Profile Binding child exposes complete create, four explicit leaf field saves and explicit delete via the six frozen Profile mutations: no multi-field hidden RPC, no body fetch, no invented Agent-effective status and a synchronous duplicate-Save guard.
+- The existing Profile Drawer and typed bilingual locales integrate the child without replacing M7C Profile forms or the M8A1 Resource tab.
+
+### 11.2 Executed GREEN evidence
+
+1. All original strict RED Binding presentation tests now pass, plus additional pure cases for exact IDs, arbitrary Resource strings, safe orders and tie sorting, advisory diagnostic health and blocked outcomes.
+2. [Draft Quick #40824336748](https://github.com/WwlWss/dsh-context-manager/actions/runs/40824336748) on **95b80345afc97dbe0889c0248c6adb6447503b41**: completed/success, strict TypeScript and test bundle passed, **131/131 Client** and **261/261 Node** tests passed, retained SlotCore probe passed and zero unexpected failures.
+3. [Focused published Renderer / retained modern Settings #40824336712](https://github.com/WwlWss/dsh-context-manager/actions/runs/40824336712) on that **same SHA**: completed/success, **four of four focused jobs PASS**. Real retained DSH Renderer mounts Profile Binding UI and exercises create, four field setter saves, delete, repeated same-render Save, Unknown blocked replay, and explicit authoritative Profile refresh after an earlier degraded Resource read.
+4. Published Host package matrix continues to assert safe path keys and all six Remote v3 Binding operations with lossless Stored extension siblings, spanning Settings 0.1.1-rc.2, 0.1.2-rc.1, 0.1.5-rc.2, and 0.1.6-alpha.2. This does **not** establish DSH 0.2.x Host compatibility.
+5. Two intermediate GREEN failures were genuine test discoveries, not justified test bypasses: stale Profile baseline after a degraded M8A1 read required an explicit refresh before new Binding write, and parsing textual -0 needed to match JSON-persistent numeric zero. Both retained original safety fences.
+
+### 11.3 Outstanding gates
+
+- An independent **Strict Review** before Ready is still required. Examine all six UI operations, Stored extension preservation, exact captured Profile Basis, Resource-only authority independence, stale/unknown/conflict/degraded lifecycle, async token guards, and evidence-class honesty. Confirmed P1/P2 require focused repair and requalification.
+- The temporary focused workflow should be removed or expressly approved for permanent retention before Ready. It does not replace the normal CI workflow.
+- The **86-job Ready Full Qualification**, exact-head Final Review, merge and independent post-merge main Full CI are **not** performed. Draft Quick/focused preflight cannot be portrayed as Full qualification or as proof of a dedicated packed Chromium Binding E2E scenario.
