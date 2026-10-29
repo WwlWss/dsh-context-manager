@@ -23,6 +23,7 @@ import {
 } from './profile-editor.js'
 import {
   deriveProfileView,
+  isProfileBeginCurrent,
   isProfileDraftCurrent,
   resolveProfilePreset,
   type ProfileListRow,
@@ -136,29 +137,38 @@ export function ContextManagerProfileDrawerContent(props: ContextManagerDrawerPr
     if (basis === undefined) notifyUnavailable()
     return basis
   }
+  const notifyStaleBegin = () => {
+    actions.setNotice({ code: 'noticeDraftStale', kind: 'warning' })
+  }
   const startCreate = () => {
     if (draft !== null) {
       actions.setNotice({ code: 'noticeDraftActive', kind: 'warning' })
       return
     }
     const basis = captureBasis()
-    if (basis) actions.beginCreate(basis)
+    if (!basis) return
+    if (!isProfileBeginCurrent(snapshot, basis)) return notifyStaleBegin()
+    actions.beginCreate(basis)
   }
-  const startEdit = (profileId: string, field: ProfileEditField, original: string | undefined) => {
+  const startEdit = (row: ProfileListRow, field: ProfileEditField, original: string | undefined) => {
     if (draft !== null) {
       actions.setNotice({ code: 'noticeDraftActive', kind: 'warning' })
       return
     }
     const basis = captureBasis()
-    if (basis) actions.beginFieldEdit({ profileId, field, original, basis })
+    if (!basis) return
+    if (!isProfileBeginCurrent(snapshot, basis, row, field, original)) return notifyStaleBegin()
+    actions.beginFieldEdit({ profileId: row.id, field, original, basis })
   }
-  const startDelete = (profileId: string) => {
+  const startDelete = (row: ProfileListRow) => {
     if (draft !== null) {
       actions.setNotice({ code: 'noticeDraftActive', kind: 'warning' })
       return
     }
     const basis = captureBasis()
-    if (basis) actions.beginDelete(profileId, basis)
+    if (!basis) return
+    if (!isProfileBeginCurrent(snapshot, basis, row)) return notifyStaleBegin()
+    actions.beginDelete(row.id, basis)
   }
   const afterMutation = (
     result: ContextManagerClientProfileMutationResult,
@@ -248,6 +258,9 @@ export function ContextManagerProfileDrawerContent(props: ContextManagerDrawerPr
     )) return
     const basis = captureBasis()
     if (!basis) return
+    // Even an immediate default toggle carries an intent from this render.
+    // A new Settings revision cannot authorize a stale clear/set decision.
+    if (!isProfileBeginCurrent(snapshot, basis)) return notifyStaleBegin()
     afterMutation(await props.profileMutations.setDefaultProfile(basis, id))
   }
 
@@ -360,7 +373,7 @@ export function ContextManagerProfileDrawerContent(props: ContextManagerDrawerPr
     return h('div', { key: field, className: styles.field },
       h('div', { className: styles.fieldHeader },
         h('span', { className: styles.label }, label),
-        !active ? button(t('edit'), () => startEdit(row.id, field, value), !canStart) : null,
+        !active ? button(t('edit'), () => startEdit(row, field, value), !canStart) : null,
       ),
       active && draft?.kind === 'edit-field'
         ? h('form', {
@@ -457,7 +470,7 @@ export function ContextManagerProfileDrawerContent(props: ContextManagerDrawerPr
                 () => { void changeDefault(selected.configuredDefault ? null : selected.id) },
                 !canStart,
               ) : null,
-            button(t('deleteProfile'), () => startDelete(selected.id), !canStart, 'danger'),
+            button(t('deleteProfile'), () => startDelete(selected), !canStart, 'danger'),
           ),
       )
 
