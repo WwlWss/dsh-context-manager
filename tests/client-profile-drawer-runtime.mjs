@@ -839,7 +839,35 @@ await settleUI()
 assert.equal(remoteFixture.resources.has('res-ui'), false)
 assert.equal(remoteFixture.profiles.main.prompts.dangling.resourceId, 'res-ui')
 assert.equal(remoteFixture.resourceWrites.at(-1).kind, 'resource-delete')
+
+// M8A2 Fix3 RED: Resource Controller has an independent authority, but an
+// obsolete Resource form closure must NOT write after Binding draft takeover.
+await act(async () => { tree.root.findByProps({ 'data-context-manager-new-resource': '' }).props.onClick() })
+await act(async () => {
+  tree.root.findByProps({ id: 'cm-resource-create-id' }).props.onChange({
+    currentTarget: { value: 'obsolete-resource-after-tab-switch' },
+  })
+  tree.root.findByProps({ id: 'cm-resource-create-name' }).props.onChange({
+    currentTarget: { value: 'should never be written' },
+  })
+})
+const obsoleteResourceSubmit = tree.root.findAllByType('form')[0].props.onSubmit
+await act(async () => { buttonByLabel(tree, 'Cancel').props.onClick() })
 await act(async () => { tree.root.findByProps({ 'data-context-manager-tab': 'profiles' }).props.onClick() })
+await settleUI()
+await act(async () => { tree.root.findByProps({ 'data-context-manager-new-binding': '' }).props.onClick() })
+const beforeObsoleteResourceSave = remoteFixture.resourceWrites.length
+await act(async () => {
+  obsoleteResourceSubmit({ preventDefault() {} })
+  for (let i = 0; i < 25; i += 1) await Promise.resolve()
+})
+await settleUI()
+assert.equal(remoteFixture.resourceWrites.length, beforeObsoleteResourceSave,
+  'M8A2 Fix3 RED: old Resource Save cannot write while a Binding draft owns the Store')
+assert.equal(remoteFixture.resources.has('obsolete-resource-after-tab-switch'), false)
+await act(async () => { buttonByLabel(tree, 'Cancel').props.onClick() })
+
+
 await settleUI()
 assert.equal(tree.root.findAllByProps({ 'data-context-manager-new-profile': '' }).length, 1)
 
