@@ -324,6 +324,36 @@ function createWritableRemoteFixture() {
     setDefaultProfile(id, basis) {
       return write('default', basis, () => { defaultId = id })
     },
+    addPromptBinding(profileId, bindingId, input, basis) {
+      return write('binding-add', basis, () => {
+        profiles[profileId].prompts[bindingId] = structuredClone(input)
+      })
+    },
+    setPromptBindingResourceId(profileId, bindingId, resourceId, basis) {
+      return write('binding-resource', basis, () => {
+        profiles[profileId].prompts[bindingId].resourceId = resourceId
+      })
+    },
+    setPromptBindingEnabled(profileId, bindingId, enabled, basis) {
+      return write('binding-enabled', basis, () => {
+        profiles[profileId].prompts[bindingId].enabled = enabled
+      })
+    },
+    setPromptBindingPlacement(profileId, bindingId, placement, basis) {
+      return write('binding-placement', basis, () => {
+        profiles[profileId].prompts[bindingId].placement = placement
+      })
+    },
+    setPromptBindingOrder(profileId, bindingId, order, basis) {
+      return write('binding-order', basis, () => {
+        profiles[profileId].prompts[bindingId].order = order
+      })
+    },
+    removePromptBinding(profileId, bindingId, basis) {
+      return write('binding-delete', basis, () => {
+        delete profiles[profileId].prompts[bindingId]
+      })
+    },
   }
   return {
     face, profiles, writes, resources, resourceWrites,
@@ -749,6 +779,102 @@ assert.equal(remoteFixture.resourceWrites.at(-1).kind, 'resource-delete')
 await act(async () => { tree.root.findByProps({ 'data-context-manager-tab': 'profiles' }).props.onClick() })
 await settleUI()
 assert.equal(tree.root.findAllByProps({ 'data-context-manager-new-profile': '' }).length, 1)
+
+// M8A2 GREEN: real published Renderer + Business Face + Profile Controller.
+// Each explicit Binding Save maps to one existing Profile RPC on its original
+// instanceId/Settings revision. Resources (including missing references) are not
+// looked up or mutated while authoring Profile-local Binding intent.
+assert.equal(tree.root.findAllByProps({ 'data-context-manager-prompt-bindings': '' }).length, 1)
+const bindingWritesStart = remoteFixture.writes.length
+const resourceWritesStart = remoteFixture.resourceWrites.length
+await act(async () => { tree.root.findByProps({ 'data-context-manager-new-binding': '' }).props.onClick() })
+await act(async () => {
+  tree.root.findByProps({ id: 'cm-binding-create-id' }).props.onChange({ currentTarget: { value: 'm8a2-ui' } })
+  tree.root.findByProps({ id: 'cm-binding-create-resource' }).props.onChange({ currentTarget: { value: 'missing/日本語' } })
+  tree.root.findByProps({ id: 'cm-binding-create-order' }).props.onChange({ currentTarget: { value: '-5' } })
+})
+assert.equal(remoteFixture.writes.length, bindingWritesStart)
+await act(async () => {
+  tree.root.findByProps({ 'data-context-manager-binding-create-form': '' }).props.onSubmit({ preventDefault() {} })
+  for (let i = 0; i < 25; i += 1) await Promise.resolve()
+})
+await settleUI()
+assert.equal(remoteFixture.writes.length, bindingWritesStart + 1)
+assert.equal(remoteFixture.writes.at(-1).kind, 'binding-add')
+assert.equal(remoteFixture.profiles.main.prompts['m8a2-ui'].resourceId, 'missing/日本語')
+assert.equal(remoteFixture.profiles.main.prompts['m8a2-ui'].order, -5)
+assert.equal(remoteFixture.resourceWrites.length, resourceWritesStart)
+
+async function bindingLeaf(field, fieldId, value, expectedKind) {
+  const before = remoteFixture.writes.length
+  await act(async () => {
+    tree.root.findByProps({ ['data-context-manager-binding-edit-' + field]: 'm8a2-ui' }).props.onClick()
+  })
+  await act(async () => {
+    const change = field === 'enabled' || field === 'placement'
+      ? { currentTarget: { value } }
+      : { currentTarget: { value } }
+    tree.root.findByProps({ id: fieldId }).props.onChange(change)
+  })
+  const currentForm = tree.root.findByProps({ 'data-context-manager-binding-edit-form': '' })
+  await act(async () => {
+    // A second synchronous submission of one render must be single-flight.
+    currentForm.props.onSubmit({ preventDefault() {} })
+    currentForm.props.onSubmit({ preventDefault() {} })
+    for (let i = 0; i < 25; i += 1) await Promise.resolve()
+  })
+  await settleUI()
+  assert.equal(remoteFixture.writes.length, before + 1)
+  assert.equal(remoteFixture.writes.at(-1).kind, expectedKind)
+  assert.equal(remoteFixture.resourceWrites.length, resourceWritesStart)
+}
+await bindingLeaf('resourceId', 'cm-binding-edit-resourceId', '__proto__', 'binding-resource')
+assert.equal(remoteFixture.profiles.main.prompts['m8a2-ui'].resourceId, '__proto__')
+await bindingLeaf('enabled', 'cm-binding-edit-enabled', 'false', 'binding-enabled')
+assert.equal(remoteFixture.profiles.main.prompts['m8a2-ui'].enabled, false)
+await bindingLeaf('placement', 'cm-binding-edit-placement', 'runtime-context', 'binding-placement')
+assert.equal(remoteFixture.profiles.main.prompts['m8a2-ui'].placement, 'runtime-context')
+await bindingLeaf('order', 'cm-binding-edit-order', '-42', 'binding-order')
+assert.equal(remoteFixture.profiles.main.prompts['m8a2-ui'].order, -42)
+
+// Unknown is never reinterpreted as applied even when read-back matches.
+await act(async () => {
+  tree.root.findByProps({ 'data-context-manager-binding-edit-resourceId': 'm8a2-ui' }).props.onClick()
+  tree.root.findByProps({ id: 'cm-binding-edit-resourceId' }).props.onChange({
+    currentTarget: { value: 'unknown-response-but-committed' },
+  })
+})
+remoteFixture.makeUnknownNextWrite()
+const beforeUnknownBinding = remoteFixture.writes.length
+await act(async () => {
+  tree.root.findByProps({ 'data-context-manager-binding-edit-form': '' }).props.onSubmit({ preventDefault() {} })
+  for (let i = 0; i < 30; i += 1) await Promise.resolve()
+})
+await settleUI()
+assert.equal(remoteFixture.writes.length, beforeUnknownBinding + 1)
+assert.equal(remoteFixture.profiles.main.prompts['m8a2-ui'].resourceId, 'unknown-response-but-committed')
+assert.equal(tree.root.findByProps({ 'data-context-manager-binding-save': '' }).props.disabled, true)
+assert.ok(renderedText(tree.root).includes('write outcome is unknown'))
+await act(async () => { buttonByLabel(tree, 'Discard draft').props.onClick() })
+await settleUI()
+assert.equal(remoteFixture.writes.length, beforeUnknownBinding + 1)
+
+await act(async () => {
+  tree.root.findByProps({ 'data-context-manager-binding-delete': 'm8a2-ui' }).props.onClick()
+})
+assert.ok(renderedText(tree.root).includes('Only this Profile binding will be deleted'))
+const beforeDeleteBinding = remoteFixture.writes.length
+await act(async () => {
+  tree.root.findByProps({ 'data-context-manager-binding-delete-confirm': '' })
+    .findAllByType('button').find(node => node.props.children === 'Confirm delete').props.onClick()
+  for (let i = 0; i < 25; i += 1) await Promise.resolve()
+})
+await settleUI()
+assert.equal(remoteFixture.writes.length, beforeDeleteBinding + 1)
+assert.equal(remoteFixture.writes.at(-1).kind, 'binding-delete')
+assert.equal(Object.hasOwn(remoteFixture.profiles.main.prompts, 'm8a2-ui'), false)
+assert.equal(remoteFixture.profiles.main.prompts.dangling.resourceId, 'res-ui')
+assert.equal(remoteFixture.resourceWrites.length, resourceWritesStart)
 
 remoteFixture.setReadOnly(true)
 const overlayFace = injectedBusiness?.()
