@@ -269,6 +269,36 @@ test('DSH presentation store blocks uncertain replay, and older completions cann
 })
 
 
+test('M7C final Strict RED: first blocked Profile terminal receipt survives late UI actions', () => {
+  for (const { reason, code } of [
+    { reason: 'unknown', code: 'noticeOutcomeUnknown' },
+    { reason: 'conflict', code: 'noticeConflict' },
+  ] as const) {
+    const store = createContextManagerPresentationStore().create()
+    const a = store.actions
+    a.open()
+    a.beginFieldEdit({ profileId: 'main', field: 'name', original: 'Original', basis: BASIS })
+    const first = store.getSnapshot().draft
+    assert.ok(first?.kind === 'edit-field')
+    const notice = { code, kind: 'warning', detail: 'immutable original receipt' } as const
+    a.blockDraft(first.token, reason, notice)
+    a.selectPane('resources')
+    a.selectProfile('other')
+    a.beginCreate(BASIS)
+    a.setNotice({ code: 'noticeUnavailable', kind: 'warning' })
+    a.blockDraft(first.token, 'stale', { code: 'noticeDraftStale', kind: 'warning' })
+    a.completeDraft(first.token, { code: 'noticeSaved', kind: 'success' }, 'wrong-profile')
+    const after = store.getSnapshot()
+    assert.equal(after.draft?.token, first.token, reason + ': blocked draft retained')
+    assert.equal(after.draft?.blocked, reason)
+    assert.deepEqual(after.notice, notice, reason + ': original detail must remain')
+    assert.equal(after.pane, 'profiles')
+    assert.equal(after.selectedProfileId, 'main')
+    a.discardBlockedDraft(first.token)
+    assert.equal(store.getSnapshot().draft, null)
+  }
+})
+
 test('M8A2 Fix4: Profile Begin compares rendered Settings revision and exact usable/invalid targets', () => {
   const rendered = exampleSnapshot()
   const main = deriveProfileView(rendered, 'main').selected
