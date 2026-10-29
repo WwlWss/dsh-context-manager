@@ -272,3 +272,33 @@ test('resource presentation token prevents late completion from clearing a new d
   assert.equal(s.getSnapshot().resourceDraft, null)
   assert.equal(s.getSnapshot().selectedResourceId, 'fresh')
 })
+
+test('M8A2 Fix3: obsolete Resource edit events cannot modify a different same-kind draft', () => {
+  const store = createContextManagerPresentationStore().create()
+  const a = store.actions
+  a.open()
+  a.selectPane('resources')
+  a.beginResourceEdit(DOCUMENT, STAMP)
+  const older = store.getSnapshot().resourceDraft
+  assert.equal(older?.kind, 'edit')
+  a.updateResourceEdit(older.token, 'name', 'first edit')
+  a.cancelResourceDraft(older.token)
+  a.beginResourceEdit(DOCUMENT, STAMP)
+  const newer = store.getSnapshot().resourceDraft
+  assert.equal(newer?.kind, 'edit')
+  assert.notEqual(newer.token, older.token)
+  a.updateResourceEdit(older.token, 'name', 'obsolete edit')
+  a.markResourceDescriptionRemoved(older.token)
+  a.markResourceDescriptionEmpty(older.token)
+  a.cancelResourceDraft(older.token)
+  const still = store.getSnapshot().resourceDraft
+  assert.equal(still?.kind, 'edit')
+  assert.equal(still.token, newer.token)
+  assert.equal(still.name, DOCUMENT.name)
+  assert.equal(still.descriptionTouched, false)
+  assert.equal(still.removeDescription, false)
+  a.updateResourceEdit(newer.token, 'name', 'current edit')
+  assert.equal(store.getSnapshot().resourceDraft?.kind === 'edit'
+    ? (store.getSnapshot().resourceDraft as Extract<ResourceDraft, { kind: 'edit' }>).name
+    : undefined, 'current edit')
+})
