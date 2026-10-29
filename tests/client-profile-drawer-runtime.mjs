@@ -487,8 +487,14 @@ const disposeRoot = slots.register({
 const slotFace = createSlotsFace(slots)
 const register = slotFace.register
 let injectedBusiness
+let registeredOverlayStore
+let registeredSidebarStore
 slotFace.register = (options, component) => {
-  if (options.name === 'shell.overlay') injectedBusiness = options.inject
+  if (options.name === 'shell.overlay') {
+    injectedBusiness = options.inject
+    registeredOverlayStore = options.store
+  }
+  if (options.name === 'sidebar.footer.action') registeredSidebarStore = options.store
   return register(options, component)
 }
 const disposePlugin = await clientPlugin.apply(pluginCapableContext({
@@ -507,6 +513,11 @@ function trigger() {
 }
 await act(async () => { trigger().props.onClick() })
 await settleUI()
+assert.strictEqual(registeredOverlayStore, registeredSidebarStore,
+  'M8A2 live dispatch gate MUST use the same published DSH root StoreHandle')
+assert.equal(registeredOverlayStore.readLiveSnapshot()?.open, true,
+  'the native Renderer must have created an observable root StoreInstance')
+assert.equal(registeredOverlayStore.readLiveSnapshot()?.pane, 'profiles')
 assert.equal(tree.root.findAllByProps({ 'data-context-manager-new-profile': '' }).length, 1)
 assert.equal(remoteFixture.writes.length, 0)
 
@@ -838,6 +849,8 @@ const oldDefaultOnClick = buttonByLabel(tree, 'Set as default').props.onClick
 const beforeStaleDefault = remoteFixture.writes.length
 await act(async () => {
   bindingStartButton.props.onClick()
+  assert.equal(registeredOverlayStore.readLiveSnapshot()?.draft?.kind, 'prompt-binding-create',
+    'the store must publish the new draft before React rerenders')
   oldDefaultOnClick()
   for (let i = 0; i < 25; i += 1) await Promise.resolve()
 })
@@ -1136,5 +1149,7 @@ assert.equal(tree.root.findByProps({ 'data-context-manager-new-profile': '' }).p
 await act(async () => { tree.unmount() })
 disposeRoot()
 await disposePlugin()
+assert.equal(registeredOverlayStore.readLiveSnapshot(), undefined,
+  'M8A2 live Store reader must be revoked on plugin disposal')
 await sessionFiber.dispose()
 await rendererFiber.dispose()
