@@ -374,6 +374,11 @@ function createWritableRemoteFixture() {
       revision += 1
       change += 1
     },
+    externalBindingResourceId(profileId, bindingId, resourceId) {
+      profiles[profileId].prompts[bindingId].resourceId = resourceId
+      revision += 1
+      change += 1
+    },
     setReadOnly(value) { readOnly = value; change += 1 },
   }
 }
@@ -888,6 +893,34 @@ assert.equal(remoteFixture.writes.at(-1).kind, 'binding-delete')
 assert.equal(Object.hasOwn(remoteFixture.profiles.main.prompts, 'm8a2-ui'), false)
 assert.equal(remoteFixture.profiles.main.prompts.dangling.resourceId, 'res-ui')
 assert.equal(remoteFixture.resourceWrites.length, resourceWritesStart)
+
+// M8A2 Fix RED: old rendered callback MUST NOT capture a newer revision and
+// silently overwrite a Binding that changed between rendering and clicking.
+const obsoleteEditClick = tree.root.findByProps({
+  'data-context-manager-binding-edit-resourceId': 'dangling',
+}).props.onClick
+remoteFixture.externalBindingResourceId('main', 'dangling', 'concurrent-writer-won')
+await act(async () => { await injectedBusiness?.()?.refresh() })
+await settleUI()
+const beforeStaleBegin = remoteFixture.writes.length
+await act(async () => { obsoleteEditClick() })
+assert.equal(tree.root.findAllByProps({ 'data-context-manager-binding-edit-form': '' }).length, 0,
+  'M8A2 RED: obsolete rendered callback may not begin a draft with a new Profile basis')
+assert.equal(remoteFixture.writes.length, beforeStaleBegin)
+
+// M8A2 Fix RED: an externally stored unsafe key is readable, but each Host
+// structural write would be refused. No misleading editable button.
+Object.defineProperty(remoteFixture.profiles.main.prompts, '__proto__', {
+  value: { resourceId: '__proto__', enabled: true,
+    placement: 'before-persona', order: 0 },
+  enumerable: true, configurable: true, writable: true,
+})
+await act(async () => { await injectedBusiness?.()?.refresh() })
+await settleUI()
+const unsafeBindingRow = tree.root.findByProps({ 'data-context-manager-binding-row': '__proto__' })
+assert.ok(unsafeBindingRow.findAllByType('button').every(node => node.props.disabled === true),
+  'M8A2 RED: __proto__ Binding path is read-only and must not offer writes')
+assert.ok(renderedText(unsafeBindingRow).includes('read-only'))
 
 remoteFixture.setReadOnly(true)
 const overlayFace = injectedBusiness?.()
