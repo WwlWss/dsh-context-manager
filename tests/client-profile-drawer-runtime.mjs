@@ -694,6 +694,9 @@ await act(async () => { buttonByLabel(tree, 'Discard draft').props.onClick() })
 
 // M8A1: the same retained DSH Renderer opens the Resource library inside
 // the existing Drawer, without moving Profile drafts into the Resource lane.
+const obsoleteProfileBeginFromPreviousPane = tree.root.findByProps({
+  'data-context-manager-new-profile': '',
+}).props.onClick
 await act(async () => {
   tree.root.findByProps({ 'data-context-manager-tab': 'resources' }).props.onClick()
 })
@@ -705,6 +708,10 @@ assert.equal(remoteFixture.resourceWrites.length, 0)
 await act(async () => {
   tree.root.findByProps({ 'data-context-manager-new-resource': '' }).props.onClick()
 })
+await act(async () => { obsoleteProfileBeginFromPreviousPane() })
+assert.equal(registeredOverlayStore.readLiveSnapshot()?.draft, null,
+  'M8A2 Fix3: old Profile Begin cannot occupy Store while Resource draft owns pane')
+assert.equal(registeredOverlayStore.readLiveSnapshot()?.resourceDraft?.kind, 'create')
 await act(async () => {
   tree.root.findByProps({ id: 'cm-resource-create-id' }).props.onChange({ currentTarget: { value: 'res-ui' } })
   tree.root.findByProps({ id: 'cm-resource-create-name' }).props.onChange({ currentTarget: { value: 'New Resource' } })
@@ -852,10 +859,16 @@ await act(async () => {
   })
 })
 const obsoleteResourceSubmit = tree.root.findAllByType('form')[0].props.onSubmit
+const obsoleteResourceBeginFromPreviousPane = tree.root.findByProps({
+  'data-context-manager-new-resource': '',
+}).props.onClick
 await act(async () => { buttonByLabel(tree, 'Cancel').props.onClick() })
 await act(async () => { tree.root.findByProps({ 'data-context-manager-tab': 'profiles' }).props.onClick() })
 await settleUI()
 await act(async () => { tree.root.findByProps({ 'data-context-manager-new-binding': '' }).props.onClick() })
+await act(async () => { obsoleteResourceBeginFromPreviousPane() })
+assert.equal(registeredOverlayStore.readLiveSnapshot()?.resourceDraft, null,
+  'M8A2 Fix3: old Resource Begin cannot occupy Store while Binding draft owns pane')
 const beforeObsoleteResourceSave = remoteFixture.resourceWrites.length
 await act(async () => {
   obsoleteResourceSubmit({ preventDefault() {} })
