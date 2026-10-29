@@ -454,7 +454,10 @@ test('M8A2 Fix3 RED: old callbacks cannot mutate or clear a newer Binding termin
   assert.equal(next?.kind, 'prompt-binding-create')
   assert.notEqual(next.token, oldToken)
   a.updatePromptBindingCreate(oldToken, 'bindingId', 'obsolete-input')
-  assert.equal(store.getSnapshot().draft.bindingId, '', 'stale input must not alter a later draft')
+  const afterObsoleteInput = store.getSnapshot().draft
+  assert.equal(afterObsoleteInput?.kind === 'prompt-binding-create'
+    ? afterObsoleteInput.bindingId : undefined, '',
+  'stale input must not alter a later draft')
   a.blockDraft(next.token, 'unknown', {
     code: 'noticeOutcomeUnknown', kind: 'warning', detail: 'outcome not known',
   })
