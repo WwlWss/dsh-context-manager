@@ -10,6 +10,7 @@ import {
   resourceEditChanges,
   validateResourceCreateDraft,
 } from './resource-editor.js'
+import { ownsLiveResourceDraft, readLivePresentationForActions } from './presentation-store.js'
 import styles from './plugin.module.css'
 
 function button(
@@ -50,13 +51,14 @@ export function ContextManagerResourceDrawerContent(props: ContextManagerDrawerP
   const operation = props.useResourceMutation(s => s.resource)
   const requestedId = useStore(s => s.selectedResourceId)
   const draft = useStore(s => s.resourceDraft)
+  const profileDraft = useStore(s => s.draft)
   const notice = useStore(s => s.resourceNotice)
   const view = deriveResourceView(snapshot, requestedId)
   const running = operation.status === 'running'
-  const canStart = view.writable && !running && draft === null
+  const canStart = view.writable && !running && draft === null && profileDraft === null
   const draftCurrent = draft === null || isResourceDraftCurrent(snapshot, draft)
   const canSubmit = draft !== null && draft.blocked === undefined
-    && draftCurrent && view.writable && !running
+    && !draft.submitting && draftCurrent && view.writable && !running
   const selectedId = view.selectedId
   const mounted = useRef(false)
   const latestSelection = useRef(selectedId)
@@ -175,7 +177,8 @@ export function ContextManagerResourceDrawerContent(props: ContextManagerDrawerP
   }
 
   const commit = async () => {
-    if (!canSubmit || draft === null || committing.current !== null) return
+    if (!canSubmit || draft === null || committing.current !== null
+      || !ownsLiveResourceDraft(readLivePresentationForActions(actions), draft)) return
     if (draft.kind === 'create') {
       const validation = validateResourceCreateDraft(draft, new Set(view.rows.map(row => row.id)))
       if (validation !== 'valid') {
@@ -185,6 +188,9 @@ export function ContextManagerResourceDrawerContent(props: ContextManagerDrawerP
         return
       }
     }
+    actions.beginResourceSubmission(draft.token)
+    const claimed = readLivePresentationForActions(actions)?.resourceDraft
+    if (claimed?.token !== draft.token || claimed.submitting !== true) return
     committing.current = draft.token
     try {
       const result = await commitResourceDraft(draft, props.resourceMutations)
@@ -196,6 +202,7 @@ export function ContextManagerResourceDrawerContent(props: ContextManagerDrawerP
         detail: error instanceof Error ? error.message : undefined,
       })
     } finally {
+      actions.finishResourceSubmission(draft.token)
       if (committing.current === draft.token) committing.current = null
     }
   }
@@ -222,7 +229,9 @@ export function ContextManagerResourceDrawerContent(props: ContextManagerDrawerP
       h('p', null, t('resourceDraftBlockedHint')),
       h('div', { className: styles.actions },
         button(t('refresh'), refresh, running),
-        button(t('discardDraft'), () => actions.cancelResourceDraft(), running),
+        button(t('discardDraft'), () => draft.blocked !== undefined
+          ? actions.discardBlockedResourceDraft(draft.token) : actions.cancelResourceDraft(draft.token),
+          running || draft.submitting === true),
       ),
     ) : null
 
@@ -232,14 +241,14 @@ export function ContextManagerResourceDrawerContent(props: ContextManagerDrawerP
     } },
     h('h3', null, t('resourceCreateTitle')),
     field('cm-resource-create-id', t('fieldId'), draft.id,
-      v => actions.updateResourceCreate('id', v), !canSubmit),
+      v => actions.updateResourceCreate(draft.token, 'id', v), !canSubmit),
     h('p', { className: styles.hint }, t('idImmutableHint')),
     field('cm-resource-create-name', t('fieldName'), draft.name,
-      v => actions.updateResourceCreate('name', v), !canSubmit),
+      v => actions.updateResourceCreate(draft.token, 'name', v), !canSubmit),
     field('cm-resource-create-description', t('fieldDescription'), draft.description,
-      v => actions.updateResourceCreate('description', v), !canSubmit),
+      v => actions.updateResourceCreate(draft.token, 'description', v), !canSubmit),
     field('cm-resource-create-content', t('resourceContent'), draft.content,
-      v => actions.updateResourceCreate('content', v), !canSubmit, true),
+      v => actions.updateResourceCreate(draft.token, 'content', v), !canSubmit, true),
     h('p', { className: styles.hint }, t('resourceBodyExactHint')),
     h('div', { className: styles.actions },
       h('button', {
@@ -247,7 +256,7 @@ export function ContextManagerResourceDrawerContent(props: ContextManagerDrawerP
         disabled: !canSubmit
           || validateResourceCreateDraft(draft, new Set(view.rows.map(x => x.id))) !== 'valid',
       }, t('create')),
-      button(t('cancel'), () => actions.cancelResourceDraft(), running),
+      button(t('cancel'), () => actions.cancelResourceDraft(draft.token), running || draft.submitting === true),
     ),
     ) : null
 
@@ -258,28 +267,28 @@ export function ContextManagerResourceDrawerContent(props: ContextManagerDrawerP
     h('h3', null, t('resourceDetails')),
     h('p', { className: styles.hint }, `${t('resourceRevision')}: ${draft.stamp.revision}`),
     field('cm-resource-edit-name', t('fieldName'), draft.name,
-      v => actions.updateResourceEdit('name', v), !canSubmit),
+      v => actions.updateResourceEdit(draft.token, 'name', v), !canSubmit),
     field('cm-resource-edit-description', t('fieldDescription'),
       draft.removeDescription ? '' : draft.description,
-      v => actions.updateResourceEdit('description', v), !canSubmit),
+      v => actions.updateResourceEdit(draft.token, 'description', v), !canSubmit),
     h('div', { className: styles.actions },
-      button(t('removeDescription'), () => actions.markResourceDescriptionRemoved(),
+      button(t('removeDescription'), () => actions.markResourceDescriptionRemoved(draft.token),
         !canSubmit || draft.original.description === undefined),
       draft.original.description === undefined
         ? button(t('resourceSetEmptyDescription'),
-          () => actions.markResourceDescriptionEmpty(), !canSubmit)
+          () => actions.markResourceDescriptionEmpty(draft.token), !canSubmit)
         : null,
     ),
     draft.removeDescription
       ? h('p', { className: styles.hint }, t('resourceRemoveDescriptionHint')) : null,
     field('cm-resource-edit-content', t('resourceContent'), draft.content,
-      v => actions.updateResourceEdit('content', v), !canSubmit, true),
+      v => actions.updateResourceEdit(draft.token, 'content', v), !canSubmit, true),
     h('p', { className: styles.hint }, t('resourceBodyExactHint')),
     h('div', { className: styles.actions },
       h('button', { type: 'submit', className: styles.primary,
         disabled: !canSubmit || resourceEditChanges(draft).length === 0,
       }, t('save')),
-      button(t('cancel'), () => actions.cancelResourceDraft(), running),
+      button(t('cancel'), () => actions.cancelResourceDraft(draft.token), running || draft.submitting === true),
     ),
     ) : null
 
@@ -291,7 +300,7 @@ export function ContextManagerResourceDrawerContent(props: ContextManagerDrawerP
       h('code', null, draft.resourceId),
       h('div', { className: styles.actions },
         button(t('confirmDelete'), () => { void commit() }, !canSubmit, true),
-        button(t('cancel'), () => actions.cancelResourceDraft(), running),
+        button(t('cancel'), () => actions.cancelResourceDraft(draft.token), running || draft.submitting === true),
       ),
     ) : null
 
