@@ -7,8 +7,8 @@ import {
 import {
   mayDispatchImmediateProfileWrite,
   ownsLiveProfileDraft,
+  readLivePresentationForActions,
   terminalProfileNotice,
-  type ContextManagerPresentationState,
   type ContextManagerPresentationStoreHandle,
 } from './presentation-store.js'
 import type { ContextManagerClientBusinessFace } from './business-face.js'
@@ -39,10 +39,7 @@ export type ContextManagerDrawerProps = ComposedProps<
   ContextManagerClientBusinessFace,
   never,
   typeof CONTEXT_MANAGER_LOCALE
-> & {
-  /** Actual registered DSH root StoreInstance; never a React-rendered copy. */
-  readonly readLivePresentation?: () => ContextManagerPresentationState | undefined
-}
+>
 
 function button(
   label: string,
@@ -190,7 +187,7 @@ export function ContextManagerProfileDrawerContent(props: ContextManagerDrawerPr
   }
   const commitDraft = async () => {
     if (!canSubmit || draft === null
-      || !ownsLiveProfileDraft(props.readLivePresentation?.(), draft)) return
+      || !ownsLiveProfileDraft(readLivePresentationForActions(actions), draft)) return
     if (draft.kind === 'create') {
       const reserved = new Set(view.rows.map(row => row.id))
       const validation = validateCreateDraft(draft, reserved)
@@ -233,7 +230,7 @@ export function ContextManagerProfileDrawerContent(props: ContextManagerDrawerPr
   }
   const changeDefault = async (id: string | null) => {
     if (!canStart || !mayDispatchImmediateProfileWrite(
-      props.readLivePresentation?.(), requestedId,
+      readLivePresentationForActions(actions), requestedId,
     )) return
     const basis = captureBasis()
     if (!basis) return
