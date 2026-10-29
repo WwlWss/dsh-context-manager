@@ -25,6 +25,19 @@ export interface ContextManagerPresentationState {
   notice: ProfileNotice | null
 }
 
+/** The published DSH Renderer passes StoreInstance.actions by identity to
+ * each root slot. Resolve that exact instance (not a parallel presentation
+ * cache) synchronously when a stale React callback attempts a write.
+ * A WeakMap permits independent plugin instances; teardown explicitly revokes
+ * even callbacks that retain the old actions object. */
+const publishedStoreForActions = new WeakMap<object, { getSnapshot(): ContextManagerPresentationState }>()
+
+export function readLivePresentationForActions(
+  actions: object,
+): ContextManagerPresentationState | undefined {
+  return publishedStoreForActions.get(actions)?.getSnapshot()
+}
+
 /** The terminal Binding receipt is presentation-only, but its meaning must
  * survive any later ordinary UI warning (including obsolete callbacks). */
 export function terminalProfileNotice(
@@ -454,7 +467,10 @@ export function createContextManagerPresentationStore() {
     ...handle,
     create(scopeKey?: string) {
       const instance = handle.create(scopeKey)
-      if (scopeKey === undefined && !revoked) rootInstance = instance
+      if (scopeKey === undefined && !revoked) {
+        rootInstance = instance
+        publishedStoreForActions.set(instance.actions, instance)
+      }
       return instance
     },
     readLiveSnapshot(): ContextManagerPresentationState | undefined {
@@ -462,6 +478,7 @@ export function createContextManagerPresentationStore() {
     },
     revokeSnapshotReader() {
       revoked = true
+      if (rootInstance !== undefined) publishedStoreForActions.delete(rootInstance.actions)
       rootInstance = undefined
     },
   }
