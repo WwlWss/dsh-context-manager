@@ -21,6 +21,7 @@ import {
   resolveProfilePreset,
   type ProfileListRow,
 } from './profile-view.js'
+import { ContextManagerPromptBindingSection } from './prompt-binding-section.js'
 import styles from './plugin.module.css'
 
 export type ContextManagerDrawerProps = ComposedProps<
@@ -182,7 +183,7 @@ export function ContextManagerProfileDrawerContent(props: ContextManagerDrawerPr
     } else if (draft.kind === 'confirm-delete') {
       const result = await props.profileMutations.deleteProfile(draft.basis, draft.profileId)
       afterMutation(result, draft)
-    } else {
+    } else if (draft.kind === 'edit-field') {
       if (!editValueChanged(draft)) return
       let result: ContextManagerClientProfileMutationResult
       switch (draft.field) {
@@ -377,6 +378,10 @@ export function ContextManagerProfileDrawerContent(props: ContextManagerDrawerPr
                   unverified: 'presetUnverified',
                 } as const)[resolveProfilePreset(snapshot, selected.id)])),
               ),
+              h(ContextManagerPromptBindingSection, {
+                ...props, profileId: selected.id, profile: selected.profile,
+                writable: view.writable,
+              }),
             ),
         draft?.kind === 'confirm-delete' && draft.profileId === selected.id
           ? h('section', { className: styles.warning, role: 'group', 'aria-label': t('deleteConfirmTitle') },
