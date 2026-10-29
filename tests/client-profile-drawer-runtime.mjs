@@ -720,10 +720,13 @@ await act(async () => {
 assert.equal(remoteFixture.resourceWrites.length, 0)
 // Two rapid form submits from the same render must not issue two writes or
 // publish an obsolete busy result that overwrites the successful outcome.
+const sameFrameResourceCancel = buttonByLabel(tree, 'Cancel').props.onClick
 await act(async () => {
   const form = tree.root.findAllByType('form')[0]
   form.props.onSubmit({ preventDefault() {} })
   form.props.onSubmit({ preventDefault() {} })
+  // Old Cancel from this render must not destroy the now-submitting draft.
+  sameFrameResourceCancel()
   for (let i = 0; i < 30; i += 1) await Promise.resolve()
 })
 await settleUI()
@@ -971,8 +974,10 @@ await act(async () => {
   tree.root.findByProps({ id: 'cm-binding-create-order' }).props.onChange({ currentTarget: { value: '-5' } })
 })
 assert.equal(remoteFixture.writes.length, bindingWritesStart)
+const sameFrameBindingCancel = buttonByLabel(tree, 'Cancel').props.onClick
 await act(async () => {
   tree.root.findByProps({ 'data-context-manager-binding-create-form': '' }).props.onSubmit({ preventDefault() {} })
+  sameFrameBindingCancel()
   for (let i = 0; i < 25; i += 1) await Promise.resolve()
 })
 await settleUI()
@@ -1024,6 +1029,7 @@ await act(async () => {
   })
 })
 remoteFixture.makeUnknownNextWrite()
+const obsoletePreSubmitCancel = buttonByLabel(tree, 'Cancel').props.onClick
 // Start an unresolved UI-only refresh request before the uncertain write;
 // its rejected completion must not overwrite the later terminal outcome.
 delayNextUiRefresh = true
@@ -1039,6 +1045,9 @@ assert.equal(remoteFixture.writes.length, beforeUnknownBinding + 1)
 assert.equal(remoteFixture.profiles.main.prompts['m8a2-ui'].resourceId, 'unknown-response-but-committed')
 assert.equal(tree.root.findByProps({ 'data-context-manager-binding-save': '' }).props.disabled, true)
 assert.ok(renderedText(tree.root).includes('write outcome is unknown'))
+await act(async () => { obsoletePreSubmitCancel() })
+assert.ok(renderedText(tree.root).includes('write outcome is unknown'),
+  'old pre-submit Cancel must not discard a same-token terminal Unknown')
 await act(async () => {
   rejectDelayedUiRefresh(new Error('late Profile refresh failure'))
   for (let i = 0; i < 15; i += 1) await Promise.resolve()
