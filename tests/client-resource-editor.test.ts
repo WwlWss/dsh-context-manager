@@ -231,8 +231,10 @@ test('presentation store keeps Resource draft across close/reopen and prevents t
   const store = createContextManagerPresentationStore().create()
   store.actions.selectPane('resources')
   store.actions.beginResourceCreate(CREATE)
-  store.actions.updateResourceCreate('id', 'original')
-  store.actions.updateResourceCreate('content', 'exact\n')
+  const initialToken = store.getSnapshot().resourceDraft?.token
+  assert.ok(initialToken)
+  store.actions.updateResourceCreate(initialToken, 'id', 'original')
+  store.actions.updateResourceCreate(initialToken, 'content', 'exact\n')
   store.actions.close()
   store.actions.open()
   assert.equal(store.getSnapshot().pane, 'resources')
@@ -246,20 +248,21 @@ test('presentation store keeps Resource draft across close/reopen and prevents t
   const token = store.getSnapshot().resourceDraft?.token
   assert.ok(token)
   store.actions.blockResourceDraft(token, 'unknown', { code: 'resourceNoticeUnknown', kind: 'warning' })
-  store.actions.updateResourceCreate('id', 'not-allowed')
+  store.actions.updateResourceCreate(initialToken, 'id', 'not-allowed')
   const blockedDraft = store.getSnapshot().resourceDraft
   assert.equal(blockedDraft?.kind === 'create' ? blockedDraft.id : undefined, 'original')
-  store.actions.cancelResourceDraft()
+  store.actions.discardBlockedResourceDraft(initialToken)
   store.actions.selectPane('profiles')
   assert.equal(store.getSnapshot().pane, 'profiles')
 })
 
 test('resource presentation token prevents late completion from clearing a new draft', () => {
   const s = createContextManagerPresentationStore().create()
+  s.actions.selectPane('resources')
   s.actions.beginResourceCreate(CREATE)
   const old = s.getSnapshot().resourceDraft?.token
   assert.ok(old)
-  s.actions.cancelResourceDraft()
+  s.actions.cancelResourceDraft(old)
   s.actions.beginResourceCreate(CREATE)
   const fresh = s.getSnapshot().resourceDraft?.token
   assert.ok(fresh && fresh !== old)
