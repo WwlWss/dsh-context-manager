@@ -375,7 +375,12 @@ function createWritableRemoteFixture() {
     failNextResourceListRead() { failNextResourceListRead = true },
     externalResourceReplacement(id, newName) {
       const old = resources.get(id)
-      resources.set(id, { ...old, name: newName, incarnationId: 'new-incarnation-' + id })
+      resources.set(id, {
+        ...old, name: newName,
+        // A *second* replacement must be another incarnation even when the
+        // Resource ID and numerical revision happen to be identical.
+        incarnationId: 'new-incarnation-' + id + '-' + String(resourceCursor + 1),
+      })
       resourceCursor += 1
       change += 1
     },
