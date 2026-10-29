@@ -14,6 +14,8 @@ interface DraftBase {
   token: number
   readonly basis: ContextManagerClientProfileMutationBasis
   blocked?: ProfileDraftBlock
+  /** Presentation-only synchronous submission claim; never Host authority. */
+  submitting?: boolean
 }
 
 /** Presentation-only terminal notice tied to an exact Binding draft token.
