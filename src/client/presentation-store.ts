@@ -235,6 +235,10 @@ export function createContextManagerPresentationStore() {
         }
         state.notice = null
       },
+      setPromptBindingNotice(state, token: number, notice: ProfileNotice) {
+        if (state.draft?.token !== token || !state.draft.kind.startsWith('prompt-binding-')) return
+        state.notice = notice
+      },
       blockPromptBindingDraft(state, token: number,
         reason: 'unknown' | 'conflict' | 'stale' | 'unverified',
       ) {
