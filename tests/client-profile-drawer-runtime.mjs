@@ -379,6 +379,18 @@ function createWritableRemoteFixture() {
       resourceCursor += 1
       change += 1
     },
+    externalResourceRevision(id, newName) {
+      const old = resources.get(id)
+      resources.set(id, { ...old, name: newName, revision: old.revision + 1 })
+      resourceCursor += 1
+      change += 1
+    },
+    externalSetDefault(id) {
+      defaultId = id
+      revision += 1
+      profileCursor += 1
+      change += 1
+    },
     makeUnknownNextWrite() { unknownNextWrite = true },
     externalRename(id, name) {
       // A distinct Settings writer updates the authoritative revision
@@ -840,6 +852,52 @@ await act(async () => { buttonByLabel(tree, 'Refresh').props.onClick() })
 await settleUI()
 assert.equal(remoteFixture.resourceWrites.length, beforeDegraded + 1)
 
+// M8A2 Fix4 RED: stale rendered Resource Edit/Delete callbacks must not
+// pair a previous List/Document with a newly captured valid Stamp.
+const staleResourceEdit = buttonByLabel(tree, 'Edit').props.onClick
+const staleResourceDelete = buttonByLabel(tree, 'Delete resource').props.onClick
+remoteFixture.externalResourceReplacement('res-ui', 'External new incarnation')
+await act(async () => {
+  await injectedBusiness?.()?.refresh()
+  await injectedBusiness?.()?.loadPromptResourceList()
+  await injectedBusiness?.()?.loadPromptResource('res-ui')
+})
+await settleUI()
+const beforeOldResourceBegin = remoteFixture.resourceWrites.length
+await act(async () => { staleResourceEdit() })
+assert.equal(registeredOverlayStore.readLiveSnapshot()?.resourceDraft, null,
+  'M8A2 Fix4 RED: old Resource Edit must not pair stale document with new incarnation Stamp')
+await act(async () => { staleResourceDelete() })
+assert.equal(registeredOverlayStore.readLiveSnapshot()?.resourceDraft, null,
+  'M8A2 Fix4 RED: old Resource Delete must not delete a replaced incarnation')
+assert.equal(remoteFixture.resourceWrites.length, beforeOldResourceBegin)
+assert.equal(remoteFixture.resources.get('res-ui').name, 'External new incarnation')
+
+// A revision-only change (same incarnation) also makes the old Edit invalid.
+const staleResourceRevisionEdit = buttonByLabel(tree, 'Edit').props.onClick
+remoteFixture.externalResourceRevision('res-ui', 'Another writer changed name')
+await act(async () => {
+  await injectedBusiness?.()?.refresh()
+  await injectedBusiness?.()?.loadPromptResourceList()
+  await injectedBusiness?.()?.loadPromptResource('res-ui')
+})
+await settleUI()
+await act(async () => { staleResourceRevisionEdit() })
+assert.equal(registeredOverlayStore.readLiveSnapshot()?.resourceDraft, null,
+  'M8A2 Fix4 RED: old Resource Edit must not pair stale document with latest revision')
+
+// By contrast, fresh reads of the SAME version may replace JS object identity.
+const sameVersionResourceEdit = buttonByLabel(tree, 'Edit').props.onClick
+await act(async () => {
+  await injectedBusiness?.()?.loadPromptResourceList()
+  await injectedBusiness?.()?.loadPromptResource('res-ui')
+})
+await settleUI()
+await act(async () => { sameVersionResourceEdit() })
+assert.equal(registeredOverlayStore.readLiveSnapshot()?.resourceDraft?.kind, 'edit',
+  'same-version rehydration should not reject the original Resource Edit')
+await act(async () => { buttonByLabel(tree, 'Cancel').props.onClick() })
+
 // The Resource deletion must not cascade to Profile PromptBinding intent.
 remoteFixture.profiles.main.prompts.dangling = {
   resourceId: 'res-ui', enabled: true, placement: 'before-persona', order: 1,
@@ -1243,6 +1301,33 @@ const beforeHostSwitchWrite = remoteFixture.writes.length
 await act(async () => { beforeHostSwitchCallback() })
 assert.equal(tree.root.findAllByProps({ 'data-context-manager-binding-edit-form': '' }).length, 0)
 assert.equal(remoteFixture.writes.length, beforeHostSwitchWrite)
+
+// M8A2 Fix4 RED: M7C old Edit/Delete/Default callbacks must not pair
+// old rendered Profile/default intent with a new Settings revision.
+const staleProfileEdit = buttonByLabel(tree, 'Edit', 0).props.onClick
+const staleProfileDelete = buttonByLabel(tree, 'Delete profile').props.onClick
+const staleDefaultToggle = buttonByLabel(tree, 'Set as default').props.onClick
+remoteFixture.externalRename('main', 'External writer changed visible Profile')
+await act(async () => { await injectedBusiness?.()?.refresh() })
+await settleUI()
+const beforeOldProfileBegin = remoteFixture.writes.length
+await act(async () => { staleProfileEdit() })
+assert.equal(registeredOverlayStore.readLiveSnapshot()?.draft, null,
+  'M8A2 Fix4 RED: old M7C Edit may not reuse the latest Settings Basis')
+await act(async () => { staleProfileDelete() })
+assert.equal(registeredOverlayStore.readLiveSnapshot()?.draft, null,
+  'M8A2 Fix4 RED: old M7C Delete may not reuse the latest Settings Basis')
+assert.equal(remoteFixture.writes.length, beforeOldProfileBegin)
+remoteFixture.externalSetDefault('external-default')
+await act(async () => { await injectedBusiness?.()?.refresh() })
+await settleUI()
+await act(async () => {
+  staleDefaultToggle()
+  for (let i = 0; i < 20; i += 1) await Promise.resolve()
+})
+assert.equal(remoteFixture.writes.length, beforeOldProfileBegin,
+  'M8A2 Fix4 RED: old Default toggle must issue zero Profile writes')
+assert.equal(remoteFixture.getDefault(), 'external-default')
 
 remoteFixture.setReadOnly(true)
 const overlayFace = injectedBusiness?.()
