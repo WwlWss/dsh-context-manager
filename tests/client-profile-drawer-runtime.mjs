@@ -830,7 +830,65 @@ await act(async () => { await injectedBusiness?.()?.refresh() })
 await settleUI()
 const bindingStartButton = tree.root.findByProps({ 'data-context-manager-new-binding': '' })
 assert.equal(bindingStartButton.props.disabled, false, 'fresh Profile basis should permit a new binding')
-await act(async () => { bindingStartButton.props.onClick() })
+
+// M8A2 Fix2 RED: a Profile default handler captured before a Binding draft
+// must not dispatch after the Store begins that draft, even *before React
+// re-renders*. The Controller does not own Presentation draft exclusivity.
+const oldDefaultOnClick = buttonByLabel(tree, 'Set as default').props.onClick
+const beforeStaleDefault = remoteFixture.writes.length
+await act(async () => {
+  bindingStartButton.props.onClick()
+  oldDefaultOnClick()
+  for (let i = 0; i < 25; i += 1) await Promise.resolve()
+})
+await settleUI()
+assert.equal(remoteFixture.writes.length, beforeStaleDefault,
+  'M8A2 Fix2 RED: obsolete default callback must issue 0 Profile RPCs')
+assert.equal(tree.root.findAllByProps({ 'data-context-manager-binding-create-form': '' }).length, 1)
+await act(async () => { buttonByLabel(tree, 'Cancel').props.onClick() })
+await settleUI()
+
+// Old M7C submit closure cannot save after cancel and Binding draft takeover.
+await act(async () => { buttonByLabel(tree, 'Edit', 0).props.onClick() })
+await act(async () => {
+  tree.root.findByProps({ id: 'cm-edit-name' }).props.onChange({ currentTarget: { value: 'obsolete-profile-write' } })
+})
+const obsoleteProfileSubmit = tree.root.findAllByType('form')[0].props.onSubmit
+await act(async () => { buttonByLabel(tree, 'Cancel').props.onClick() })
+await act(async () => { tree.root.findByProps({ 'data-context-manager-new-binding': '' }).props.onClick() })
+const beforeStaleProfileSave = remoteFixture.writes.length
+await act(async () => {
+  obsoleteProfileSubmit({ preventDefault() {} })
+  for (let i = 0; i < 25; i += 1) await Promise.resolve()
+})
+await settleUI()
+assert.equal(remoteFixture.writes.length, beforeStaleProfileSave,
+  'M8A2 Fix2 RED: stale M7C form must not dispatch during Binding draft')
+await act(async () => { buttonByLabel(tree, 'Cancel').props.onClick() })
+
+// Old M8A2 Save closure cannot submit an abandoned Binding when a new
+// Binding draft owns the same shared Profile Store slot.
+await act(async () => { tree.root.findByProps({ 'data-context-manager-new-binding': '' }).props.onClick() })
+await act(async () => {
+  tree.root.findByProps({ id: 'cm-binding-create-id' }).props.onChange({ currentTarget: { value: 'abandoned-binding' } })
+})
+const obsoleteBindingSubmit = tree.root.findByProps({
+  'data-context-manager-binding-create-form': '',
+}).props.onSubmit
+await act(async () => { buttonByLabel(tree, 'Cancel').props.onClick() })
+await act(async () => { tree.root.findByProps({ 'data-context-manager-new-binding': '' }).props.onClick() })
+const beforeStaleBindingSave = remoteFixture.writes.length
+await act(async () => {
+  obsoleteBindingSubmit({ preventDefault() {} })
+  for (let i = 0; i < 25; i += 1) await Promise.resolve()
+})
+await settleUI()
+assert.equal(remoteFixture.writes.length, beforeStaleBindingSave,
+  'M8A2 Fix2 RED: abandoned Binding form must issue 0 Profile RPCs')
+assert.equal(Object.hasOwn(remoteFixture.profiles.main.prompts, 'abandoned-binding'), false)
+await act(async () => { buttonByLabel(tree, 'Cancel').props.onClick() })
+
+await act(async () => { tree.root.findByProps({ 'data-context-manager-new-binding': '' }).props.onClick() })
 assert.equal(tree.root.findAllByProps({ id: 'cm-binding-create-id' }).length, 1,
   'M8A2 beginCreate must retain the bound selected usable Profile draft')
 await act(async () => {
