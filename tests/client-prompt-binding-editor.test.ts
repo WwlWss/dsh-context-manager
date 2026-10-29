@@ -401,7 +401,12 @@ test('M8A2 Fix2: one actual DSH StoreInstance provides synchronous live dispatch
   assert.equal(ownsLiveProfileDraft(readLivePresentationForActions(actions), current), false)
   actions.cancelDraft()
   assert.equal(mayDispatchImmediateProfileWrite(readLivePresentationForActions(actions), 'main'), true)
+  const remounted = handle.create()
+  assert.equal(readLivePresentationForActions(actions), undefined,
+    'a replaced root Store instance invalidates old actions identity immediately')
+  assert.strictEqual(readLivePresentationForActions(remounted.actions), remounted.getSnapshot())
   handle.revokeSnapshotReader()
+  assert.equal(readLivePresentationForActions(remounted.actions), undefined)
   assert.equal(readLivePresentationForActions(actions), undefined,
     'a captured obsolete callback must not read a disposed Store')
   assert.equal(mayDispatchImmediateProfileWrite(readLivePresentationForActions(actions), 'main'), false)
