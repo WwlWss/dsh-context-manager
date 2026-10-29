@@ -467,6 +467,34 @@ test('M8A2 Fix3 GREEN: old callbacks cannot mutate or clear a newer Binding term
   assert.equal(store.getSnapshot().notice?.code, 'noticeOutcomeUnknown')
 })
 
+test('M8A2 final Strict RED: late same-token Profile Complete cannot erase first blocked Binding terminal receipt', () => {
+  for (const { blocked, code } of [
+    { blocked: 'unknown', code: 'noticeOutcomeUnknown' },
+    { blocked: 'conflict', code: 'noticeConflict' },
+    { blocked: 'unverified', code: 'noticeSavedDegraded' },
+  ] as const) {
+    const store = createContextManagerPresentationStore().create()
+    const a = store.actions
+    a.beginPromptBindingFieldEdit({
+      profileId: 'main', bindingId: 'exact', field: 'enabled',
+      original: true, basis: BASIS,
+    })
+    const first = store.getSnapshot().draft
+    assert.ok(first?.kind === 'prompt-binding-edit-field')
+    const receipt = { code, kind: 'warning', detail: 'first immutable receipt' } as const
+    a.blockDraft(first.token, blocked, receipt)
+    a.completeDraft(first.token, { code: 'noticeSaved', kind: 'success' }, 'incorrect-new-selection')
+    const retained = store.getSnapshot()
+    assert.equal(retained.draft?.token, first.token,
+      blocked + ': late Complete must not clear a blocked draft')
+    assert.equal(retained.draft?.blocked, blocked)
+    assert.equal(retained.selectedProfileId, 'main')
+    assert.deepEqual(retained.notice, receipt)
+    a.discardBlockedDraft(first.token)
+    assert.equal(store.getSnapshot().draft, null)
+  }
+})
+
 test('M8A2 Fix3 GREEN: exact-token submission blocks Cancel, stale input and retries until a terminal receipt', () => {
   const store = createContextManagerPresentationStore().create()
   const a = store.actions
