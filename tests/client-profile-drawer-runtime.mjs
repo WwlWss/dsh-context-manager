@@ -870,7 +870,7 @@ await act(async () => { buttonByLabel(tree, 'Refresh').props.onClick() })
 await settleUI()
 assert.equal(remoteFixture.resourceWrites.length, beforeDegraded + 1)
 
-// M8A2 Fix4 RED: stale rendered Resource Edit/Delete callbacks must not
+// M8A2 Fix4 GREEN: stale rendered Resource Edit/Delete callbacks must not
 // pair a previous List/Document with a newly captured valid Stamp.
 const staleResourceEdit = buttonByLabel(tree, 'Edit').props.onClick
 const staleResourceDelete = buttonByLabel(tree, 'Delete resource').props.onClick
@@ -884,10 +884,10 @@ await settleUI()
 const beforeOldResourceBegin = remoteFixture.resourceWrites.length
 await act(async () => { staleResourceEdit() })
 assert.equal(registeredOverlayStore.readLiveSnapshot()?.resourceDraft, null,
-  'M8A2 Fix4 RED: old Resource Edit must not pair stale document with new incarnation Stamp')
+  'M8A2 Fix4 GREEN: old Resource Edit must not pair stale document with new incarnation Stamp')
 await act(async () => { staleResourceDelete() })
 assert.equal(registeredOverlayStore.readLiveSnapshot()?.resourceDraft, null,
-  'M8A2 Fix4 RED: old Resource Delete must not delete a replaced incarnation')
+  'M8A2 Fix4 GREEN: old Resource Delete must not delete a replaced incarnation')
 assert.equal(remoteFixture.resourceWrites.length, beforeOldResourceBegin)
 assert.equal(remoteFixture.resources.get('res-ui').name, 'External new incarnation')
 
@@ -902,7 +902,7 @@ await act(async () => {
 await settleUI()
 await act(async () => { staleResourceRevisionEdit() })
 assert.equal(registeredOverlayStore.readLiveSnapshot()?.resourceDraft, null,
-  'M8A2 Fix4 RED: old Resource Edit must not pair stale document with latest revision')
+  'M8A2 Fix4 GREEN: old Resource Edit must not pair stale document with latest revision')
 
 // By contrast, fresh reads of the SAME version may replace JS object identity.
 const sameVersionResourceEdit = buttonByLabel(tree, 'Edit').props.onClick
@@ -1320,7 +1320,7 @@ await act(async () => { beforeHostSwitchCallback() })
 assert.equal(tree.root.findAllByProps({ 'data-context-manager-binding-edit-form': '' }).length, 0)
 assert.equal(remoteFixture.writes.length, beforeHostSwitchWrite)
 
-// M8A2 Fix4 RED: M7C old Edit/Delete/Default callbacks must not pair
+// M8A2 Fix4 GREEN: M7C old Edit/Delete/Default callbacks must not pair
 // old rendered Profile/default intent with a new Settings revision.
 const staleProfileEdit = buttonByLabel(tree, 'Edit', 0).props.onClick
 const staleProfileDelete = buttonByLabel(tree, 'Delete profile').props.onClick
@@ -1331,10 +1331,10 @@ await settleUI()
 const beforeOldProfileBegin = remoteFixture.writes.length
 await act(async () => { staleProfileEdit() })
 assert.equal(registeredOverlayStore.readLiveSnapshot()?.draft, null,
-  'M8A2 Fix4 RED: old M7C Edit may not reuse the latest Settings Basis')
+  'M8A2 Fix4 GREEN: old M7C Edit may not reuse the latest Settings Basis')
 await act(async () => { staleProfileDelete() })
 assert.equal(registeredOverlayStore.readLiveSnapshot()?.draft, null,
-  'M8A2 Fix4 RED: old M7C Delete may not reuse the latest Settings Basis')
+  'M8A2 Fix4 GREEN: old M7C Delete may not reuse the latest Settings Basis')
 assert.equal(remoteFixture.writes.length, beforeOldProfileBegin)
 remoteFixture.externalSetDefault('external-default')
 await act(async () => { await injectedBusiness?.()?.refresh() })
@@ -1344,7 +1344,7 @@ await act(async () => {
   for (let i = 0; i < 20; i += 1) await Promise.resolve()
 })
 assert.equal(remoteFixture.writes.length, beforeOldProfileBegin,
-  'M8A2 Fix4 RED: old Default toggle must issue zero Profile writes')
+  'M8A2 Fix4 GREEN: old Default toggle must issue zero Profile writes')
 assert.equal(remoteFixture.getDefault(), 'external-default')
 
 remoteFixture.setReadOnly(true)
