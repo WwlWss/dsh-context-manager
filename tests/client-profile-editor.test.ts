@@ -230,14 +230,14 @@ test('DSH presentation store retains drafts across overlay close/reopen and guar
   const draft = store.getSnapshot().draft
   assert.equal(draft?.kind, 'edit-field')
   assert.deepEqual(draft?.basis, BASIS)
-  store.actions.updateField('Changed')
+  store.actions.updateField(draft!.token, 'Changed')
   store.actions.close()
   store.actions.open()
   assert.equal(store.getSnapshot().draft?.kind, 'edit-field')
   store.actions.selectProfile('other')
   assert.equal(store.getSnapshot().selectedProfileId, 'main')
   assert.equal(store.getSnapshot().notice?.code, 'noticeDraftActive')
-  store.actions.cancelDraft()
+  store.actions.cancelDraft(draft!.token)
   store.actions.selectProfile('other')
   assert.equal(store.getSnapshot().selectedProfileId, 'other')
 })
@@ -247,16 +247,16 @@ test('DSH presentation store blocks uncertain replay, and older completions cann
   store.actions.beginCreate(BASIS)
   const firstToken = store.getSnapshot().draft?.token
   assert.ok(firstToken)
-  store.actions.updateCreate('id', 'new')
+  store.actions.updateCreate(firstToken, 'id', 'new')
   store.actions.blockDraft(firstToken, 'unknown', { code: 'noticeOutcomeUnknown', kind: 'warning' })
   assert.equal(store.getSnapshot().draft?.blocked, 'unknown')
-  store.actions.updateCreate('id', 'illegal-retry')
+  store.actions.updateCreate(firstToken, 'id', 'illegal-retry')
   assert.equal(store.getSnapshot().draft?.kind, 'create')
   const blockedDraft = store.getSnapshot().draft
   if (blockedDraft?.kind === 'create') {
     assert.equal(blockedDraft.id, 'new')
   }
-  store.actions.cancelDraft()
+  store.actions.discardBlockedDraft(firstToken)
   store.actions.beginCreate(BASIS)
   const second = store.getSnapshot().draft
   assert.ok(second && second.token !== firstToken)
