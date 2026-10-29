@@ -16,6 +16,12 @@ interface DraftBase {
   blocked?: ProfileDraftBlock
 }
 
+/** Presentation-only terminal notice tied to an exact Binding draft token.
+ * This never carries write authority or modifies Host/Remote mutation results. */
+interface BindingDraftBase extends DraftBase {
+  terminalNotice?: ProfileNotice
+}
+
 export type PromptBindingEditField = 'resourceId' | 'enabled' | 'placement' | 'order'
 
 export type PromptBindingFieldValue =
@@ -25,7 +31,7 @@ export type PromptBindingFieldValue =
   | { field: 'order'; original: number; value: string }
 
 export type PromptBindingDraft =
-  | (DraftBase & {
+  | (BindingDraftBase & {
       kind: 'prompt-binding-create'
       profileId: string
       bindingId: string
@@ -34,12 +40,12 @@ export type PromptBindingDraft =
       placement: ContextManagerRemotePromptPlacement
       orderText: string
     })
-  | (DraftBase & {
+  | (BindingDraftBase & {
       kind: 'prompt-binding-edit-field'
       profileId: string
       bindingId: string
     } & PromptBindingFieldValue)
-  | (DraftBase & {
+  | (BindingDraftBase & {
       kind: 'prompt-binding-delete'
       profileId: string
       bindingId: string
