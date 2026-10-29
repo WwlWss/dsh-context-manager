@@ -61,8 +61,8 @@ test('M8A2 GREEN: one shared Profile draft slot accepts exact Binding create and
   assert.equal(draft.kind, 'prompt-binding-create')
   assert.deepEqual(draft.basis, BASIS)
   assert.equal(typeof actions.updatePromptBindingCreate, 'function')
-  actions.updatePromptBindingCreate('bindingId', '  exact  ')
-  actions.updatePromptBindingCreate('resourceId', '__proto__')
+  actions.updatePromptBindingCreate(draft.token, 'bindingId', '  exact  ')
+  actions.updatePromptBindingCreate(draft.token, 'resourceId', '__proto__')
   assert.equal(bindingDraft(store).bindingId, '  exact  ')
   assert.equal(bindingDraft(store).resourceId, '__proto__')
   store.actions.close()
@@ -72,7 +72,7 @@ test('M8A2 GREEN: one shared Profile draft slot accepts exact Binding create and
   store.actions.selectPane('resources')
   assert.equal(store.getSnapshot().selectedProfileId, 'main')
   assert.equal(store.getSnapshot().pane, 'profiles')
-  store.actions.cancelDraft()
+  store.actions.cancelDraft(draft.token)
   store.actions.selectPane('resources')
   assert.equal(store.getSnapshot().pane, 'resources')
 })
@@ -91,16 +91,16 @@ test('M8A2 GREEN: Binding leaf draft remains blocked after unknown and cannot be
   assert.equal(first.kind, 'prompt-binding-edit-field')
   assert.equal(first.field, 'resourceId')
   assert.equal(typeof actions.updatePromptBindingField, 'function')
-  actions.updatePromptBindingField('missing-2')
+  actions.updatePromptBindingField(first.token, 'missing-2')
   assert.equal(bindingDraft(store).value, 'missing-2')
   actions.blockPromptBindingDraft(first.token, 'unknown')
   assert.equal(bindingDraft(store).blocked, 'unknown')
-  actions.updatePromptBindingField('silent-replay')
+  actions.updatePromptBindingField(first.token, 'silent-replay')
   assert.equal(bindingDraft(store).value, 'missing-2')
   store.actions.close()
   store.actions.open()
   assert.equal(bindingDraft(store).blocked, 'unknown')
-  store.actions.cancelDraft()
+  store.actions.discardBlockedDraft(first.token)
   store.actions.completeDraft(first.token, null)
   assert.equal(store.getSnapshot().draft, null)
 })
@@ -118,7 +118,7 @@ test('M8A2 GREEN: Binding delete is explicit and mutually exclusive with other P
   assert.equal(bindingDraft(store).token, draft.token)
   store.actions.selectPane('resources')
   assert.equal(store.getSnapshot().pane, 'profiles')
-  store.actions.cancelDraft()
+  store.actions.cancelDraft(draft.token)
   assert.equal(store.getSnapshot().draft, null)
   assert.equal(store.getSnapshot().resourceDraft, null)
 })
@@ -259,7 +259,7 @@ test('M8A2 Fix RED: blocked Binding terminal notice survives forbidden navigatio
     assert.equal(store.getSnapshot().draft?.blocked, blocked)
     assert.equal(store.getSnapshot().notice?.code, code, blocked + ': terminal result must survive')
     assert.equal(store.getSnapshot().notice?.detail, 'original result')
-    store.actions.cancelDraft()
+    store.actions.discardBlockedDraft(token)
     store.actions.selectPane('resources')
     assert.equal(store.getSnapshot().pane, 'resources')
   }
@@ -365,7 +365,7 @@ test('M8A2 Fix2 RED: every existing Begin action retains a blocked Binding termi
         c.blocked + ': reentry must not replace the terminal result')
       assert.equal(store.getSnapshot().notice?.detail, 'irreversible terminal receipt')
     }
-    store.actions.cancelDraft()
+    store.actions.discardBlockedDraft(token)
     store.actions.beginCreate(BASIS)
     assert.equal(store.getSnapshot().draft?.kind, 'create')
   }
@@ -389,7 +389,7 @@ test('M8A2 Fix2: one actual DSH StoreInstance provides synchronous live dispatch
   assert.ok(draft !== null)
   assert.equal(mayDispatchImmediateProfileWrite(readLivePresentationForActions(actions), 'main'), false)
   assert.equal(ownsLiveProfileDraft(readLivePresentationForActions(actions), draft), true)
-  actions.updatePromptBindingField(false)
+  actions.updatePromptBindingField(draft.token, false)
   assert.equal(ownsLiveProfileDraft(readLivePresentationForActions(actions), draft), false,
     'old same-token draft object must not authorize a stale Save after a synchronous update')
   const current = instance.getSnapshot().draft
@@ -399,7 +399,7 @@ test('M8A2 Fix2: one actual DSH StoreInstance provides synchronous live dispatch
     code: 'noticeOutcomeUnknown', kind: 'warning', detail: 'uncertain',
   })
   assert.equal(ownsLiveProfileDraft(readLivePresentationForActions(actions), current), false)
-  actions.cancelDraft()
+  actions.discardBlockedDraft(current.token)
   assert.equal(mayDispatchImmediateProfileWrite(readLivePresentationForActions(actions), 'main'), true)
   const remounted = handle.create()
   assert.equal(readLivePresentationForActions(actions), undefined,
@@ -431,7 +431,7 @@ test('M8A2 Fix3 RED: M7C Begin and M8A1 Begin obey shared pane and one-draft inv
   store.actions.beginDelete('main', BASIS)
   assert.equal(store.getSnapshot().draft, null, 'Resource draft must exclude all Profile draft kinds')
   assert.strictEqual(store.getSnapshot().resourceDraft, resourceDraft)
-  store.actions.cancelResourceDraft()
+  store.actions.cancelResourceDraft(resourceDraft.token)
   store.actions.selectPane('profiles')
   assert.equal(store.getSnapshot().pane, 'profiles')
   store.actions.beginCreate(BASIS)
@@ -448,17 +448,17 @@ test('M8A2 Fix3 RED: old callbacks cannot mutate or clear a newer Binding termin
   const old = store.getSnapshot().draft
   assert.equal(old?.kind, 'prompt-binding-create')
   const oldToken = old.token
-  a.cancelDraft()
+  a.cancelDraft(oldToken)
   a.beginPromptBindingCreate({ profileId: 'main', basis: BASIS })
   const next = store.getSnapshot().draft
   assert.equal(next?.kind, 'prompt-binding-create')
   assert.notEqual(next.token, oldToken)
-  a.updatePromptBindingCreate('bindingId', 'obsolete-input')
+  a.updatePromptBindingCreate(oldToken, 'bindingId', 'obsolete-input')
   assert.equal(store.getSnapshot().draft.bindingId, '', 'stale input must not alter a later draft')
   a.blockDraft(next.token, 'unknown', {
     code: 'noticeOutcomeUnknown', kind: 'warning', detail: 'outcome not known',
   })
-  a.cancelDraft()
+  a.cancelDraft(oldToken)
   assert.strictEqual(store.getSnapshot().draft?.token, next.token,
     'an old Cancel callback may not discard a newer Unknown draft')
   assert.equal(store.getSnapshot().notice?.code, 'noticeOutcomeUnknown')
