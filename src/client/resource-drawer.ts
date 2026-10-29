@@ -12,7 +12,7 @@ import {
   resourceEditChanges,
   validateResourceCreateDraft,
 } from './resource-editor.js'
-import { ownsLiveResourceDraft, readLivePresentationForActions } from './presentation-store.js'
+import { ownsLiveResourceDraft, readLivePresentationForActions, terminalResourceNotice } from './presentation-store.js'
 import styles from './plugin.module.css'
 
 function button(
@@ -55,6 +55,7 @@ export function ContextManagerResourceDrawerContent(props: ContextManagerDrawerP
   const draft = useStore(s => s.resourceDraft)
   const profileDraft = useStore(s => s.draft)
   const notice = useStore(s => s.resourceNotice)
+  const displayedNotice = terminalResourceNotice({ resourceDraft: draft }) ?? notice
   const view = deriveResourceView(snapshot, requestedId)
   const running = operation.status === 'running'
   const canStart = view.writable && !running && draft === null && profileDraft === null
@@ -215,15 +216,15 @@ export function ContextManagerResourceDrawerContent(props: ContextManagerDrawerP
     }
   }
 
-  const noticeElement = notice
+  const noticeElement = displayedNotice
     ? h('div', {
-      role: notice.kind === 'error' ? 'alert' : 'status',
+      role: displayedNotice.kind === 'error' ? 'alert' : 'status',
       'aria-live': 'polite',
-      className: notice.kind === 'error' ? styles.error
-        : notice.kind === 'warning' ? styles.warning : styles.success,
+      className: displayedNotice.kind === 'error' ? styles.error
+        : displayedNotice.kind === 'warning' ? styles.warning : styles.success,
     },
-    h('strong', null, t(notice.code)),
-    notice.detail ? h('p', null, notice.detail) : null,
+    h('strong', null, t(displayedNotice.code)),
+    displayedNotice.detail ? h('p', null, displayedNotice.detail) : null,
     ) : null
 
   const blockedElement = draft && (draft.blocked !== undefined || !draftCurrent)
