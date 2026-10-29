@@ -787,14 +787,15 @@ assert.equal(tree.root.findAllByProps({ 'data-context-manager-new-profile': '' }
 assert.equal(tree.root.findAllByProps({ 'data-context-manager-prompt-bindings': '' }).length, 1)
 const bindingWritesStart = remoteFixture.writes.length
 const resourceWritesStart = remoteFixture.resourceWrites.length
+// A deliberately failed M8A1 resource recovery left the shared baseline
+// Profile snapshot stale; M8A2 must not use this cached data for writes.
+// An explicit B1-1 refresh is necessary before beginning a new Binding edit.
+assert.equal(tree.root.findByProps({ 'data-context-manager-new-binding': '' }).props.disabled, true)
+assert.equal(injectedBusiness?.()?.hooks.contextManager.getSnapshot().profiles.stale, true)
+await act(async () => { await injectedBusiness?.()?.refresh() })
+await settleUI()
 const bindingStartButton = tree.root.findByProps({ 'data-context-manager-new-binding': '' })
-const bindingDiagnosticSnapshot = injectedBusiness?.()?.hooks.contextManager.getSnapshot()
-assert.equal(bindingStartButton.props.disabled, false, JSON.stringify({
-  profile: bindingDiagnosticSnapshot?.profiles,
-  instanceId: bindingDiagnosticSnapshot?.instanceId,
-  changes: bindingDiagnosticSnapshot?.changes,
-  bindingStartDisabled: bindingStartButton.props.disabled,
-}))
+assert.equal(bindingStartButton.props.disabled, false, 'fresh Profile basis should permit a new binding')
 await act(async () => { bindingStartButton.props.onClick() })
 assert.equal(tree.root.findAllByProps({ id: 'cm-binding-create-id' }).length, 1,
   'M8A2 beginCreate must retain the bound selected usable Profile draft')
