@@ -186,46 +186,59 @@ export function ContextManagerProfileDrawerContent(props: ContextManagerDrawerPr
     if (responseNotice !== undefined) actions.setNotice(responseNotice)
   }
   const commitDraft = async () => {
-    if (!canSubmit || draft === null
-      || !ownsLiveProfileDraft(readLivePresentationForActions(actions), draft)) return
-    if (draft.kind === 'create') {
-      const reserved = new Set(view.rows.map(row => row.id))
-      const validation = validateCreateDraft(draft, reserved)
+    const original = draft
+    if (!canSubmit || original === null
+      || !ownsLiveProfileDraft(readLivePresentationForActions(actions), original)) return
+    if (original.kind === 'create') {
+      const validation = validateCreateDraft(original, new Set(view.rows.map(row => row.id)))
       if (validation !== 'valid') {
-        const noticeCode: ProfileNotice['code'] = validation === 'exists'
-          ? 'noticeProfileExists' : 'noticeInvalidInput'
-        actions.setNotice({ code: noticeCode, kind: 'warning' })
+        actions.setNotice({ code: validation === 'exists'
+          ? 'noticeProfileExists' : 'noticeInvalidInput', kind: 'warning' })
         return
       }
-      const result = await props.profileMutations.createProfile(
-        draft.basis, draft.id, createdProfileInput(draft),
-      )
-      afterMutation(result, draft, draft.id)
-    } else if (draft.kind === 'confirm-delete') {
-      const result = await props.profileMutations.deleteProfile(draft.basis, draft.profileId)
-      afterMutation(result, draft)
-    } else if (draft.kind === 'edit-field') {
-      if (!editValueChanged(draft)) return
-      let result: ContextManagerClientProfileMutationResult
-      switch (draft.field) {
-        case 'name':
-          result = await props.profileMutations.setProfileName(
-            draft.basis, draft.profileId, draft.value,
-          )
-          break
-        case 'description':
-          result = await props.profileMutations.setProfileDescription(
-            draft.basis, draft.profileId,
-            draft.removeDescription ? null : draft.value,
-          )
-          break
-        case 'basePreset':
-          result = await props.profileMutations.setProfileBasePreset(
-            draft.basis, draft.profileId, draft.value,
-          )
-          break
+    }
+    if (original.kind === 'edit-field' && !editValueChanged(original)) return
+    // Claim this exact draft synchronously. Controller still owns Profile
+    // global single-flight, Host CAS and authoritative rehydration.
+    actions.beginProfileSubmission(original.token)
+    const claimed = readLivePresentationForActions(actions)?.draft
+    if (claimed?.token !== original.token || claimed.submitting !== true) return
+    try {
+      if (original.kind === 'create') {
+        const result = await props.profileMutations.createProfile(
+          original.basis, original.id, createdProfileInput(original),
+        )
+        afterMutation(result, original, original.id)
+      } else if (original.kind === 'confirm-delete') {
+        const result = await props.profileMutations.deleteProfile(original.basis, original.profileId)
+        afterMutation(result, original)
+      } else if (original.kind === 'edit-field') {
+        let result: ContextManagerClientProfileMutationResult
+        switch (original.field) {
+          case 'name':
+            result = await props.profileMutations.setProfileName(
+              original.basis, original.profileId, original.value)
+            break
+          case 'description':
+            result = await props.profileMutations.setProfileDescription(
+              original.basis, original.profileId,
+              original.removeDescription ? null : original.value)
+            break
+          case 'basePreset':
+            result = await props.profileMutations.setProfileBasePreset(
+              original.basis, original.profileId, original.value)
+            break
+        }
+        afterMutation(result, original)
       }
-      afterMutation(result, draft)
+    } catch (error) {
+      // Unexpected rejected call remains non-retriable outcome-unknown.
+      actions.blockDraft(original.token, 'unknown', {
+        code: 'noticeOutcomeUnknown', kind: 'warning',
+        detail: error instanceof Error ? error.message : undefined,
+      })
+    } finally {
+      actions.finishProfileSubmission(original.token)
     }
   }
   const changeDefault = async (id: string | null) => {
