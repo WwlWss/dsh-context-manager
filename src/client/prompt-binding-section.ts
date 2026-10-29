@@ -11,6 +11,8 @@ import {
   blockForPromptBindingResult,
   commitPromptBindingDraft,
   isPromptBindingDraft,
+  isPromptBindingBeginCurrent,
+  isWritablePromptBindingPath,
   noticeForPromptBindingResult,
   promptBindingEditChanged,
   promptBindingPlacementHealth,
@@ -86,6 +88,7 @@ export function ContextManagerPromptBindingSection(props: PromptBindingSectionPr
   const running = operation.status === 'running'
   const active = isPromptBindingDraft(draft) && draft.profileId === profileId ? draft : null
   const canStart = writable && !running && draft === null && resourceDraft === null
+    && isWritablePromptBindingPath(profileId)
   const current = active !== null && isProfileDraftCurrent(snapshot, active)
   const canSubmit = active !== null && active.blocked === undefined && current
     && writable && !running
@@ -101,13 +104,29 @@ export function ContextManagerPromptBindingSection(props: PromptBindingSectionPr
 
   const unavailable = () =>
     actions.setNotice({ code: 'noticeUnavailable', kind: 'warning' })
-  const begin = () => {
+  const begin = (bindingId?: string, renderedBinding?: ContextManagerRemotePromptBinding) => {
+    if (!isWritablePromptBindingPath(profileId, bindingId)) {
+      actions.setNotice({ code: 'noticeNotEditable', kind: 'warning' })
+      return undefined
+    }
     if (!canStart) {
       actions.setNotice({ code: 'noticeDraftActive', kind: 'warning' })
       return undefined
     }
     const basis = props.captureProfileMutationBasis()
-    if (!basis) unavailable()
+    if (!basis) {
+      unavailable()
+      return undefined
+    }
+    // The captured basis comes from the live Client Model; the displayed
+    // Binding and its original value came from this render. An intervening
+    // Profile revision/Host instance change must not combine these snapshots.
+    if (!isPromptBindingBeginCurrent(
+      snapshot, profileId, profile, basis, bindingId, renderedBinding,
+    )) {
+      actions.setNotice({ code: 'noticeDraftStale', kind: 'warning' })
+      return undefined
+    }
     return basis
   }
   const startCreate = () => {
@@ -116,7 +135,7 @@ export function ContextManagerPromptBindingSection(props: PromptBindingSectionPr
   }
   const startEdit = (bindingId: string, binding: ContextManagerRemotePromptBinding,
     field: 'resourceId' | 'enabled' | 'placement' | 'order') => {
-    const basis = begin()
+    const basis = begin(bindingId, binding)
     if (!basis) return
     const common = { profileId, bindingId, basis }
     switch (field) {
@@ -135,7 +154,7 @@ export function ContextManagerPromptBindingSection(props: PromptBindingSectionPr
     }
   }
   const startDelete = (bindingId: string) => {
-    const basis = begin()
+    const basis = begin(bindingId, profile.prompts[bindingId])
     if (basis) actions.beginPromptBindingDelete({ profileId, bindingId, basis })
   }
 
@@ -151,6 +170,12 @@ export function ContextManagerPromptBindingSection(props: PromptBindingSectionPr
   const commit = async () => {
     const original = active
     if (!canSubmit || original === null || committing.current !== null) return
+    if (!isWritablePromptBindingPath(original.profileId, original.bindingId)) {
+      actions.blockDraft(original.token, 'stale', {
+        code: 'noticeNotEditable', kind: 'warning',
+      })
+      return
+    }
     if (original.kind === 'prompt-binding-create') {
       const validation = validatePromptBindingCreate(original, reservedIds)
       if (validation !== 'valid') {
@@ -286,7 +311,7 @@ export function ContextManagerPromptBindingSection(props: PromptBindingSectionPr
       button(t('cancel'), () => actions.cancelDraft(), running)),
     ) : null
 
-  return h('section', { className: styles.diagnostics,
+  return h('section', { className: styles.bindingSection,
     'data-context-manager-prompt-bindings': '',
     'aria-label': t('bindingTitle'),
   },
@@ -309,6 +334,7 @@ export function ContextManagerPromptBindingSection(props: PromptBindingSectionPr
       ...rows.map(([bindingId, binding]) => {
         const resource = promptBindingResourceHealth(snapshot, binding.resourceId)
         const placement = promptBindingPlacementHealth(snapshot, binding.placement)
+        const pathReadOnly = !isWritablePromptBindingPath(profileId, bindingId)
         return h('li', { key: bindingId, className: styles.field,
           'data-context-manager-binding-row': bindingId },
         h('div', { className: styles.fieldHeader },
@@ -320,6 +346,10 @@ export function ContextManagerPromptBindingSection(props: PromptBindingSectionPr
         h('p', { className: styles.hint },
           t('bindingEnabled') + ': ' + String(binding.enabled)
           + ' · ' + t('bindingPlacement') + ': ' + binding.placement),
+        pathReadOnly
+          ? h('p', { className: styles.warning, role: 'status' },
+            t('bindingPathReadOnly'))
+          : null,
         h('p', { className: styles.hint },
           t('bindingResourceHealth') + ': ' + t(({
             usable: 'bindingResourceUsable',
@@ -335,15 +365,15 @@ export function ContextManagerPromptBindingSection(props: PromptBindingSectionPr
           } as const)[placement])),
         h('div', { className: styles.actions },
           button(t('bindingEditResourceId'), () => startEdit(bindingId, binding, 'resourceId'),
-            !canStart, { 'data-context-manager-binding-edit-resourceId': bindingId }),
+            !canStart || pathReadOnly, { 'data-context-manager-binding-edit-resourceId': bindingId }),
           button(t('bindingEditEnabled'), () => startEdit(bindingId, binding, 'enabled'),
-            !canStart, { 'data-context-manager-binding-edit-enabled': bindingId }),
+            !canStart || pathReadOnly, { 'data-context-manager-binding-edit-enabled': bindingId }),
           button(t('bindingEditPlacement'), () => startEdit(bindingId, binding, 'placement'),
-            !canStart, { 'data-context-manager-binding-edit-placement': bindingId }),
+            !canStart || pathReadOnly, { 'data-context-manager-binding-edit-placement': bindingId }),
           button(t('bindingEditOrder'), () => startEdit(bindingId, binding, 'order'),
-            !canStart, { 'data-context-manager-binding-edit-order': bindingId }),
+            !canStart || pathReadOnly, { 'data-context-manager-binding-edit-order': bindingId }),
           button(t('bindingDelete'), () => startDelete(bindingId),
-            !canStart, { 'data-context-manager-binding-delete': bindingId }, true),
+            !canStart || pathReadOnly, { 'data-context-manager-binding-delete': bindingId }, true),
         ))
       }),
     ),
