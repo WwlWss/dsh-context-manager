@@ -51,6 +51,19 @@ function notifyOccupiedProfileDraft(state: ContextManagerPresentationState): voi
   state.notice = { code: 'noticeDraftActive', kind: 'warning' }
 }
 
+function canBeginProfileDraft(state: ContextManagerPresentationState): boolean {
+  return state.pane === 'profiles' && state.draft === null && state.resourceDraft === null
+}
+
+function canBeginResourceDraft(state: ContextManagerPresentationState): boolean {
+  return state.pane === 'resources' && state.resourceDraft === null && state.draft === null
+}
+
+function notifyOccupiedResourceDraft(state: ContextManagerPresentationState): void {
+  if (state.resourceDraft?.blocked !== undefined) return
+  state.resourceNotice = { code: 'resourceNoticeDraftActive', kind: 'warning' }
+}
+
 /** Never use the previous render's draft flag to authorize a Host RPC. Both
  * selectors read from the existing root DSH Store instance, not a shadow
  * state machine. React rerenders may lag one synchronous Store action. */
@@ -76,6 +89,20 @@ export function ownsLiveProfileDraft(
     && current.resourceDraft === null
     && current.draft === original
     && original.blocked === undefined
+    && original.submitting !== true
+}
+
+export function ownsLiveResourceDraft(
+  current: ContextManagerPresentationState | undefined,
+  original: ResourceDraft,
+): boolean {
+  return current !== undefined
+    && current.open
+    && current.pane === 'resources'
+    && current.draft === null
+    && current.resourceDraft === original
+    && original.blocked === undefined
+    && original.submitting !== true
 }
 
 /** View-only state. All authoritative Profile and mutation state remains in B1/B2. */
@@ -133,7 +160,7 @@ export function createContextManagerPresentationStore() {
         state.notice = null
       },
       beginCreate(state, basis: ContextManagerClientProfileMutationBasis) {
-        if (state.draft !== null) {
+        if (!canBeginProfileDraft(state)) {
           notifyOccupiedProfileDraft(state)
           return
         }
@@ -155,7 +182,7 @@ export function createContextManagerPresentationStore() {
         original: string | undefined
         basis: ContextManagerClientProfileMutationBasis
       }) {
-        if (state.draft !== null) {
+        if (!canBeginProfileDraft(state)) {
           notifyOccupiedProfileDraft(state)
           return
         }
@@ -174,7 +201,7 @@ export function createContextManagerPresentationStore() {
         state.notice = null
       },
       beginDelete(state, profileId: string, basis: ContextManagerClientProfileMutationBasis) {
-        if (state.draft !== null) {
+        if (!canBeginProfileDraft(state)) {
           notifyOccupiedProfileDraft(state)
           return
         }
@@ -192,7 +219,7 @@ export function createContextManagerPresentationStore() {
         profileId: string
         basis: ContextManagerClientProfileMutationBasis
       }) {
-        if (state.draft !== null || state.resourceDraft !== null || state.pane !== 'profiles') {
+        if (!canBeginProfileDraft(state)) {
           notifyOccupiedProfileDraft(state)
           return
         }
@@ -232,7 +259,7 @@ export function createContextManagerPresentationStore() {
         | { field: 'placement'; original: ContextManagerRemotePromptPlacement }
         | { field: 'order'; original: number }
       )) {
-        if (state.draft !== null || state.resourceDraft !== null || state.pane !== 'profiles') {
+        if (!canBeginProfileDraft(state)) {
           notifyOccupiedProfileDraft(state)
           return
         }
@@ -284,7 +311,7 @@ export function createContextManagerPresentationStore() {
         bindingId: string
         basis: ContextManagerClientProfileMutationBasis
       }) {
-        if (state.draft !== null || state.resourceDraft !== null || state.pane !== 'profiles') {
+        if (!canBeginProfileDraft(state)) {
           notifyOccupiedProfileDraft(state)
           return
         }
@@ -357,8 +384,8 @@ export function createContextManagerPresentationStore() {
         state.resourceNotice = null
       },
       beginResourceCreate(state, basis: ContextManagerClientResourceCreateBasis) {
-        if (state.resourceDraft !== null || state.draft !== null) {
-          state.resourceNotice = { code: 'resourceNoticeDraftActive', kind: 'warning' }
+        if (!canBeginResourceDraft(state)) {
+          notifyOccupiedResourceDraft(state)
           return
         }
         state.nextResourceDraftToken += 1
@@ -369,8 +396,8 @@ export function createContextManagerPresentationStore() {
         state.resourceNotice = null
       },
       beginResourceEdit(state, document: ContextManagerRemotePromptResource, stamp: ContextManagerClientPromptResourceReadStamp) {
-        if (state.resourceDraft !== null || state.draft !== null) {
-          state.resourceNotice = { code: 'resourceNoticeDraftActive', kind: 'warning' }
+        if (!canBeginResourceDraft(state)) {
+          notifyOccupiedResourceDraft(state)
           return
         }
         state.nextResourceDraftToken += 1
@@ -390,8 +417,8 @@ export function createContextManagerPresentationStore() {
         state.resourceNotice = null
       },
       beginResourceDelete(state, id: string, name: string, stamp: ContextManagerClientPromptResourceReadStamp) {
-        if (state.resourceDraft !== null || state.draft !== null) {
-          state.resourceNotice = { code: 'resourceNoticeDraftActive', kind: 'warning' }
+        if (!canBeginResourceDraft(state)) {
+          notifyOccupiedResourceDraft(state)
           return
         }
         state.nextResourceDraftToken += 1
