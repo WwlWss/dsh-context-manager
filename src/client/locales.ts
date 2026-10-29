@@ -152,6 +152,7 @@ export type ContextManagerLocaleKey =
   | 'bindingIdDuplicate'
   | 'bindingOrderInvalid'
   | 'bindingUnsafeId'
+  | 'bindingPathReadOnly'
   | 'noticeBindingExists'
   | 'noticeBindingMissing'
 
@@ -311,6 +312,7 @@ export const CONTEXT_MANAGER_LOCALES = Object.freeze({
     bindingIdDuplicate: "此 Profile 中已存在相同 Binding ID。",
     bindingOrderInvalid: "Order 必须是安全范围内的十进制整数。",
     bindingUnsafeId: "Binding ID __proto__ 不可安全写入 Settings 路径。",
+    bindingPathReadOnly: "此 Profile 或 Binding 使用 Settings 无法安全修改的 __proto__ 路径键；保留原样只读展示。",
     noticeBindingExists: "Binding ID 已存在，请保留草稿核对。",
     noticeBindingMissing: "绑定或 Profile 已不存在；请刷新并重新开始。",
   }),
@@ -461,6 +463,7 @@ export const CONTEXT_MANAGER_LOCALES = Object.freeze({
     bindingIdDuplicate: "This Binding ID already exists in the profile.",
     bindingOrderInvalid: "Order must be a safe decimal integer.",
     bindingUnsafeId: "The __proto__ Binding ID is unsafe as a Settings path key.",
+    bindingPathReadOnly: "This Profile or Binding has an unsafe __proto__ Settings path key. The stored record remains visible but read-only.",
     noticeBindingExists: "Binding ID already exists; review the retained draft.",
     noticeBindingMissing: "Binding or Profile no longer exists; refresh and begin again.",
   }),
