@@ -791,7 +791,7 @@ await settleUI()
 assert.equal(remoteFixture.resourceWrites.length, beforeDegraded + 1)
 assert.equal(remoteFixture.resources.get('res-ui').content, 'Committed with degraded read-back')
 assert.equal(buttonByLabel(tree, 'Save').props.disabled, true)
-assert.ok(renderedText(tree.root).includes('read-back incomplete'))
+assert.ok(renderedText(tree.root).includes('Write confirmed, but reconciliation is incomplete'))
 await act(async () => { buttonByLabel(tree, 'Discard draft').props.onClick() })
 await act(async () => { buttonByLabel(tree, 'Refresh').props.onClick() })
 await settleUI()
@@ -1011,18 +1011,14 @@ await act(async () => {
 await settleUI()
 assert.equal(remoteFixture.writes.length, beforeBindingDegraded + 1)
 assert.equal(remoteFixture.profiles.main.prompts.dangling.placement, 'runtime-context')
-assert.ok(renderedText(tree.root).includes('read-back incomplete'), JSON.stringify({
-  rendered: renderedText(tree.root).slice(0, 3500),
-  profiles: injectedBusiness?.()?.hooks.contextManager.getSnapshot().profiles,
-  operation: injectedBusiness?.()?.hooks.profileMutation?.getSnapshot?.(),
-}).slice(0, 4800))
+assert.ok(renderedText(tree.root).includes('Write confirmed, but reconciliation is incomplete'))
 assert.equal(tree.root.findByProps({ 'data-context-manager-binding-save': '' }).props.disabled, true)
 await act(async () => { tree.root.findByProps({ 'data-context-manager-tab': 'resources' }).props.onClick() })
-assert.ok(renderedText(tree.root).includes('read-back incomplete'))
+assert.ok(renderedText(tree.root).includes('Write confirmed, but reconciliation is incomplete'))
 remoteFixture.restoreProfileReads()
 await act(async () => { buttonByLabel(tree, 'Refresh').props.onClick() })
 await settleUI()
-assert.ok(renderedText(tree.root).includes('read-back incomplete'))
+assert.ok(renderedText(tree.root).includes('Write confirmed, but reconciliation is incomplete'))
 assert.equal(remoteFixture.writes.length, beforeBindingDegraded + 1)
 await act(async () => { buttonByLabel(tree, 'Discard draft').props.onClick() })
 
