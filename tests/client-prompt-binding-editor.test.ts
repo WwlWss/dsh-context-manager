@@ -463,3 +463,74 @@ test('M8A2 Fix3 RED: old callbacks cannot mutate or clear a newer Binding termin
     'an old Cancel callback may not discard a newer Unknown draft')
   assert.equal(store.getSnapshot().notice?.code, 'noticeOutcomeUnknown')
 })
+
+test('M8A2 Fix3 GREEN: exact-token submission blocks Cancel, stale input and retries until a terminal receipt', () => {
+  const store = createContextManagerPresentationStore().create()
+  const a = store.actions
+  a.open()
+  a.beginPromptBindingCreate({ profileId: 'main', basis: BASIS })
+  const old = store.getSnapshot().draft
+  assert.equal(old?.kind, 'prompt-binding-create')
+  const token = old.token
+  a.updatePromptBindingCreate(token, 'bindingId', 'immutable candidate')
+  a.beginProfileSubmission(token)
+  assert.equal(store.getSnapshot().draft?.submitting, true)
+  a.cancelDraft(token)
+  a.updatePromptBindingCreate(token, 'bindingId', 'illegal concurrent input')
+  const pending = store.getSnapshot().draft
+  assert.equal(pending?.token, token, 'same-render Cancel must not erase an in-flight draft')
+  assert.equal(pending?.kind === 'prompt-binding-create' && pending.bindingId, 'immutable candidate')
+  a.blockDraft(token, 'unknown', {
+    code: 'noticeOutcomeUnknown', kind: 'warning', detail: 'lost Host receipt',
+  })
+  a.finishProfileSubmission(token)
+  assert.equal(store.getSnapshot().draft?.submitting, false)
+  assert.equal(store.getSnapshot().draft?.blocked, 'unknown')
+  a.cancelDraft(token)
+  assert.equal(store.getSnapshot().draft?.token, token, 'ordinary old Cancel cannot erase a terminal Unknown')
+  assert.equal(store.getSnapshot().notice?.detail, 'lost Host receipt')
+  a.discardBlockedDraft(token + 1)
+  assert.equal(store.getSnapshot().draft?.token, token)
+  a.discardBlockedDraft(token)
+  assert.equal(store.getSnapshot().draft, null)
+  a.beginPromptBindingCreate({ profileId: 'main', basis: BASIS })
+  const fresh = store.getSnapshot().draft
+  assert.equal(fresh?.kind, 'prompt-binding-create')
+  a.updatePromptBindingCreate(token, 'bindingId', 'stale input')
+  a.cancelDraft(token)
+  assert.equal(store.getSnapshot().draft?.token, fresh.token)
+  assert.equal(store.getSnapshot().draft?.kind === 'prompt-binding-create'
+    && store.getSnapshot().draft.bindingId, '')
+})
+
+test('M8A2 Fix3 GREEN: Resource submission and explicit Discard are independent of Profile basis', () => {
+  const store = createContextManagerPresentationStore().create()
+  const a = store.actions
+  a.open()
+  a.selectPane('resources')
+  a.beginResourceCreate({ resourceAuthorityId: 'resource-authority-A' })
+  const current = store.getSnapshot().resourceDraft
+  assert.equal(current?.kind, 'create')
+  const token = current.token
+  a.updateResourceCreate(token, 'id', 'example')
+  a.beginResourceSubmission(token)
+  assert.equal(store.getSnapshot().resourceDraft?.submitting, true)
+  a.cancelResourceDraft(token)
+  a.markResourceDescriptionEmpty(token)
+  assert.equal(store.getSnapshot().resourceDraft?.token, token)
+  a.blockResourceDraft(token, 'unverified', {
+    code: 'resourceNoticeDegraded', kind: 'warning', detail: 'acknowledged write',
+  })
+  a.finishResourceSubmission(token)
+  a.cancelResourceDraft(token)
+  assert.equal(store.getSnapshot().resourceDraft?.blocked, 'unverified')
+  assert.equal(store.getSnapshot().resourceNotice?.detail, 'acknowledged write')
+  a.discardBlockedResourceDraft(token)
+  assert.equal(store.getSnapshot().resourceDraft, null)
+  a.beginResourceCreate({ resourceAuthorityId: 'resource-authority-A' })
+  const newer = store.getSnapshot().resourceDraft
+  assert.equal(newer?.kind, 'create')
+  a.updateResourceCreate(token, 'id', 'obsolete Resource input')
+  assert.equal(store.getSnapshot().resourceDraft?.kind === 'create'
+    && store.getSnapshot().resourceDraft.id, '')
+})
