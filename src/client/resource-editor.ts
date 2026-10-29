@@ -38,6 +38,8 @@ export interface ResourceNotice {
 interface ResourceDraftBase {
   readonly token: number
   blocked?: ResourceDraftBlock
+  /** Immutable first terminal write receipt; never another Resource authority. */
+  terminalNotice?: ResourceNotice
   /** Presentation-only synchronous submission claim; never Host authority. */
   submitting?: boolean
 }
