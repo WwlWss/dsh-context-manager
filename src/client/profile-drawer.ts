@@ -22,6 +22,7 @@ import {
   type ProfileListRow,
 } from './profile-view.js'
 import { ContextManagerPromptBindingSection } from './prompt-binding-section.js'
+import { isPromptBindingDraft } from './prompt-binding-editor.js'
 import styles from './plugin.module.css'
 
 export type ContextManagerDrawerProps = ComposedProps<
@@ -89,6 +90,18 @@ export function ContextManagerProfileDrawerContent(props: ContextManagerDrawerPr
   const canSubmit = draft !== null && draft.blocked === undefined
     && draftCurrent && view.writable && !running
   const contentRef = useRef<HTMLElement | null>(null)
+  const mounted = useRef(false)
+  const latestSelection = useRef(view.selectedId)
+  const latestDraftToken = useRef(draft?.token)
+  const latestDraftBlock = useRef(draft?.blocked)
+  latestSelection.current = view.selectedId
+  latestDraftToken.current = draft?.token
+  latestDraftBlock.current = draft?.blocked
+
+  useEffect(() => {
+    mounted.current = true
+    return () => { mounted.current = false }
+  }, [])
 
   useEffect(() => {
     if (typeof document === 'undefined') return
@@ -215,12 +228,22 @@ export function ContextManagerProfileDrawerContent(props: ContextManagerDrawerPr
   }
 
   const refresh = () => {
+    const selectionAtStart = latestSelection.current
+    const tokenAtStart = latestDraftToken.current
+    const report = (code: 'noticeUnavailable' | 'noticeRefreshFailed') => {
+      // A late read must never replace an outcome-unknown, conflict or
+      // confirmed-but-degraded Binding mutation notice, nor publish into a
+      // different selected Profile/closed tab/newer draft.
+      if (!mounted.current
+        || latestSelection.current !== selectionAtStart
+        || latestDraftToken.current !== tokenAtStart
+        || latestDraftBlock.current !== undefined) return
+      actions.setNotice({ code, kind: 'warning' })
+    }
     void props.refresh().then(result => {
-      if (result.status !== 'completed') {
-        actions.setNotice({ code: 'noticeUnavailable', kind: 'warning' })
-      }
+      if (result.status !== 'completed') report('noticeUnavailable')
     }).catch(() => {
-      actions.setNotice({ code: 'noticeRefreshFailed', kind: 'error' })
+      report('noticeRefreshFailed')
     })
   }
 
@@ -282,7 +305,12 @@ export function ContextManagerProfileDrawerContent(props: ContextManagerDrawerPr
 
   const blockedBanner = draft !== null && (draft.blocked !== undefined || !draftCurrent)
     ? h('div', { role: 'alert', className: styles.warning },
-      h('strong', null, t(draft.blocked === 'unknown' ? 'draftUnknown' : 'draftNeedsReload')),
+      h('strong', null, t(
+        draft.blocked === 'unknown' ? 'draftUnknown'
+          : isPromptBindingDraft(draft) && draft.blocked === 'unverified' ? 'noticeSavedDegraded'
+            : isPromptBindingDraft(draft) && draft.blocked === 'conflict' ? 'noticeConflict'
+              : 'draftNeedsReload',
+      )),
       h('p', null, t('draftPreservedHint')),
       h('div', { className: styles.actions },
         button(t('refresh'), refresh, running),
