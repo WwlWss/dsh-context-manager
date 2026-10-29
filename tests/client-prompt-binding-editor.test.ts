@@ -11,6 +11,8 @@ import {
   promptBindingResourceHealth,
   promptBindingPlacementHealth,
   blockForPromptBindingResult,
+  isWritablePromptBindingPath,
+  isPromptBindingBeginCurrent,
 } from '../src/client/prompt-binding-editor.js'
 import type { ContextManagerRemoteProfile } from '../src/remote/types.js'
 import type { ContextManagerClientSnapshot } from '../src/client/model-types.js'
@@ -286,5 +288,65 @@ test('M8A2 Fix RED: blocked Binding terminal notice survives forbidden navigatio
     store.actions.cancelDraft()
     store.actions.selectPane('resources')
     assert.equal(store.getSnapshot().pane, 'resources')
+  }
+})
+
+test('M8A2 Fix GREEN: Begin verifies rendered Profile + Binding and immutable Profile basis', () => {
+  const binding = { resourceId: 'original', enabled: true,
+    placement: 'after-persona' as const, order: -2 }
+  const profile: ContextManagerRemoteProfile = {
+    name: 'Exact snapshot', basePreset: 'native',
+    skills: {}, prompts: { exact: binding },
+  }
+  const snapshot: ContextManagerClientSnapshot = {
+    attachment: 'attached', protocol: { status: 'compatible', apiVersion: 3 },
+    sync: { status: 'idle' }, instanceId: BASIS.instanceId,
+    changes: {
+      instanceId: BASIS.instanceId, resourceAuthorityId: 'resources-v1',
+      generation: 10, profiles: 4, promptResources: 1, presets: 5, runtime: 2,
+    },
+    profiles: {
+      status: 'ready', stale: false,
+      data: {
+        schemaVersion: 1, schemaCompatible: true,
+        profiles: { main: profile }, diagnostics: [],
+        persistence: { available: true, registered: true, writable: true, revision: BASIS.revision },
+      },
+    },
+    presets: { status: 'idle', stale: false },
+    promptPlacement: { status: 'idle', stale: false },
+    resources: { list: { status: 'idle', stale: false }, documents: new Map() },
+    diagnostics: { sessions: new Map(), prompts: new Map(), skills: new Map(), pinned: new Map() },
+  }
+  assert.equal(isPromptBindingBeginCurrent(snapshot, 'main', profile, BASIS), true)
+  assert.equal(isPromptBindingBeginCurrent(snapshot, 'main', profile, BASIS, 'exact', binding), true)
+  assert.equal(isPromptBindingBeginCurrent(snapshot, 'main', profile,
+    { ...BASIS, revision: BASIS.revision + 1 }, 'exact', binding), false)
+  assert.equal(isPromptBindingBeginCurrent(snapshot, 'main', profile,
+    { ...BASIS, instanceId: 'host-new' }, 'exact', binding), false)
+  assert.equal(isPromptBindingBeginCurrent(snapshot, 'missing', profile, BASIS), false)
+  assert.equal(isPromptBindingBeginCurrent(snapshot, 'main', { ...profile }, BASIS), false)
+  assert.equal(isPromptBindingBeginCurrent(snapshot, 'main', profile, BASIS,
+    'exact', { ...binding }), false)
+  assert.equal(isPromptBindingBeginCurrent(snapshot, 'main', profile, BASIS,
+    'nonexistent', undefined), false)
+  assert.equal(isPromptBindingBeginCurrent({
+    ...snapshot, profiles: { ...snapshot.profiles, stale: true },
+  }, 'main', profile, BASIS), false)
+  assert.equal(isPromptBindingBeginCurrent({
+    ...snapshot, changes: {
+      ...snapshot.changes!, resourceAuthorityId: 'resources-v2',
+      generation: 11, promptResources: 2,
+    },
+  }, 'main', profile, BASIS, 'exact', binding), true,
+  'Resource-only authority transition must not stale Profile mutation basis')
+})
+
+test('M8A2 Fix GREEN: Settings path safety is exact and separate from Resource values', () => {
+  assert.equal(isWritablePromptBindingPath('main', '__proto__'), false)
+  assert.equal(isWritablePromptBindingPath('__proto__', 'normal'), false)
+  for (const id of ['', ' ', '  exact  ', 'constructor', 'prototype', '用户/\t标签']) {
+    assert.equal(isWritablePromptBindingPath('main', id), true, JSON.stringify(id))
+    assert.equal(isWritablePromptBindingPath(id, 'normal'), true, JSON.stringify(id))
   }
 })
