@@ -4,6 +4,7 @@ import type { ContextManagerClientPromptResourceReadStamp } from './model-types.
 import type { ContextManagerClientResourceCreateBasis } from './resource-mutation-types.js'
 import type { ContextManagerRemotePromptResource, ContextManagerRemotePromptPlacement } from '../remote/types.js'
 import type { ResourceDraft, ResourceDraftBlock, ResourceNotice } from './resource-editor.js'
+import { isPromptBindingDraft } from './prompt-binding-editor.js'
 import type {
   ProfileDraft,
   ProfileEditField,
@@ -54,7 +55,12 @@ export function createContextManagerPresentationStore() {
         if (state.pane === pane) return
         if (state.draft !== null || state.resourceDraft !== null) {
           if (state.pane === 'profiles') {
-            state.notice = { code: 'noticeDraftActive', kind: 'warning' }
+            // An unsafe tab switch cannot relabel a confirmed-degraded,
+            // conflicted or outcome-unknown Binding write as a new warning.
+            if (!isPromptBindingDraft(state.draft)
+              || state.draft.terminalNotice === undefined) {
+              state.notice = { code: 'noticeDraftActive', kind: 'warning' }
+            }
           } else {
             state.resourceNotice = { code: 'resourceNoticeDraftActive', kind: 'warning' }
           }
@@ -64,7 +70,10 @@ export function createContextManagerPresentationStore() {
       },
       selectProfile(state, id: string | null) {
         if (state.draft !== null) {
-          state.notice = { code: 'noticeDraftActive', kind: 'warning' }
+          if (!isPromptBindingDraft(state.draft)
+            || state.draft.terminalNotice === undefined) {
+            state.notice = { code: 'noticeDraftActive', kind: 'warning' }
+          }
           return
         }
         state.selectedProfileId = id
@@ -236,7 +245,8 @@ export function createContextManagerPresentationStore() {
         state.notice = null
       },
       setPromptBindingNotice(state, token: number, notice: ProfileNotice) {
-        if (state.draft?.token !== token || !state.draft.kind.startsWith('prompt-binding-')) return
+        if (!isPromptBindingDraft(state.draft) || state.draft.token !== token
+          || state.draft.terminalNotice !== undefined) return
         state.notice = notice
       },
       blockPromptBindingDraft(state, token: number,
@@ -267,7 +277,12 @@ export function createContextManagerPresentationStore() {
       },
       blockDraft(state, token: number, reason: ProfileDraftBlock, notice: ProfileNotice | null) {
         if (state.draft?.token !== token) return
+        if (isPromptBindingDraft(state.draft)
+          && state.draft.terminalNotice !== undefined) return
         state.draft.blocked = reason
+        if (isPromptBindingDraft(state.draft) && notice !== null) {
+          state.draft.terminalNotice = notice
+        }
         state.notice = notice
       },
       completeDraft(state, token: number, notice: ProfileNotice | null, selectId?: string) {
@@ -380,6 +395,10 @@ export function createContextManagerPresentationStore() {
         state.resourceNotice = notice
       },
       setNotice(state, notice: ProfileNotice | null) {
+        // Preserve the exact terminal operation outcome, even if an unrelated
+        // async refresh returns late or a disabled action reports unavailable.
+        if (isPromptBindingDraft(state.draft)
+          && state.draft.terminalNotice !== undefined) return
         state.notice = notice
       },
     },
