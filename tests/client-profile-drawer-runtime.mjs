@@ -113,9 +113,12 @@ function createLocale() {
 }
 
 function createWritableRemoteFixture() {
-  const instanceId = 'm7c-real-ui-host'
+  let instanceId = 'm7c-real-ui-host'
+  let resourceAuthorityId = 'm7c-fixture-resource'
   let revision = 7
   let change = 10
+  let profileCursor = 10
+  let failProfileReads = 0
   let defaultId = 'main'
   let unknownNextWrite = false
   let readOnly = false
@@ -163,7 +166,7 @@ function createWritableRemoteFixture() {
   const rejected = (code, message) => okRead({ ok: false, error: { code, message } })
   async function resourceWrite(kind, id, basis, update) {
     resourceWrites.push({ kind, id, basis })
-    if (basis.resourceAuthorityId !== 'm7c-fixture-resource') {
+    if (basis.resourceAuthorityId !== resourceAuthorityId) {
       return rejected('prompt-resource-authority-conflict', 'resource source changed')
     }
     const current = resources.get(id)
@@ -199,6 +202,7 @@ function createWritableRemoteFixture() {
     })
     update()
     revision += 1
+    profileCursor += 1
     change += 1
     if (unknownNextWrite) {
       unknownNextWrite = false
@@ -212,15 +216,21 @@ function createWritableRemoteFixture() {
     async changes() {
       return okRead({
         instanceId,
-        resourceAuthorityId: 'm7c-fixture-resource',
+        resourceAuthorityId,
         generation: change,
-        profiles: change,
+        profiles: profileCursor,
         promptResources: resourceCursor,
         presets: change,
         runtime: change,
       })
     },
-    async profiles() { return okRead(profileSnapshot()) },
+    async profiles() {
+      if (failProfileReads > 0) {
+        failProfileReads -= 1
+        return rejected('persistence-unavailable', 'simulated Profile read-back failure')
+      }
+      return okRead(profileSnapshot())
+    },
     async presets() {
       const resolutions = Object.create(null)
       for (const [id, profile] of Object.entries(profiles)) {
@@ -372,11 +382,25 @@ function createWritableRemoteFixture() {
       // after the UI captured its immutable edit basis.
       profiles[id].name = name
       revision += 1
+      profileCursor += 1
       change += 1
     },
     externalBindingResourceId(profileId, bindingId, resourceId) {
       profiles[profileId].prompts[bindingId].resourceId = resourceId
       revision += 1
+      profileCursor += 1
+      change += 1
+    },
+    failProfileReads(count = 8) { failProfileReads = count },
+    restoreProfileReads() { failProfileReads = 0 },
+    externalRotateResourceAuthority() {
+      resourceAuthorityId = 'm8a2-source-' + String(change)
+      resourceCursor += 1
+      change += 1
+      // The independent Profile cursor/revision is intentionally unchanged.
+    },
+    externalRotateHostInstance() {
+      instanceId = 'm8a2-host-' + String(change)
       change += 1
     },
     setReadOnly(value) { readOnly = value; change += 1 },
