@@ -899,6 +899,17 @@ assert.equal(remoteFixture.writes.length, beforeUnknownBinding + 1)
 assert.equal(remoteFixture.profiles.main.prompts['m8a2-ui'].resourceId, 'unknown-response-but-committed')
 assert.equal(tree.root.findByProps({ 'data-context-manager-binding-save': '' }).props.disabled, true)
 assert.ok(renderedText(tree.root).includes('write outcome is unknown'))
+// An attempted tab switch must neither lose the uncertain result nor replay it.
+await act(async () => { tree.root.findByProps({ 'data-context-manager-tab': 'resources' }).props.onClick() })
+assert.equal(tree.root.findAllByProps({ 'data-context-manager-prompt-bindings': '' }).length, 1)
+assert.ok(renderedText(tree.root).includes('write outcome is unknown'))
+await act(async () => { trigger().props.onClick() })
+assert.equal(tree.root.findAllByProps({ 'data-context-manager-drawer': '' }).length, 0)
+await act(async () => { trigger().props.onClick() })
+await settleUI()
+assert.ok(renderedText(tree.root).includes('write outcome is unknown'))
+assert.equal(tree.root.findByProps({ 'data-context-manager-binding-save': '' }).props.disabled, true)
+assert.equal(remoteFixture.writes.length, beforeUnknownBinding + 1)
 await act(async () => { buttonByLabel(tree, 'Discard draft').props.onClick() })
 await settleUI()
 assert.equal(remoteFixture.writes.length, beforeUnknownBinding + 1)
@@ -947,6 +958,110 @@ const unsafeBindingRow = tree.root.findByProps({ 'data-context-manager-binding-r
 assert.ok(unsafeBindingRow.findAllByType('button').every(node => node.props.disabled === true),
   'M8A2 RED: __proto__ Binding path is read-only and must not offer writes')
 assert.ok(renderedText(unsafeBindingRow).includes('read-only'))
+
+// Binding-specific Conflict: a concurrent Settings writer wins at the Host.
+// The old binding basis is never rebased; a forbidden tab switch cannot
+// overwrite the exact conflict notice and no implicit retry occurs.
+await act(async () => {
+  tree.root.findByProps({ 'data-context-manager-binding-edit-enabled': 'dangling' }).props.onClick()
+})
+await act(async () => {
+  tree.root.findByProps({ id: 'cm-binding-edit-enabled' }).props.onChange({
+    currentTarget: { value: 'false' },
+  })
+})
+remoteFixture.externalBindingResourceId('main', 'dangling', 'external-cas-winner')
+const beforeBindingConflict = remoteFixture.writes.length
+await act(async () => {
+  tree.root.findByProps({ 'data-context-manager-binding-edit-form': '' })
+    .props.onSubmit({ preventDefault() {} })
+  for (let i = 0; i < 30; i += 1) await Promise.resolve()
+})
+await settleUI()
+assert.equal(remoteFixture.writes.length, beforeBindingConflict + 1)
+assert.equal(remoteFixture.profiles.main.prompts.dangling.enabled, true)
+assert.equal(remoteFixture.profiles.main.prompts.dangling.resourceId, 'external-cas-winner')
+assert.ok(renderedText(tree.root).includes('Profile write conflict'))
+await act(async () => { tree.root.findByProps({ 'data-context-manager-tab': 'resources' }).props.onClick() })
+assert.ok(renderedText(tree.root).includes('Profile write conflict'))
+assert.equal(tree.root.findByProps({ 'data-context-manager-binding-save': '' }).props.disabled, true)
+await act(async () => { buttonByLabel(tree, 'Discard draft').props.onClick() })
+assert.equal(remoteFixture.writes.length, beforeBindingConflict + 1)
+
+// Confirmed applied + failed authoritative Profile rehydrate is NOT Conflict
+// or Unknown. The confirmed write remains permanently blocked from replay.
+await act(async () => {
+  tree.root.findByProps({ 'data-context-manager-binding-edit-placement': 'dangling' }).props.onClick()
+})
+await act(async () => {
+  tree.root.findByProps({ id: 'cm-binding-edit-placement' }).props.onChange({
+    currentTarget: { value: 'runtime-context' },
+  })
+})
+remoteFixture.failProfileReads()
+const beforeBindingDegraded = remoteFixture.writes.length
+await act(async () => {
+  tree.root.findByProps({ 'data-context-manager-binding-edit-form': '' })
+    .props.onSubmit({ preventDefault() {} })
+  for (let i = 0; i < 30; i += 1) await Promise.resolve()
+})
+await settleUI()
+assert.equal(remoteFixture.writes.length, beforeBindingDegraded + 1)
+assert.equal(remoteFixture.profiles.main.prompts.dangling.placement, 'runtime-context')
+assert.ok(renderedText(tree.root).includes('read-back incomplete'))
+assert.equal(tree.root.findByProps({ 'data-context-manager-binding-save': '' }).props.disabled, true)
+await act(async () => { tree.root.findByProps({ 'data-context-manager-tab': 'resources' }).props.onClick() })
+assert.ok(renderedText(tree.root).includes('read-back incomplete'))
+remoteFixture.restoreProfileReads()
+await act(async () => { buttonByLabel(tree, 'Refresh').props.onClick() })
+await settleUI()
+assert.ok(renderedText(tree.root).includes('read-back incomplete'))
+assert.equal(remoteFixture.writes.length, beforeBindingDegraded + 1)
+await act(async () => { buttonByLabel(tree, 'Discard draft').props.onClick() })
+
+// A Resource Authority rotation, without a Profile revision/instance change,
+// may stale Resource metadata but must leave Profile writes fully possible.
+const beforeSourceRotation = injectedBusiness?.()?.hooks.contextManager.getSnapshot()
+const profileRevisionBefore = beforeSourceRotation?.profiles.data?.persistence.revision
+remoteFixture.externalRotateResourceAuthority()
+await act(async () => { await injectedBusiness?.()?.refresh() })
+await settleUI()
+const afterSourceRotation = injectedBusiness?.()?.hooks.contextManager.getSnapshot()
+assert.notEqual(afterSourceRotation.changes.resourceAuthorityId,
+  beforeSourceRotation.changes.resourceAuthorityId)
+assert.equal(afterSourceRotation.profiles.data.persistence.revision, profileRevisionBefore)
+assert.equal(afterSourceRotation.profiles.stale, false)
+const beforeResourceIndependentWrite = remoteFixture.writes.length
+await act(async () => {
+  tree.root.findByProps({ 'data-context-manager-binding-edit-order': 'dangling' }).props.onClick()
+})
+await act(async () => {
+  tree.root.findByProps({ id: 'cm-binding-edit-order' }).props.onChange({
+    currentTarget: { value: '-7' },
+  })
+})
+await act(async () => {
+  tree.root.findByProps({ 'data-context-manager-binding-edit-form': '' })
+    .props.onSubmit({ preventDefault() {} })
+  for (let i = 0; i < 30; i += 1) await Promise.resolve()
+})
+await settleUI()
+assert.equal(remoteFixture.writes.length, beforeResourceIndependentWrite + 1)
+assert.equal(remoteFixture.profiles.main.prompts.dangling.order, -7)
+assert.equal(remoteFixture.resourceWrites.length, resourceWritesStart)
+
+// An old React closure must also fail when the Host instance changes while
+// the Settings revision is numerically unchanged.
+const beforeHostSwitchCallback = tree.root.findByProps({
+  'data-context-manager-binding-edit-resourceId': 'dangling',
+}).props.onClick
+remoteFixture.externalRotateHostInstance()
+await act(async () => { await injectedBusiness?.()?.refresh() })
+await settleUI()
+const beforeHostSwitchWrite = remoteFixture.writes.length
+await act(async () => { beforeHostSwitchCallback() })
+assert.equal(tree.root.findAllByProps({ 'data-context-manager-binding-edit-form': '' }).length, 0)
+assert.equal(remoteFixture.writes.length, beforeHostSwitchWrite)
 
 remoteFixture.setReadOnly(true)
 const overlayFace = injectedBusiness?.()
