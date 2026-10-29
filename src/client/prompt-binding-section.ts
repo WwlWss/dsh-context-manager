@@ -20,7 +20,7 @@ import {
   sortedPromptBindings,
   validatePromptBindingCreate,
 } from './prompt-binding-editor.js'
-import { ownsLiveProfileDraft } from './presentation-store.js'
+import { ownsLiveProfileDraft, readLivePresentationForActions } from './presentation-store.js'
 import styles from './plugin.module.css'
 
 interface PromptBindingSectionProps extends ContextManagerDrawerProps {
@@ -171,7 +171,7 @@ export function ContextManagerPromptBindingSection(props: PromptBindingSectionPr
   const commit = async () => {
     const original = active
     if (!canSubmit || original === null || committing.current !== null
-      || !ownsLiveProfileDraft(props.readLivePresentation?.(), original)) return
+      || !ownsLiveProfileDraft(readLivePresentationForActions(actions), original)) return
     if (!isWritablePromptBindingPath(original.profileId, original.bindingId)) {
       actions.blockDraft(original.token, 'stale', {
         code: 'noticeNotEditable', kind: 'warning',
