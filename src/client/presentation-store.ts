@@ -468,6 +468,9 @@ export function createContextManagerPresentationStore() {
     create(scopeKey?: string) {
       const instance = handle.create(scopeKey)
       if (scopeKey === undefined && !revoked) {
+        // A root remount must revoke the previous actions identity as well,
+        // so obsolete callbacks cannot authorize writes into a new root.
+        if (rootInstance !== undefined) publishedStoreForActions.delete(rootInstance.actions)
         rootInstance = instance
         publishedStoreForActions.set(instance.actions, instance)
       }
