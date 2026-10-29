@@ -1,7 +1,12 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
-import { createContextManagerPresentationStore } from '../src/client/presentation-store.js'
+import {
+  createContextManagerPresentationStore,
+  mayDispatchImmediateProfileWrite,
+  ownsLiveProfileDraft,
+  readLivePresentationForActions,
+} from '../src/client/presentation-store.js'
 import {
   parsePromptBindingOrder,
   sortedPromptBindings,
@@ -364,4 +369,40 @@ test('M8A2 Fix2 RED: every existing Begin action retains a blocked Binding termi
     store.actions.beginCreate(BASIS)
     assert.equal(store.getSnapshot().draft?.kind, 'create')
   }
+})
+
+test('M8A2 Fix2: one actual DSH StoreInstance provides synchronous live dispatch ownership and revokes on cleanup', () => {
+  const handle = createContextManagerPresentationStore()
+  const instance = handle.create()
+  const actions = instance.actions
+  assert.strictEqual(readLivePresentationForActions(actions), instance.getSnapshot())
+  assert.equal(mayDispatchImmediateProfileWrite(readLivePresentationForActions(actions), null), false)
+  actions.open()
+  assert.equal(mayDispatchImmediateProfileWrite(readLivePresentationForActions(actions), null), true)
+  actions.selectProfile('main')
+  assert.equal(mayDispatchImmediateProfileWrite(readLivePresentationForActions(actions), 'main'), true)
+  assert.equal(mayDispatchImmediateProfileWrite(readLivePresentationForActions(actions), null), false)
+  actions.beginPromptBindingFieldEdit({
+    profileId: 'main', bindingId: 'b', field: 'enabled', original: true, basis: BASIS,
+  })
+  const draft = instance.getSnapshot().draft
+  assert.ok(draft !== null)
+  assert.equal(mayDispatchImmediateProfileWrite(readLivePresentationForActions(actions), 'main'), false)
+  assert.equal(ownsLiveProfileDraft(readLivePresentationForActions(actions), draft), true)
+  actions.updatePromptBindingField(false)
+  assert.equal(ownsLiveProfileDraft(readLivePresentationForActions(actions), draft), false,
+    'old same-token draft object must not authorize a stale Save after a synchronous update')
+  const current = instance.getSnapshot().draft
+  assert.ok(current !== null)
+  assert.equal(ownsLiveProfileDraft(readLivePresentationForActions(actions), current), true)
+  actions.blockDraft(current.token, 'unknown', {
+    code: 'noticeOutcomeUnknown', kind: 'warning', detail: 'uncertain',
+  })
+  assert.equal(ownsLiveProfileDraft(readLivePresentationForActions(actions), current), false)
+  actions.cancelDraft()
+  assert.equal(mayDispatchImmediateProfileWrite(readLivePresentationForActions(actions), 'main'), true)
+  handle.revokeSnapshotReader()
+  assert.equal(readLivePresentationForActions(actions), undefined,
+    'a captured obsolete callback must not read a disposed Store')
+  assert.equal(mayDispatchImmediateProfileWrite(readLivePresentationForActions(actions), 'main'), false)
 })
