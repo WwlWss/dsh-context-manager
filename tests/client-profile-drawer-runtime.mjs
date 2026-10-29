@@ -840,6 +840,8 @@ assert.equal(remoteFixture.profiles.main.prompts['m8a2-ui'].order, -42)
 // Unknown is never reinterpreted as applied even when read-back matches.
 await act(async () => {
   tree.root.findByProps({ 'data-context-manager-binding-edit-resourceId': 'm8a2-ui' }).props.onClick()
+})
+await act(async () => {
   tree.root.findByProps({ id: 'cm-binding-edit-resourceId' }).props.onChange({
     currentTarget: { value: 'unknown-response-but-committed' },
   })
