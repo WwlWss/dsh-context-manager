@@ -301,3 +301,38 @@ test('M8A2 Fix3: obsolete Resource edit events cannot modify a different same-ki
   const updated = store.getSnapshot().resourceDraft
   assert.equal(updated?.kind === 'edit' ? updated.name : undefined, 'current edit')
 })
+
+
+test('M8A2 Fix4 RED: all blocked Resource receipts survive ordinary Store actions and later blocks', () => {
+  const cases = [
+    { reason: 'unknown', code: 'resourceNoticeUnknown' },
+    { reason: 'conflict', code: 'resourceNoticeConflict' },
+    { reason: 'unverified', code: 'resourceNoticeDegraded' },
+  ] as const
+  for (const item of cases) {
+    const store = createContextManagerPresentationStore().create()
+    const actions = store.actions
+    actions.open()
+    actions.selectPane('resources')
+    actions.beginResourceCreate(CREATE)
+    const token = store.getSnapshot().resourceDraft?.token
+    assert.ok(token)
+    const original = { code: item.code, kind: 'warning', detail: 'exact first Host result' } as const
+    actions.blockResourceDraft(token, item.reason, original)
+    actions.selectPane('profiles')
+    actions.selectResource('unrelated')
+    actions.setResourceNotice({ code: 'resourceNoticeUnavailable', kind: 'warning' })
+    actions.blockResourceDraft(token, 'stale', {
+      code: 'resourceNoticeStale', kind: 'warning', detail: 'late obsolete result',
+    })
+    assert.deepEqual(store.getSnapshot().resourceNotice, original,
+      item.reason + ': original Resource terminal receipt must remain visible')
+    assert.equal(store.getSnapshot().resourceDraft?.blocked, item.reason,
+      'a late block must not reinterpret the first terminal result')
+    actions.discardBlockedResourceDraft(token)
+    assert.equal(store.getSnapshot().resourceDraft, null)
+    assert.equal(store.getSnapshot().resourceNotice, null)
+    actions.selectPane('profiles')
+    assert.equal(store.getSnapshot().pane, 'profiles')
+  }
+})
