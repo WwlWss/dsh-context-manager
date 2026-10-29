@@ -2,7 +2,7 @@ import { defineStore } from '@deepseek-ai/dsh-client-store'
 import type { ContextManagerClientProfileMutationBasis } from './mutation-types.js'
 import type { ContextManagerClientPromptResourceReadStamp } from './model-types.js'
 import type { ContextManagerClientResourceCreateBasis } from './resource-mutation-types.js'
-import type { ContextManagerRemotePromptResource } from '../remote/types.js'
+import type { ContextManagerRemotePromptResource, ContextManagerRemotePromptPlacement } from '../remote/types.js'
 import type { ResourceDraft, ResourceDraftBlock, ResourceNotice } from './resource-editor.js'
 import type {
   ProfileDraft,
@@ -125,6 +125,121 @@ export function createContextManagerPresentationStore() {
           profileId,
         }
         state.notice = null
+      },
+      beginPromptBindingCreate(state, input: {
+        profileId: string
+        basis: ContextManagerClientProfileMutationBasis
+      }) {
+        if (state.draft !== null || state.resourceDraft !== null || state.pane !== 'profiles') {
+          state.notice = { code: 'noticeDraftActive', kind: 'warning' }
+          return
+        }
+        state.nextDraftToken += 1
+        state.selectedProfileId = input.profileId
+        state.draft = {
+          kind: 'prompt-binding-create', token: state.nextDraftToken,
+          basis: Object.freeze({ ...input.basis }), profileId: input.profileId,
+          bindingId: '', resourceId: '', enabled: true,
+          placement: 'before-persona', orderText: '0',
+        }
+        state.notice = null
+      },
+      updatePromptBindingCreate(state,
+        field: 'bindingId' | 'resourceId' | 'enabled' | 'placement' | 'orderText',
+        value: string | boolean,
+      ) {
+        const draft = state.draft
+        if (draft?.kind !== 'prompt-binding-create' || draft.blocked) return
+        if (field === 'enabled' && typeof value === 'boolean') draft.enabled = value
+        else if (field === 'placement' && typeof value === 'string'
+          && (['before-persona', 'after-persona', 'before-tool-guidance',
+            'after-tool-guidance', 'runtime-context'] as string[]).includes(value)) {
+          draft.placement = value as ContextManagerRemotePromptPlacement
+        } else if (field !== 'enabled' && field !== 'placement' && typeof value === 'string') {
+          draft[field] = value
+        } else return
+        state.notice = null
+      },
+      beginPromptBindingFieldEdit(state, input: {
+        profileId: string
+        bindingId: string
+        basis: ContextManagerClientProfileMutationBasis
+      } & (
+        | { field: 'resourceId'; original: string }
+        | { field: 'enabled'; original: boolean }
+        | { field: 'placement'; original: ContextManagerRemotePromptPlacement }
+        | { field: 'order'; original: number }
+      )) {
+        if (state.draft !== null || state.resourceDraft !== null || state.pane !== 'profiles') {
+          state.notice = { code: 'noticeDraftActive', kind: 'warning' }
+          return
+        }
+        state.nextDraftToken += 1
+        state.selectedProfileId = input.profileId
+        const base = {
+          kind: 'prompt-binding-edit-field' as const, token: state.nextDraftToken,
+          basis: Object.freeze({ ...input.basis }), profileId: input.profileId,
+          bindingId: input.bindingId,
+        }
+        switch (input.field) {
+          case 'resourceId':
+            state.draft = { ...base, field: 'resourceId',
+              original: input.original, value: input.original }
+            break
+          case 'enabled':
+            state.draft = { ...base, field: 'enabled',
+              original: input.original, value: input.original }
+            break
+          case 'placement':
+            state.draft = { ...base, field: 'placement',
+              original: input.original, value: input.original }
+            break
+          case 'order':
+            state.draft = { ...base, field: 'order',
+              original: input.original, value: String(input.original) }
+            break
+        }
+        state.notice = null
+      },
+      updatePromptBindingField(state, value: string | boolean) {
+        const draft = state.draft
+        if (draft?.kind !== 'prompt-binding-edit-field' || draft.blocked) return
+        if (draft.field === 'enabled') {
+          if (typeof value !== 'boolean') return
+          draft.value = value
+        } else {
+          if (typeof value !== 'string') return
+          if (draft.field === 'placement') {
+            if (!(['before-persona', 'after-persona', 'before-tool-guidance',
+              'after-tool-guidance', 'runtime-context'] as string[]).includes(value)) return
+            draft.value = value as ContextManagerRemotePromptPlacement
+          } else draft.value = value
+        }
+        state.notice = null
+      },
+      beginPromptBindingDelete(state, input: {
+        profileId: string
+        bindingId: string
+        basis: ContextManagerClientProfileMutationBasis
+      }) {
+        if (state.draft !== null || state.resourceDraft !== null || state.pane !== 'profiles') {
+          state.notice = { code: 'noticeDraftActive', kind: 'warning' }
+          return
+        }
+        state.nextDraftToken += 1
+        state.selectedProfileId = input.profileId
+        state.draft = {
+          kind: 'prompt-binding-delete', token: state.nextDraftToken,
+          basis: Object.freeze({ ...input.basis }),
+          profileId: input.profileId, bindingId: input.bindingId,
+        }
+        state.notice = null
+      },
+      blockPromptBindingDraft(state, token: number,
+        reason: 'unknown' | 'conflict' | 'stale' | 'unverified',
+      ) {
+        if (state.draft?.token !== token || !state.draft.kind.startsWith('prompt-binding-')) return
+        state.draft.blocked = reason
       },
       updateCreate(state, field: 'id' | 'name' | 'description' | 'basePreset', value: string) {
         if (state.draft?.kind !== 'create' || state.draft.blocked) return
