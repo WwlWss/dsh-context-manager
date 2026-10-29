@@ -38,12 +38,13 @@ export function readLivePresentationForActions(
   return publishedStoreForActions.get(actions)?.getSnapshot()
 }
 
-/** The terminal Binding receipt is presentation-only, but its meaning must
- * survive any later ordinary UI warning (including obsolete callbacks). */
+/** The first terminal receipt is presentation-only and belongs to its exact
+ * Profile draft token (legacy M7C or Binding). Ordinary UI notices must not
+ * reinterpret Unknown, Conflict or any confirmed/degraded Binding outcome. */
 export function terminalProfileNotice(
   state: Pick<ContextManagerPresentationState, 'draft'>,
 ): ProfileNotice | undefined {
-  return isPromptBindingDraft(state.draft) ? state.draft.terminalNotice : undefined
+  return state.draft?.terminalNotice
 }
 
 /** Resource terminal results have the same first-receipt priority as Profile
@@ -143,26 +144,15 @@ export function createContextManagerPresentationStore() {
       selectPane(state, pane: 'profiles' | 'resources') {
         if (state.pane === pane) return
         if (state.draft !== null || state.resourceDraft !== null) {
-          if (state.pane === 'profiles') {
-            // An unsafe tab switch cannot relabel a confirmed-degraded,
-            // conflicted or outcome-unknown Binding write as a new warning.
-            if (!isPromptBindingDraft(state.draft)
-              || state.draft.terminalNotice === undefined) {
-              notifyOccupiedProfileDraft(state)
-            }
-          } else {
-            notifyOccupiedResourceDraft(state)
-          }
+          if (state.pane === 'profiles') notifyOccupiedProfileDraft(state)
+          else notifyOccupiedResourceDraft(state)
           return
         }
         state.pane = pane
       },
       selectProfile(state, id: string | null) {
         if (state.draft !== null) {
-          if (!isPromptBindingDraft(state.draft)
-            || state.draft.terminalNotice === undefined) {
-            notifyOccupiedProfileDraft(state)
-          }
+          notifyOccupiedProfileDraft(state)
           return
         }
         state.selectedProfileId = id
@@ -382,18 +372,16 @@ export function createContextManagerPresentationStore() {
         if (state.draft?.token === token) state.draft.submitting = false
       },
       blockDraft(state, token: number, reason: ProfileDraftBlock, notice: ProfileNotice | null) {
-        if (state.draft?.token !== token) return
-        if (isPromptBindingDraft(state.draft)
-          && state.draft.terminalNotice !== undefined) return
+        if (state.draft?.token !== token || state.draft.blocked !== undefined) return
         state.draft.blocked = reason
         state.draft.submitting = false
-        if (isPromptBindingDraft(state.draft) && notice !== null) {
-          state.draft.terminalNotice = notice
-        }
+        if (notice !== null) state.draft.terminalNotice = { ...notice }
         state.notice = notice
       },
       completeDraft(state, token: number, notice: ProfileNotice | null, selectId?: string) {
-        if (state.draft?.token !== token) return
+        // A delayed success must never erase a first terminal receipt for
+        // this exact draft, just as the Resource lane already guarantees.
+        if (state.draft?.token !== token || state.draft.blocked !== undefined) return
         state.draft = null
         if (selectId !== undefined) state.selectedProfileId = selectId
         state.notice = notice
@@ -540,10 +528,8 @@ export function createContextManagerPresentationStore() {
         state.resourceNotice = notice
       },
       setNotice(state, notice: ProfileNotice | null) {
-        // Preserve the exact terminal operation outcome, even if an unrelated
-        // async refresh returns late or a disabled action reports unavailable.
-        if (isPromptBindingDraft(state.draft)
-          && state.draft.terminalNotice !== undefined) return
+        // The first terminal M7C/Binding result wins over ordinary UI events.
+        if (terminalProfileNotice(state) !== undefined) return
         state.notice = notice
       },
     },
