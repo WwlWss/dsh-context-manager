@@ -82,6 +82,8 @@ export type ProfileNoticeCode =
   | 'noticeDraftActive'
   | 'noticeRefreshFailed'
   | 'noticeRefreshRequested'
+  | 'noticeBindingExists'
+  | 'noticeBindingMissing'
 
 export interface ProfileNotice {
   readonly code: ProfileNoticeCode
