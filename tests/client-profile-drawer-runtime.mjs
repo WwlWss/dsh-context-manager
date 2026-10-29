@@ -787,7 +787,17 @@ assert.equal(tree.root.findAllByProps({ 'data-context-manager-new-profile': '' }
 assert.equal(tree.root.findAllByProps({ 'data-context-manager-prompt-bindings': '' }).length, 1)
 const bindingWritesStart = remoteFixture.writes.length
 const resourceWritesStart = remoteFixture.resourceWrites.length
-await act(async () => { tree.root.findByProps({ 'data-context-manager-new-binding': '' }).props.onClick() })
+const bindingStartButton = tree.root.findByProps({ 'data-context-manager-new-binding': '' })
+const bindingDiagnosticSnapshot = injectedBusiness?.()?.hooks.contextManager.getSnapshot()
+assert.equal(bindingStartButton.props.disabled, false, JSON.stringify({
+  profile: bindingDiagnosticSnapshot?.profiles,
+  instanceId: bindingDiagnosticSnapshot?.instanceId,
+  changes: bindingDiagnosticSnapshot?.changes,
+  bindingStartDisabled: bindingStartButton.props.disabled,
+}))
+await act(async () => { bindingStartButton.props.onClick() })
+assert.equal(tree.root.findAllByProps({ id: 'cm-binding-create-id' }).length, 1,
+  'M8A2 beginCreate must retain the bound selected usable Profile draft')
 await act(async () => {
   tree.root.findByProps({ id: 'cm-binding-create-id' }).props.onChange({ currentTarget: { value: 'm8a2-ui' } })
   tree.root.findByProps({ id: 'cm-binding-create-resource' }).props.onChange({ currentTarget: { value: 'missing/日本語' } })
