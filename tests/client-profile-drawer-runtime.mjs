@@ -852,7 +852,7 @@ assert.equal(remoteFixture.resources.has('res-ui'), false)
 assert.equal(remoteFixture.profiles.main.prompts.dangling.resourceId, 'res-ui')
 assert.equal(remoteFixture.resourceWrites.at(-1).kind, 'resource-delete')
 
-// M8A2 Fix3 RED: Resource Controller has an independent authority, but an
+// M8A2 Fix3 GREEN: Resource Controller has an independent authority, but an
 // obsolete Resource form closure must NOT write after Binding draft takeover.
 await act(async () => { tree.root.findByProps({ 'data-context-manager-new-resource': '' }).props.onClick() })
 await act(async () => {
@@ -881,7 +881,7 @@ await act(async () => {
 })
 await settleUI()
 assert.equal(remoteFixture.resourceWrites.length, beforeObsoleteResourceSave,
-  'M8A2 Fix3 RED: old Resource Save cannot write while a Binding draft owns the Store')
+  'M8A2 Fix3 GREEN: old Resource Save cannot write while a Binding draft owns the Store')
 assert.equal(remoteFixture.resources.has('obsolete-resource-after-tab-switch'), false)
 await act(async () => { buttonByLabel(tree, 'Cancel').props.onClick() })
 
