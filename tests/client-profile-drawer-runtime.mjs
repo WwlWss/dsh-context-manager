@@ -688,6 +688,15 @@ await act(async () => {
 await settleUI()
 assert.equal(remoteFixture.writes.length, writeCount + 1)
 assert.equal(buttonByLabel(tree, 'Save').props.disabled, true)
+const legacyUnknownReceipt = registeredOverlayStore.readLiveSnapshot()?.notice
+assert.equal(legacyUnknownReceipt?.code, 'noticeOutcomeUnknown')
+assert.ok(legacyUnknownReceipt?.detail?.includes('simulated lost reply'))
+await act(async () => {
+  tree.root.findByProps({ 'data-context-manager-tab': 'resources' }).props.onClick()
+})
+assert.deepEqual(registeredOverlayStore.readLiveSnapshot()?.notice, legacyUnknownReceipt,
+  'legacy M7C Unknown receipt survives forbidden pane switch with exact detail')
+assert.equal(registeredOverlayStore.readLiveSnapshot()?.draft?.blocked, 'unknown')
 await act(async () => { trigger().props.onClick() })
 assert.equal(tree.root.findAllByProps({ 'data-context-manager-backdrop': '' }).length, 0)
 await act(async () => { trigger().props.onClick() })
@@ -716,6 +725,13 @@ assert.equal(remoteFixture.writes.length, conflictCount + 1)
 assert.equal(remoteFixture.profiles.main.name, 'External writer won')
 assert.equal(buttonByLabel(tree, 'Save').props.disabled, true)
 assert.ok(renderedText(tree.root).includes('Profile write conflict'))
+const legacyConflictReceipt = registeredOverlayStore.readLiveSnapshot()?.notice
+assert.equal(legacyConflictReceipt?.code, 'noticeConflict')
+await act(async () => {
+  tree.root.findByProps({ 'data-context-manager-tab': 'resources' }).props.onClick()
+})
+assert.deepEqual(registeredOverlayStore.readLiveSnapshot()?.notice, legacyConflictReceipt,
+  'legacy M7C Conflict receipt survives forbidden pane switch')
 await act(async () => { buttonByLabel(tree, 'Discard draft').props.onClick() })
 
 // M8A1: the same retained DSH Renderer opens the Resource library inside
