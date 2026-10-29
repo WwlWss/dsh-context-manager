@@ -499,8 +499,8 @@ test('M8A2 Fix3 GREEN: exact-token submission blocks Cancel, stale input and ret
   a.updatePromptBindingCreate(token, 'bindingId', 'stale input')
   a.cancelDraft(token)
   assert.equal(store.getSnapshot().draft?.token, fresh.token)
-  assert.equal(store.getSnapshot().draft?.kind === 'prompt-binding-create'
-    && store.getSnapshot().draft.bindingId, '')
+  const renewed = store.getSnapshot().draft
+  assert.equal(renewed?.kind === 'prompt-binding-create' ? renewed.bindingId : undefined, '')
 })
 
 test('M8A2 Fix3 GREEN: Resource submission and explicit Discard are independent of Profile basis', () => {
@@ -531,6 +531,6 @@ test('M8A2 Fix3 GREEN: Resource submission and explicit Discard are independent 
   const newer = store.getSnapshot().resourceDraft
   assert.equal(newer?.kind, 'create')
   a.updateResourceCreate(token, 'id', 'obsolete Resource input')
-  assert.equal(store.getSnapshot().resourceDraft?.kind === 'create'
-    && store.getSnapshot().resourceDraft.id, '')
+  const renewedResource = store.getSnapshot().resourceDraft
+  assert.equal(renewedResource?.kind === 'create' ? renewedResource.id : undefined, '')
 })
