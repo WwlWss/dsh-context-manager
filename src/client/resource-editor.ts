@@ -126,6 +126,55 @@ export function deriveResourceView(
   }
 }
 
+/** M8A1 Begin fence. A newly captured Resource stamp is valid only when it
+ * describes the exact List/Document version visible to this render. The Host
+ * instance ID is a transport lifecycle marker, NOT Resource authority. */
+export function isResourceBeginCurrent(
+  snapshot: ContextManagerClientSnapshot,
+  row: ContextManagerRemotePromptResourceListItem | undefined,
+  stamp: ContextManagerClientPromptResourceReadStamp | undefined,
+  renderedDocument?: ContextManagerRemotePromptResource,
+): boolean {
+  const list = snapshot.resources.list
+  if (stamp === undefined || row?.status !== 'usable'
+    || snapshot.attachment !== 'attached'
+    || snapshot.protocol.status !== 'compatible'
+    || snapshot.instanceId === undefined
+    || snapshot.changes?.instanceId !== snapshot.instanceId
+    || snapshot.changes?.resourceAuthorityId !== stamp.resourceAuthorityId
+    || list.status !== 'ready' || list.stale
+    || !list.data?.includes(row)
+    || row.id !== stamp.resourceId
+    || row.revision !== stamp.revision
+    || row.incarnationId !== stamp.incarnationId) return false
+  if (stamp.source === 'list') return renderedDocument === undefined
+  const document = snapshot.resources.documents.get(stamp.resourceId)
+  return document?.status === 'ready' && !document.stale
+    && document.data !== undefined
+    && document.data === renderedDocument
+    && renderedDocument.id === stamp.resourceId
+    && renderedDocument.revision === stamp.revision
+    && renderedDocument.incarnationId === stamp.incarnationId
+}
+
+/** No stale Resource-only Authority rebasing during a new Create action.
+ * An unrelated Profile authority/revision change is deliberately ignored. */
+export function isResourceCreateBeginCurrent(
+  snapshot: ContextManagerClientSnapshot,
+  basis: ContextManagerClientResourceCreateBasis | undefined,
+): boolean {
+  return basis !== undefined
+    && snapshot.attachment === 'attached'
+    && snapshot.protocol.status === 'compatible'
+    && snapshot.instanceId !== undefined
+    && snapshot.changes?.instanceId === snapshot.instanceId
+    && snapshot.resources.list.status === 'ready'
+    && !snapshot.resources.list.stale
+    && snapshot.resources.list.data !== undefined
+    && typeof snapshot.changes?.resourceAuthorityId === 'string'
+    && snapshot.changes.resourceAuthorityId === basis.resourceAuthorityId
+}
+
 export function validateResourceCreateDraft(
   draft: Extract<ResourceDraft, { kind: 'create' }>,
   reservedIds: ReadonlySet<string>,
