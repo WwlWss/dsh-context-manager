@@ -412,7 +412,7 @@ test('M8A2 Fix2: one actual DSH StoreInstance provides synchronous live dispatch
   assert.equal(mayDispatchImmediateProfileWrite(readLivePresentationForActions(actions), 'main'), false)
 })
 
-test('M8A2 Fix3 RED: M7C Begin and M8A1 Begin obey shared pane and one-draft invariant', () => {
+test('M8A2 Fix3 GREEN: M7C Begin and M8A1 Begin obey shared pane and one-draft invariant', () => {
   const handle = createContextManagerPresentationStore()
   const store = handle.create()
   store.actions.open()
@@ -439,7 +439,7 @@ test('M8A2 Fix3 RED: M7C Begin and M8A1 Begin obey shared pane and one-draft inv
   assert.equal(store.getSnapshot().resourceDraft, null)
 })
 
-test('M8A2 Fix3 RED: old callbacks cannot mutate or clear a newer Binding terminal draft', () => {
+test('M8A2 Fix3 GREEN: old callbacks cannot mutate or clear a newer Binding terminal draft', () => {
   const store = createContextManagerPresentationStore().create()
   const a = store.actions
   a.open()
