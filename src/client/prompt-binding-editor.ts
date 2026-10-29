@@ -30,7 +30,8 @@ export function sortedPromptBindings(profile: ContextManagerRemoteProfile) {
 export function parsePromptBindingOrder(text: string): number | undefined {
   if (!/^[+-]?[0-9]+$/.test(text)) return undefined
   const parsed = Number(text)
-  return Number.isSafeInteger(parsed) ? parsed : undefined
+  // DSH Settings persists JSON numbers: -0 and 0 have the same stored value.
+  return Number.isSafeInteger(parsed) ? (parsed === 0 ? 0 : parsed) : undefined
 }
 
 export type BindingCreateValidity = 'valid' | 'unsafe-id' | 'exists' | 'invalid-order'
