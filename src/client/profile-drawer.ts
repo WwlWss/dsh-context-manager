@@ -151,6 +151,7 @@ export function ContextManagerProfileDrawerContent(props: ContextManagerDrawerPr
     actions.beginCreate(basis)
   }
   const startEdit = (row: ProfileListRow, field: ProfileEditField, original: string | undefined) => {
+    if (row.id === '__proto__') return actions.setNotice({ code: 'noticeNotEditable', kind: 'warning' })
     if (draft !== null) {
       actions.setNotice({ code: 'noticeDraftActive', kind: 'warning' })
       return
@@ -161,6 +162,7 @@ export function ContextManagerProfileDrawerContent(props: ContextManagerDrawerPr
     actions.beginFieldEdit({ profileId: row.id, field, original, basis })
   }
   const startDelete = (row: ProfileListRow) => {
+    if (row.id === '__proto__') return actions.setNotice({ code: 'noticeNotEditable', kind: 'warning' })
     if (draft !== null) {
       actions.setNotice({ code: 'noticeDraftActive', kind: 'warning' })
       return
@@ -373,7 +375,7 @@ export function ContextManagerProfileDrawerContent(props: ContextManagerDrawerPr
     return h('div', { key: field, className: styles.field },
       h('div', { className: styles.fieldHeader },
         h('span', { className: styles.label }, label),
-        !active ? button(t('edit'), () => startEdit(row, field, value), !canStart) : null,
+        !active ? button(t('edit'), () => startEdit(row, field, value), !canStart || row.id === '__proto__') : null,
       ),
       active && draft?.kind === 'edit-field'
         ? h('form', {
@@ -470,7 +472,7 @@ export function ContextManagerProfileDrawerContent(props: ContextManagerDrawerPr
                 () => { void changeDefault(selected.configuredDefault ? null : selected.id) },
                 !canStart,
               ) : null,
-            button(t('deleteProfile'), () => startDelete(selected), !canStart, 'danger'),
+            button(t('deleteProfile'), () => startDelete(selected), !canStart || selected.id === '__proto__', 'danger'),
           ),
       )
 
