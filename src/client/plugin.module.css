@@ -270,6 +270,29 @@
   padding: 12px 0;
 }
 
+/* Full binding management lives in the existing scrollable .detailPanel.
+   Do not inherit the 130px height / nested scrolling of short diagnostics. */
+.bindingSection {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+  padding-top: 12px;
+  border-top: 1px solid var(--dsw-alias-border-l1);
+  overflow-wrap: anywhere;
+}
+
+.bindingSection h3 {
+  margin: 0 0 6px;
+  font-size: 14px;
+}
+
+.bindingSection ul {
+  margin: 0;
+  padding: 0;
+}
+
 .diagnostics {
   flex: none;
   max-height: 130px;
