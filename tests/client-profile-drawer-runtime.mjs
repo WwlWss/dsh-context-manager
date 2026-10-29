@@ -1093,18 +1093,10 @@ assert.ok(renderedText(tree.root).includes('Write confirmed, but reconciliation 
 assert.equal(remoteFixture.writes.length, beforeBindingDegraded + 1)
 await act(async () => { buttonByLabel(tree, 'Discard draft').props.onClick() })
 
-// A Resource Authority rotation, without a Profile revision/instance change,
-// may stale Resource metadata but must leave Profile writes fully possible.
+// A Resource-only Authority rotation WHILE a Binding draft holds its
+// immutable Profile basis must not invalidate a Profile write or rebase it.
 const beforeSourceRotation = injectedBusiness?.()?.hooks.contextManager.getSnapshot()
 const profileRevisionBefore = beforeSourceRotation?.profiles.data?.persistence.revision
-remoteFixture.externalRotateResourceAuthority()
-await act(async () => { await injectedBusiness?.()?.refresh() })
-await settleUI()
-const afterSourceRotation = injectedBusiness?.()?.hooks.contextManager.getSnapshot()
-assert.notEqual(afterSourceRotation.changes.resourceAuthorityId,
-  beforeSourceRotation.changes.resourceAuthorityId)
-assert.equal(afterSourceRotation.profiles.data.persistence.revision, profileRevisionBefore)
-assert.equal(afterSourceRotation.profiles.stale, false)
 const beforeResourceIndependentWrite = remoteFixture.writes.length
 await act(async () => {
   tree.root.findByProps({ 'data-context-manager-binding-edit-order': 'dangling' }).props.onClick()
@@ -1114,6 +1106,19 @@ await act(async () => {
     currentTarget: { value: '-7' },
   })
 })
+const heldBindingDraft = registeredOverlayStore.readLiveSnapshot()?.draft
+assert.equal(heldBindingDraft?.kind, 'prompt-binding-edit-field')
+const heldBindingBasis = structuredClone(heldBindingDraft.basis)
+assert.equal(heldBindingBasis.revision, profileRevisionBefore)
+remoteFixture.externalRotateResourceAuthority()
+await act(async () => { await injectedBusiness?.()?.refresh() })
+await settleUI()
+const afterSourceRotation = injectedBusiness?.()?.hooks.contextManager.getSnapshot()
+assert.notEqual(afterSourceRotation.changes.resourceAuthorityId,
+  beforeSourceRotation.changes.resourceAuthorityId)
+assert.equal(afterSourceRotation.profiles.data.persistence.revision, profileRevisionBefore)
+assert.equal(afterSourceRotation.profiles.stale, false)
+assert.deepEqual(registeredOverlayStore.readLiveSnapshot()?.draft?.basis, heldBindingBasis)
 await act(async () => {
   tree.root.findByProps({ 'data-context-manager-binding-edit-form': '' })
     .props.onSubmit({ preventDefault() {} })
@@ -1121,6 +1126,7 @@ await act(async () => {
 })
 await settleUI()
 assert.equal(remoteFixture.writes.length, beforeResourceIndependentWrite + 1)
+assert.deepEqual(remoteFixture.writes.at(-1).basis, heldBindingBasis)
 assert.equal(remoteFixture.profiles.main.prompts.dangling.order, -7)
 assert.equal(remoteFixture.resourceWrites.length, resourceWritesStart)
 
