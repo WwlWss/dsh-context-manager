@@ -1020,6 +1020,23 @@ await act(async () => { buttonByLabel(tree, 'Discard draft').props.onClick() })
 await settleUI()
 assert.equal(remoteFixture.writes.length, beforeUnknownBinding + 1)
 
+// M7C compatibility: a normal Profile refresh transport error is still
+// severity=error / role=alert; terminal Binding receipts are protected
+// separately and do not require downgrading ordinary refresh errors.
+delayNextUiRefresh = true
+rejectDelayedUiRefresh = undefined
+await act(async () => { buttonByLabel(tree, 'Refresh').props.onClick() })
+assert.equal(typeof rejectDelayedUiRefresh, 'function')
+await act(async () => {
+  rejectDelayedUiRefresh(new Error('ordinary Profile refresh transport failure'))
+  for (let i = 0; i < 15; i += 1) await Promise.resolve()
+})
+await settleUI()
+assert.ok(tree.root.findAll(node =>
+  node.type === 'div' && node.props.role === 'alert'
+  && renderedText(node).includes('Refresh request failed.')
+).length > 0, 'M7C refresh transport error must retain error/alert severity')
+
 await act(async () => {
   tree.root.findByProps({ 'data-context-manager-binding-delete': 'm8a2-ui' }).props.onClick()
 })
