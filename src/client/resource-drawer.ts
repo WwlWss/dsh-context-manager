@@ -5,6 +5,8 @@ import {
   blockForResourceMutationResult,
   commitResourceDraft,
   deriveResourceView,
+  isResourceBeginCurrent,
+  isResourceCreateBeginCurrent,
   isResourceDraftCurrent,
   noticeForResourceMutationResult,
   resourceEditChanges,
@@ -129,11 +131,15 @@ export function ContextManagerResourceDrawerContent(props: ContextManagerDrawerP
   const unavailable = () => {
     actions.setResourceNotice({ code: 'resourceNoticeUnavailable', kind: 'warning' })
   }
+  const staleBegin = () => {
+    actions.setResourceNotice({ code: 'resourceNoticeStale', kind: 'warning' })
+  }
 
   const startCreate = () => {
     if (!canStart) return unavailable()
     const basis = props.capturePromptResourceCreateBasis()
     if (!basis) return unavailable()
+    if (!isResourceCreateBeginCurrent(snapshot, basis)) return staleBegin()
     actions.beginResourceCreate(basis)
   }
 
@@ -145,6 +151,7 @@ export function ContextManagerResourceDrawerContent(props: ContextManagerDrawerP
     }
     const stamp = props.capturePromptResourceReadStamp(selected.id, 'document')
     if (!stamp) return unavailable()
+    if (!isResourceBeginCurrent(snapshot, selected, stamp, document)) return staleBegin()
     actions.beginResourceEdit(document, stamp)
   }
 
@@ -153,6 +160,7 @@ export function ContextManagerResourceDrawerContent(props: ContextManagerDrawerP
     if (!canStart || selected?.status !== 'usable') return unavailable()
     const stamp = props.capturePromptResourceReadStamp(selected.id, 'list')
     if (!stamp) return unavailable()
+    if (!isResourceBeginCurrent(snapshot, selected, stamp)) return staleBegin()
     actions.beginResourceDelete(selected.id, selected.name, stamp)
   }
 
