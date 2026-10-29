@@ -659,6 +659,13 @@ const invalidRow = tree.root.findAll(node =>
 assert.ok(invalidRow)
 await act(async () => { invalidRow.props.onClick() })
 assert.equal(tree.root.findAllByProps({ id: 'cm-edit-name' }).length, 0)
+// A malformed Profile has no normal field editor but remains explicitly
+// deletable via its original diagnostic row (no synthetic usable Profile).
+await act(async () => { buttonByLabel(tree, 'Delete profile').props.onClick() })
+assert.equal(registeredOverlayStore.readLiveSnapshot()?.draft?.kind, 'confirm-delete',
+  'M8A2 Fix4: invalid Profile diagnostic must still permit an explicit Delete draft')
+await act(async () => { buttonByLabel(tree, 'Cancel').props.onClick() })
+assert.equal(registeredOverlayStore.readLiveSnapshot()?.draft, null)
 
 // An uncertain write is attempted exactly once and retains a blocked draft through close/reopen.
 const mainRow = tree.root.findAll(node =>
@@ -806,13 +813,19 @@ await act(async () => {
 await settleUI()
 assert.equal(remoteFixture.resourceWrites.length, beforeUnknown + 1)
 assert.equal(buttonByLabel(tree, 'Save').props.disabled, true)
+const uncertainResourceReceipt = registeredOverlayStore.readLiveSnapshot()?.resourceNotice
+assert.equal(uncertainResourceReceipt?.code, 'resourceNoticeUnknown')
+assert.ok(uncertainResourceReceipt?.detail?.includes('response was dropped'))
 await act(async () => { tree.root.findByProps({ 'data-context-manager-tab': 'profiles' }).props.onClick() })
+assert.deepEqual(registeredOverlayStore.readLiveSnapshot()?.resourceNotice, uncertainResourceReceipt,
+  'M8A2 Fix4: a blocked Resource tab-switch cannot replace the exact Unknown receipt')
 assert.equal(tree.root.findAllByProps({ 'data-context-manager-resource-editor': '' }).length, 1)
 await act(async () => { trigger().props.onClick() })
 await act(async () => { trigger().props.onClick() })
 assert.equal(tree.root.findAllByProps({ 'data-context-manager-resource-editor': '' }).length, 1)
 assert.equal(buttonByLabel(tree, 'Save').props.disabled, true)
 assert.equal(remoteFixture.resourceWrites.length, beforeUnknown + 1)
+assert.deepEqual(registeredOverlayStore.readLiveSnapshot()?.resourceNotice, uncertainResourceReceipt)
 await act(async () => { buttonByLabel(tree, 'Discard draft').props.onClick() })
 
 // An ABA replacement with the same ID/revision but new Incarnation must
