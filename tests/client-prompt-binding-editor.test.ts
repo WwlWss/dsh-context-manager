@@ -411,3 +411,55 @@ test('M8A2 Fix2: one actual DSH StoreInstance provides synchronous live dispatch
     'a captured obsolete callback must not read a disposed Store')
   assert.equal(mayDispatchImmediateProfileWrite(readLivePresentationForActions(actions), 'main'), false)
 })
+
+test('M8A2 Fix3 RED: M7C Begin and M8A1 Begin obey shared pane and one-draft invariant', () => {
+  const handle = createContextManagerPresentationStore()
+  const store = handle.create()
+  store.actions.open()
+  const basis = { resourceAuthorityId: 'resource-owner' }
+  // Old Resource Begin callback must not create a hidden draft in Profiles.
+  store.actions.beginResourceCreate(basis)
+  assert.equal(store.getSnapshot().resourceDraft, null, 'wrong-pane Resource Begin must be refused')
+  store.actions.selectPane('resources')
+  store.actions.beginResourceCreate(basis)
+  const resourceDraft = store.getSnapshot().resourceDraft
+  assert.equal(resourceDraft?.kind, 'create')
+  // The three historical Profile Begin APIs must not create an invisible
+  // Profile draft while Resources owns the editing slot.
+  store.actions.beginCreate(BASIS)
+  store.actions.beginFieldEdit({ profileId: 'main', field: 'name', original: 'Main', basis: BASIS })
+  store.actions.beginDelete('main', BASIS)
+  assert.equal(store.getSnapshot().draft, null, 'Resource draft must exclude all Profile draft kinds')
+  assert.strictEqual(store.getSnapshot().resourceDraft, resourceDraft)
+  store.actions.cancelResourceDraft()
+  store.actions.selectPane('profiles')
+  assert.equal(store.getSnapshot().pane, 'profiles')
+  store.actions.beginCreate(BASIS)
+  assert.equal(store.getSnapshot().draft?.kind, 'create')
+  assert.equal(store.getSnapshot().resourceDraft, null)
+})
+
+test('M8A2 Fix3 RED: old callbacks cannot mutate or clear a newer Binding terminal draft', () => {
+  const store = createContextManagerPresentationStore().create()
+  const a = store.actions
+  a.open()
+  a.selectProfile('main')
+  a.beginPromptBindingCreate({ profileId: 'main', basis: BASIS })
+  const old = store.getSnapshot().draft
+  assert.equal(old?.kind, 'prompt-binding-create')
+  const oldToken = old.token
+  a.cancelDraft()
+  a.beginPromptBindingCreate({ profileId: 'main', basis: BASIS })
+  const next = store.getSnapshot().draft
+  assert.equal(next?.kind, 'prompt-binding-create')
+  assert.notEqual(next.token, oldToken)
+  a.updatePromptBindingCreate('bindingId', 'obsolete-input')
+  assert.equal(store.getSnapshot().draft.bindingId, '', 'stale input must not alter a later draft')
+  a.blockDraft(next.token, 'unknown', {
+    code: 'noticeOutcomeUnknown', kind: 'warning', detail: 'outcome not known',
+  })
+  a.cancelDraft()
+  assert.strictEqual(store.getSnapshot().draft?.token, next.token,
+    'an old Cancel callback may not discard a newer Unknown draft')
+  assert.equal(store.getSnapshot().notice?.code, 'noticeOutcomeUnknown')
+})
