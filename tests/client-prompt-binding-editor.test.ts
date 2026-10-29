@@ -467,7 +467,7 @@ test('M8A2 Fix3 GREEN: old callbacks cannot mutate or clear a newer Binding term
   assert.equal(store.getSnapshot().notice?.code, 'noticeOutcomeUnknown')
 })
 
-test('M8A2 final Strict RED: late same-token Profile Complete cannot erase first blocked Binding terminal receipt', () => {
+test('M8A2 final Strict GREEN: late same-token Profile Complete cannot erase first blocked Binding terminal receipt', () => {
   for (const { blocked, code } of [
     { blocked: 'unknown', code: 'noticeOutcomeUnknown' },
     { blocked: 'conflict', code: 'noticeConflict' },
