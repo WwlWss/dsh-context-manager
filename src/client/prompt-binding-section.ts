@@ -321,6 +321,9 @@ export function ContextManagerPromptBindingSection(props: PromptBindingSectionPr
       { 'data-context-manager-new-binding': '' }),
   ),
   h('p', { className: styles.hint }, t('bindingOneFieldHint')),
+  !isWritablePromptBindingPath(profileId)
+    ? h('p', { className: styles.warning, role: 'status' }, t('bindingPathReadOnly'))
+    : null,
   h('div', { className: styles.actions },
     button(t('bindingLoadSuggestions'), requestSuggestions, snapshot.attachment !== 'attached'),
   ),
