@@ -305,7 +305,7 @@ test('M8A2 Fix3: obsolete Resource edit events cannot modify a different same-ki
 })
 
 
-test('M8A2 Fix4 RED: all blocked Resource receipts survive ordinary Store actions and later blocks', () => {
+test('M8A2 Fix4 GREEN: all blocked Resource receipts survive ordinary Store actions and later blocks', () => {
   const cases = [
     { reason: 'unknown', code: 'resourceNoticeUnknown' },
     { reason: 'conflict', code: 'resourceNoticeConflict' },
@@ -327,6 +327,7 @@ test('M8A2 Fix4 RED: all blocked Resource receipts survive ordinary Store action
     actions.blockResourceDraft(token, 'stale', {
       code: 'resourceNoticeStale', kind: 'warning', detail: 'late obsolete result',
     })
+    actions.completeResourceDraft(token, { code: 'resourceNoticeSaved', kind: 'success' })
     assert.deepEqual(store.getSnapshot().resourceNotice, original,
       item.reason + ': original Resource terminal receipt must remain visible')
     assert.equal(store.getSnapshot().resourceDraft?.blocked, item.reason,
