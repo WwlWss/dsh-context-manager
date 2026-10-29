@@ -260,3 +260,31 @@ test('M8A2 GREEN: confirmed-degraded, uncertain and conflicting outcomes block e
   }), undefined)
   assert.equal(blockForPromptBindingResult({ status: 'superseded' }), 'stale')
 })
+
+test('M8A2 Fix RED: blocked Binding terminal notice survives forbidden navigation and late read failure', () => {
+  for (const [blocked, code] of [
+    ['unknown', 'noticeOutcomeUnknown'],
+    ['conflict', 'noticeConflict'],
+    ['unverified', 'noticeSavedDegraded'],
+  ] as const) {
+    const store = createContextManagerPresentationStore().create()
+    store.actions.selectProfile('main')
+    store.actions.beginPromptBindingFieldEdit({
+      profileId: 'main', bindingId: 'p',
+      field: 'enabled', original: true, basis: BASIS,
+    })
+    const token = bindingDraft(store).token
+    store.actions.blockDraft(token, blocked, { code, kind: 'warning', detail: 'original result' })
+    store.actions.selectPane('resources')
+    store.actions.selectProfile('other')
+    store.actions.setNotice({ code: 'noticeRefreshFailed', kind: 'error' })
+    assert.equal(store.getSnapshot().pane, 'profiles')
+    assert.equal(store.getSnapshot().selectedProfileId, 'main')
+    assert.equal(store.getSnapshot().draft?.blocked, blocked)
+    assert.equal(store.getSnapshot().notice?.code, code, blocked + ': terminal result must survive')
+    assert.equal(store.getSnapshot().notice?.detail, 'original result')
+    store.actions.cancelDraft()
+    store.actions.selectPane('resources')
+    assert.equal(store.getSnapshot().pane, 'resources')
+  }
+})
