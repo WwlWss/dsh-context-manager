@@ -350,3 +350,49 @@ test('M8A2 Fix GREEN: Settings path safety is exact and separate from Resource v
     assert.equal(isWritablePromptBindingPath(id, 'normal'), true, JSON.stringify(id))
   }
 })
+
+test('M8A2 Fix2 RED: every existing Begin action retains a blocked Binding terminal notice', () => {
+  const cases = [
+    { blocked: 'unknown', code: 'noticeOutcomeUnknown' },
+    { blocked: 'conflict', code: 'noticeConflict' },
+    { blocked: 'unverified', code: 'noticeSavedDegraded' },
+  ] as const
+  for (const c of cases) {
+    const store = createContextManagerPresentationStore().create()
+    store.actions.selectProfile('main')
+    store.actions.beginPromptBindingFieldEdit({
+      profileId: 'main', bindingId: 'exact', field: 'enabled', original: true, basis: BASIS,
+    })
+    const token = store.getSnapshot().draft?.token
+    assert.ok(token !== undefined)
+    store.actions.blockDraft(token, c.blocked, {
+      code: c.code, kind: 'warning', detail: 'irreversible terminal receipt',
+    })
+    const original = store.getSnapshot().draft
+    const reentry = [
+      () => store.actions.beginCreate(BASIS),
+      () => store.actions.beginFieldEdit({
+        profileId: 'main', field: 'name', original: 'Main', basis: BASIS,
+      }),
+      () => store.actions.beginDelete('main', BASIS),
+      () => store.actions.beginPromptBindingCreate({ profileId: 'main', basis: BASIS }),
+      () => store.actions.beginPromptBindingFieldEdit({
+        profileId: 'main', bindingId: 'exact', field: 'enabled',
+        original: true, basis: BASIS,
+      }),
+      () => store.actions.beginPromptBindingDelete({
+        profileId: 'main', bindingId: 'exact', basis: BASIS,
+      }),
+    ]
+    for (const attempt of reentry) {
+      attempt()
+      assert.equal(store.getSnapshot().draft, original, c.blocked + ': existing draft must stay')
+      assert.equal(store.getSnapshot().notice?.code, c.code,
+        c.blocked + ': reentry must not replace the terminal result')
+      assert.equal(store.getSnapshot().notice?.detail, 'irreversible terminal receipt')
+    }
+    store.actions.cancelDraft()
+    store.actions.beginCreate(BASIS)
+    assert.equal(store.getSnapshot().draft?.kind, 'create')
+  }
+})
