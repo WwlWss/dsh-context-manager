@@ -167,6 +167,7 @@ export function createContextManagerClientPlugin(contribution: ContextManagerRem
       let model: ReturnType<typeof createContextManagerClientModel> | undefined
       let modelFiber: ReturnType<Context['plugin']> | undefined
       let disposeLocale: (() => void) | undefined
+      let revokePresentationReader: (() => void) | undefined
       const slotDisposers: Array<() => void> = []
 
       try {
@@ -191,6 +192,15 @@ export function createContextManagerClientPlugin(contribution: ContextManagerRem
         disposeLocale = ctx.locale.register(CONTEXT_MANAGER_LOCALE, CONTEXT_MANAGER_LOCALES)
         const t = ctx.locale.bind(CONTEXT_MANAGER_LOCALE)
         const presentationStore = createContextManagerPresentationStore()
+        revokePresentationReader = presentationStore.revokeSnapshotReader
+        // Both registered root slots reuse exactly one published DSH Store
+        // instance. This wrapper injects only a read method for dispatch
+        // ownership; it neither adds another store nor modifies DSH props.
+        const renderLiveDrawer = (props: ContextManagerDrawerProps) =>
+          createElement(ContextManagerDrawer, {
+            ...props,
+            readLivePresentation: presentationStore.readLiveSnapshot,
+          })
 
         slotDisposers.push(ctx.slots.inject(
           'sidebar.footer.action',
@@ -211,10 +221,11 @@ export function createContextManagerClientPlugin(contribution: ContextManagerRem
             store: presentationStore,
             inject: injectBusinessFace,
             locale: CONTEXT_MANAGER_LOCALE,
-          }, ContextManagerDrawer),
+          }, renderLiveDrawer),
         ))
       } catch (error) {
         for (const dispose of slotDisposers.reverse()) dispose()
+        revokePresentationReader?.()
         disposeLocale?.()
         try {
           await modelFiber?.dispose()
@@ -227,6 +238,7 @@ export function createContextManagerClientPlugin(contribution: ContextManagerRem
 
       return async () => {
         for (const dispose of slotDisposers.reverse()) dispose()
+        revokePresentationReader?.()
         disposeLocale?.()
         try {
           await modelFiber?.dispose()
