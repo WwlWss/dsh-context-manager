@@ -193,14 +193,8 @@ export function createContextManagerClientPlugin(contribution: ContextManagerRem
         const t = ctx.locale.bind(CONTEXT_MANAGER_LOCALE)
         const presentationStore = createContextManagerPresentationStore()
         revokePresentationReader = presentationStore.revokeSnapshotReader
-        // Both registered root slots reuse exactly one published DSH Store
-        // instance. This wrapper injects only a read method for dispatch
-        // ownership; it neither adds another store nor modifies DSH props.
-        const renderLiveDrawer = (props: ContextManagerDrawerProps) =>
-          createElement(ContextManagerDrawer, {
-            ...props,
-            readLivePresentation: presentationStore.readLiveSnapshot,
-          })
+        // Live authorization resolves from published StoreInstance.actions,
+        // leaving both Slot components and their legacy return shape intact.
 
         slotDisposers.push(ctx.slots.inject(
           'sidebar.footer.action',
@@ -221,7 +215,7 @@ export function createContextManagerClientPlugin(contribution: ContextManagerRem
             store: presentationStore,
             inject: injectBusinessFace,
             locale: CONTEXT_MANAGER_LOCALE,
-          }, renderLiveDrawer),
+          }, ContextManagerDrawer),
         ))
       } catch (error) {
         for (const dispose of slotDisposers.reverse()) dispose()
