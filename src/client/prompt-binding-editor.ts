@@ -5,6 +5,7 @@ import type {
 } from '../remote/types.js'
 import type { ContextManagerClientSnapshot } from './model-types.js'
 import type {
+  ContextManagerClientProfileMutationBasis,
   ContextManagerClientProfileMutationResult,
   ContextManagerClientProfileMutations,
 } from './mutation-types.js'
@@ -17,6 +18,47 @@ export function isPromptBindingDraft(draft: ProfileDraft | null): draft is Promp
     || draft.kind === 'prompt-binding-edit-field'
     || draft.kind === 'prompt-binding-delete'
   )
+}
+
+/** DSH Settings currently rejects only the special prototype-mutation path key.
+ * Resource IDs are ordinary values and MUST NOT be passed through this check. */
+export function isWritablePromptBindingPath(profileId: string, bindingId?: string): boolean {
+  return profileId !== '__proto__' && bindingId !== '__proto__'
+}
+
+/** Begin fence: the Profile/Binding shown by this React render must belong to
+ * precisely the Profile authority/revision captured by the live Controller.
+ * Never compare global change generation: Resource-only authority changes
+ * must not stale Profile drafts. Host + Controller still CAS at Save. */
+export function isPromptBindingBeginCurrent(
+  snapshot: ContextManagerClientSnapshot,
+  profileId: string,
+  renderedProfile: ContextManagerRemoteProfile,
+  basis: ContextManagerClientProfileMutationBasis | undefined,
+  bindingId?: string,
+  renderedBinding?: ContextManagerRemotePromptBinding,
+): boolean {
+  const profiles = snapshot.profiles
+  const data = profiles.data
+  if (basis === undefined
+    || snapshot.attachment !== 'attached'
+    || snapshot.protocol.status !== 'compatible'
+    || profiles.status !== 'ready'
+    || profiles.stale
+    || data?.schemaCompatible !== true
+    || !data.persistence.available
+    || !data.persistence.registered
+    || !data.persistence.writable
+    || data.persistence.revision !== basis.revision
+    || snapshot.instanceId !== basis.instanceId
+    || snapshot.changes?.instanceId !== basis.instanceId
+    || !Object.hasOwn(data.profiles, profileId)
+    || data.profiles[profileId] !== renderedProfile) {
+    return false
+  }
+  return bindingId === undefined
+    || (Object.hasOwn(renderedProfile.prompts, bindingId)
+      && renderedProfile.prompts[bindingId] === renderedBinding)
 }
 
 /** No String.trim(), rounding or native sort locale dependence in an authored ID. */
