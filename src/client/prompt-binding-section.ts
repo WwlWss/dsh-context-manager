@@ -53,7 +53,7 @@ function input(id: string, value: string, onChange: (next: string) => void,
   })
 }
 
-function labeled(id: string, label: string, content: unknown) {
+function labeled(id: string, label: string, content: ReturnType<typeof h>) {
   return h('div', { className: styles.field },
     h('label', { htmlFor: id, className: styles.label }, label),
     content,
