@@ -227,7 +227,10 @@ function createWritableRemoteFixture() {
     async profiles() {
       if (failProfileReads > 0) {
         failProfileReads -= 1
-        return rejected('persistence-unavailable', 'simulated Profile read-back failure')
+        // profiles() is a single-layer RemoteResult, unlike mutation RPCs.
+        // A rejected transport promise is the realistic read failure; a
+        // nested business result would corrupt the snapshot test fixture.
+        throw new Error('simulated Profile read-back transport failure')
       }
       return okRead(profileSnapshot())
     },
