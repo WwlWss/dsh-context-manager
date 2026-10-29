@@ -560,8 +560,10 @@ await act(async () => {
   tree.root.findByProps({ id: 'cm-create-preset' }).props.onChange({ currentTarget: { value: 'native' } })
 })
 assert.equal(remoteFixture.writes.length, 0)
+const sameFrameProfileCancel = buttonByLabel(tree, 'Cancel').props.onClick
 await act(async () => {
   tree.root.findAllByType('form')[0].props.onSubmit({ preventDefault() {} })
+  sameFrameProfileCancel()
   for (let i = 0; i < 20; i += 1) await Promise.resolve()
 })
 await settleUI()
