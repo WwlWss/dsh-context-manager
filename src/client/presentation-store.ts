@@ -25,9 +25,49 @@ export interface ContextManagerPresentationState {
   notice: ProfileNotice | null
 }
 
+/** The terminal Binding receipt is presentation-only, but its meaning must
+ * survive any later ordinary UI warning (including obsolete callbacks). */
+export function terminalProfileNotice(
+  state: Pick<ContextManagerPresentationState, 'draft'>,
+): ProfileNotice | undefined {
+  return isPromptBindingDraft(state.draft) ? state.draft.terminalNotice : undefined
+}
+
+function notifyOccupiedProfileDraft(state: ContextManagerPresentationState): void {
+  if (terminalProfileNotice(state) !== undefined) return
+  state.notice = { code: 'noticeDraftActive', kind: 'warning' }
+}
+
+/** Never use the previous render's draft flag to authorize a Host RPC. Both
+ * selectors read from the existing root DSH Store instance, not a shadow
+ * state machine. React rerenders may lag one synchronous Store action. */
+export function mayDispatchImmediateProfileWrite(
+  current: ContextManagerPresentationState | undefined,
+  selectedProfileId: string | null,
+): boolean {
+  return current !== undefined
+    && current.open
+    && current.pane === 'profiles'
+    && current.selectedProfileId === selectedProfileId
+    && current.draft === null
+    && current.resourceDraft === null
+}
+
+export function ownsLiveProfileDraft(
+  current: ContextManagerPresentationState | undefined,
+  original: ProfileDraft,
+): boolean {
+  return current !== undefined
+    && current.open
+    && current.pane === 'profiles'
+    && current.resourceDraft === null
+    && current.draft === original
+    && original.blocked === undefined
+}
+
 /** View-only state. All authoritative Profile and mutation state remains in B1/B2. */
 export function createContextManagerPresentationStore() {
-  return defineStore({
+  const handle = defineStore({
     init: (): ContextManagerPresentationState => ({
       open: false,
       pane: 'profiles',
@@ -59,7 +99,7 @@ export function createContextManagerPresentationStore() {
             // conflicted or outcome-unknown Binding write as a new warning.
             if (!isPromptBindingDraft(state.draft)
               || state.draft.terminalNotice === undefined) {
-              state.notice = { code: 'noticeDraftActive', kind: 'warning' }
+              notifyOccupiedProfileDraft(state)
             }
           } else {
             state.resourceNotice = { code: 'resourceNoticeDraftActive', kind: 'warning' }
@@ -72,7 +112,7 @@ export function createContextManagerPresentationStore() {
         if (state.draft !== null) {
           if (!isPromptBindingDraft(state.draft)
             || state.draft.terminalNotice === undefined) {
-            state.notice = { code: 'noticeDraftActive', kind: 'warning' }
+            notifyOccupiedProfileDraft(state)
           }
           return
         }
@@ -81,7 +121,7 @@ export function createContextManagerPresentationStore() {
       },
       beginCreate(state, basis: ContextManagerClientProfileMutationBasis) {
         if (state.draft !== null) {
-          state.notice = { code: 'noticeDraftActive', kind: 'warning' }
+          notifyOccupiedProfileDraft(state)
           return
         }
         state.nextDraftToken += 1
@@ -103,7 +143,7 @@ export function createContextManagerPresentationStore() {
         basis: ContextManagerClientProfileMutationBasis
       }) {
         if (state.draft !== null) {
-          state.notice = { code: 'noticeDraftActive', kind: 'warning' }
+          notifyOccupiedProfileDraft(state)
           return
         }
         state.nextDraftToken += 1
@@ -122,7 +162,7 @@ export function createContextManagerPresentationStore() {
       },
       beginDelete(state, profileId: string, basis: ContextManagerClientProfileMutationBasis) {
         if (state.draft !== null) {
-          state.notice = { code: 'noticeDraftActive', kind: 'warning' }
+          notifyOccupiedProfileDraft(state)
           return
         }
         state.nextDraftToken += 1
@@ -140,7 +180,7 @@ export function createContextManagerPresentationStore() {
         basis: ContextManagerClientProfileMutationBasis
       }) {
         if (state.draft !== null || state.resourceDraft !== null || state.pane !== 'profiles') {
-          state.notice = { code: 'noticeDraftActive', kind: 'warning' }
+          notifyOccupiedProfileDraft(state)
           return
         }
         state.nextDraftToken += 1
@@ -180,7 +220,7 @@ export function createContextManagerPresentationStore() {
         | { field: 'order'; original: number }
       )) {
         if (state.draft !== null || state.resourceDraft !== null || state.pane !== 'profiles') {
-          state.notice = { code: 'noticeDraftActive', kind: 'warning' }
+          notifyOccupiedProfileDraft(state)
           return
         }
         state.nextDraftToken += 1
@@ -232,7 +272,7 @@ export function createContextManagerPresentationStore() {
         basis: ContextManagerClientProfileMutationBasis
       }) {
         if (state.draft !== null || state.resourceDraft !== null || state.pane !== 'profiles') {
-          state.notice = { code: 'noticeDraftActive', kind: 'warning' }
+          notifyOccupiedProfileDraft(state)
           return
         }
         state.nextDraftToken += 1
@@ -403,6 +443,28 @@ export function createContextManagerPresentationStore() {
       },
     },
   })
+
+  // The Renderer resolves the same root StoreHandle once for the sidebar and
+  // overlay. Preserve its public spec/create contract; retain only the actual
+  // StoreInstance, whose getSnapshot is synchronous and authoritative for
+  // presentation ownership. No second store, clone, or shadow draft.
+  let rootInstance: ReturnType<typeof handle.create> | undefined
+  let revoked = false
+  return {
+    ...handle,
+    create(scopeKey?: string) {
+      const instance = handle.create(scopeKey)
+      if (scopeKey === undefined && !revoked) rootInstance = instance
+      return instance
+    },
+    readLiveSnapshot(): ContextManagerPresentationState | undefined {
+      return revoked ? undefined : rootInstance?.getSnapshot()
+    },
+    revokeSnapshotReader() {
+      revoked = true
+      rootInstance = undefined
+    },
+  }
 }
 
 export type ContextManagerPresentationStoreHandle = ReturnType<typeof createContextManagerPresentationStore>
