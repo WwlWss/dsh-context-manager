@@ -336,6 +336,7 @@ export function createContextManagerPresentationStore() {
       ) {
         if (state.draft?.token !== token || !state.draft.kind.startsWith('prompt-binding-')) return
         state.draft.blocked = reason
+        state.draft.submitting = false
       },
       updateCreate(state, token: number, field: 'id' | 'name' | 'description' | 'basePreset', value: string) {
         if (state.draft?.kind !== 'create' || state.draft.token !== token
@@ -360,11 +361,23 @@ export function createContextManagerPresentationStore() {
         state.draft.removeDescription = true
         state.notice = null
       },
+      /** Presentation claim only: performed synchronously before the Host RPC.
+       * The Controller still owns Profile global single-flight and CAS. */
+      beginProfileSubmission(state, token: number) {
+        if (state.pane !== 'profiles' || state.resourceDraft !== null
+          || state.draft?.token !== token
+          || state.draft.blocked !== undefined || state.draft.submitting) return
+        state.draft.submitting = true
+      },
+      finishProfileSubmission(state, token: number) {
+        if (state.draft?.token === token) state.draft.submitting = false
+      },
       blockDraft(state, token: number, reason: ProfileDraftBlock, notice: ProfileNotice | null) {
         if (state.draft?.token !== token) return
         if (isPromptBindingDraft(state.draft)
           && state.draft.terminalNotice !== undefined) return
         state.draft.blocked = reason
+        state.draft.submitting = false
         if (isPromptBindingDraft(state.draft) && notice !== null) {
           state.draft.terminalNotice = notice
         }
@@ -376,7 +389,19 @@ export function createContextManagerPresentationStore() {
         if (selectId !== undefined) state.selectedProfileId = selectId
         state.notice = notice
       },
-      cancelDraft(state) {
+      /** Ordinary Cancel belongs to the original editing token only. A
+       * submitted or terminal-unknown draft cannot be silently discarded. */
+      cancelDraft(state, token: number) {
+        if (state.draft?.token !== token
+          || state.draft.submitting || state.draft.blocked !== undefined) return
+        state.draft = null
+        state.notice = null
+      },
+      /** Discard is an explicit confirmation from a blocked result, not the
+       * obsolete Cancel callback created before an uncertain Host operation. */
+      discardBlockedDraft(state, token: number) {
+        if (state.draft?.token !== token
+          || state.draft.submitting || state.draft.blocked === undefined) return
         state.draft = null
         state.notice = null
       },
@@ -465,9 +490,19 @@ export function createContextManagerPresentationStore() {
         state.resourceDraft.descriptionTouched = true
         state.resourceNotice = null
       },
+      beginResourceSubmission(state, token: number) {
+        if (state.pane !== 'resources' || state.draft !== null
+          || state.resourceDraft?.token !== token
+          || state.resourceDraft.blocked !== undefined || state.resourceDraft.submitting) return
+        state.resourceDraft.submitting = true
+      },
+      finishResourceSubmission(state, token: number) {
+        if (state.resourceDraft?.token === token) state.resourceDraft.submitting = false
+      },
       blockResourceDraft(state, token: number, reason: ResourceDraftBlock, notice: ResourceNotice | null) {
         if (state.resourceDraft?.token !== token) return
         state.resourceDraft.blocked = reason
+        state.resourceDraft.submitting = false
         state.resourceNotice = notice
       },
       completeResourceDraft(state, token: number, notice: ResourceNotice | null, selectId?: string | null) {
@@ -476,7 +511,15 @@ export function createContextManagerPresentationStore() {
         if (selectId !== undefined) state.selectedResourceId = selectId
         state.resourceNotice = notice
       },
-      cancelResourceDraft(state) {
+      cancelResourceDraft(state, token: number) {
+        if (state.resourceDraft?.token !== token
+          || state.resourceDraft.submitting || state.resourceDraft.blocked !== undefined) return
+        state.resourceDraft = null
+        state.resourceNotice = null
+      },
+      discardBlockedResourceDraft(state, token: number) {
+        if (state.resourceDraft?.token !== token
+          || state.resourceDraft.submitting || state.resourceDraft.blocked === undefined) return
         state.resourceDraft = null
         state.resourceNotice = null
       },
