@@ -11,6 +11,7 @@ import {
 } from '../src/client/profile-editor.js'
 import {
   deriveProfileView,
+  isProfileBeginCurrent,
   isProfileDraftCurrent,
   resolveProfilePreset,
 } from '../src/client/profile-view.js'
@@ -265,4 +266,41 @@ test('DSH presentation store blocks uncertain replay, and older completions cann
   store.actions.completeDraft(second.token, { code: 'noticeSaved', kind: 'success' }, 'new')
   assert.equal(store.getSnapshot().draft, null)
   assert.equal(store.getSnapshot().selectedProfileId, 'new')
+})
+
+
+test('M8A2 Fix4: Profile Begin compares rendered Settings revision and exact usable/invalid targets', () => {
+  const rendered = exampleSnapshot()
+  const main = deriveProfileView(rendered, 'main').selected
+  const invalid = deriveProfileView(rendered, 'broken').selected
+  assert.ok(main?.kind === 'usable')
+  assert.ok(invalid?.kind === 'invalid')
+  assert.equal(isProfileBeginCurrent(rendered, BASIS), true)
+  assert.equal(isProfileBeginCurrent(rendered, BASIS, main, 'name', 'Main'), true)
+  assert.equal(isProfileBeginCurrent(rendered, BASIS, main, 'name', 'stale original'), false)
+  assert.equal(isProfileBeginCurrent(rendered, BASIS, invalid), true,
+    'invalid Profile diagnostic must remain an eligible explicit Delete target')
+  assert.equal(isProfileBeginCurrent(rendered, BASIS, invalid, 'name', 'value'), false)
+  assert.equal(isProfileBeginCurrent(rendered, { ...BASIS, revision: BASIS.revision + 1 }, main), false)
+  assert.equal(isProfileBeginCurrent(rendered, { ...BASIS, instanceId: 'other-host' }, main), false)
+  assert.equal(isProfileBeginCurrent({
+    ...rendered,
+    changes: { ...rendered.changes!, resourceAuthorityId: 'unrelated-resource-rotation' },
+  }, BASIS, main), true, 'unrelated Resource authority cannot stale Profile Begin')
+  const data = rendered.profiles.data!
+  const rehydrated = {
+    ...rendered,
+    profiles: {
+      ...rendered.profiles, data: {
+        ...data, profiles: {
+          ...data.profiles, main: { ...data.profiles.main },
+        },
+      },
+    },
+  }
+  const newRow = deriveProfileView(rehydrated, 'main').selected
+  assert.ok(newRow?.kind === 'usable')
+  assert.equal(isProfileBeginCurrent(rehydrated, BASIS, newRow, 'name', 'Main'), true)
+  assert.equal(isProfileBeginCurrent(rehydrated, BASIS, main), false,
+    'a rendered row must come from the snapshot used in the Begin fence')
 })
