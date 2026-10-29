@@ -4,7 +4,13 @@ import type { ComposedProps } from '@deepseek-ai/dsh-client-ui-slots'
 import {
   CONTEXT_MANAGER_LOCALE,
 } from './locales.js'
-import type { ContextManagerPresentationStoreHandle } from './presentation-store.js'
+import {
+  mayDispatchImmediateProfileWrite,
+  ownsLiveProfileDraft,
+  terminalProfileNotice,
+  type ContextManagerPresentationState,
+  type ContextManagerPresentationStoreHandle,
+} from './presentation-store.js'
 import type { ContextManagerClientBusinessFace } from './business-face.js'
 import type { ContextManagerClientProfileMutationResult } from './mutation-types.js'
 import type { ProfileDraft, ProfileEditField, ProfileNotice } from './profile-editor.js'
@@ -33,7 +39,10 @@ export type ContextManagerDrawerProps = ComposedProps<
   ContextManagerClientBusinessFace,
   never,
   typeof CONTEXT_MANAGER_LOCALE
->
+> & {
+  /** Actual registered DSH root StoreInstance; never a React-rendered copy. */
+  readonly readLivePresentation?: () => ContextManagerPresentationState | undefined
+}
 
 function button(
   label: string,
@@ -83,6 +92,7 @@ export function ContextManagerProfileDrawerContent(props: ContextManagerDrawerPr
   const requestedId = useStore(s => s.selectedProfileId)
   const draft = useStore(s => s.draft)
   const notice = useStore(s => s.notice)
+  const displayedNotice = terminalProfileNotice({ draft }) ?? notice
   const view = deriveProfileView(snapshot, requestedId)
   const running = operation.status === 'running'
   const canStart = view.writable && !running && draft === null
@@ -179,7 +189,8 @@ export function ContextManagerProfileDrawerContent(props: ContextManagerDrawerPr
     if (responseNotice !== undefined) actions.setNotice(responseNotice)
   }
   const commitDraft = async () => {
-    if (!canSubmit || draft === null) return
+    if (!canSubmit || draft === null
+      || !ownsLiveProfileDraft(props.readLivePresentation?.(), draft)) return
     if (draft.kind === 'create') {
       const reserved = new Set(view.rows.map(row => row.id))
       const validation = validateCreateDraft(draft, reserved)
@@ -221,7 +232,9 @@ export function ContextManagerProfileDrawerContent(props: ContextManagerDrawerPr
     }
   }
   const changeDefault = async (id: string | null) => {
-    if (!canStart) return
+    if (!canStart || !mayDispatchImmediateProfileWrite(
+      props.readLivePresentation?.(), requestedId,
+    )) return
     const basis = captureBasis()
     if (!basis) return
     afterMutation(await props.profileMutations.setDefaultProfile(basis, id))
@@ -238,7 +251,9 @@ export function ContextManagerProfileDrawerContent(props: ContextManagerDrawerPr
         || latestSelection.current !== selectionAtStart
         || latestDraftToken.current !== tokenAtStart
         || latestDraftBlock.current !== undefined) return
-      actions.setNotice({ code, kind: 'warning' })
+      actions.setNotice({
+        code, kind: code === 'noticeRefreshFailed' ? 'error' : 'warning',
+      })
     }
     void props.refresh().then(result => {
       if (result.status !== 'completed') report('noticeUnavailable')
@@ -433,15 +448,15 @@ export function ContextManagerProfileDrawerContent(props: ContextManagerDrawerPr
           ),
       )
 
-  const notices = notice !== null
+  const notices = displayedNotice !== null
     ? h('div', {
-      className: notice.kind === 'error' ? styles.error
-        : notice.kind === 'warning' ? styles.warning : styles.success,
-      role: notice.kind === 'error' ? 'alert' : 'status',
+      className: displayedNotice.kind === 'error' ? styles.error
+        : displayedNotice.kind === 'warning' ? styles.warning : styles.success,
+      role: displayedNotice.kind === 'error' ? 'alert' : 'status',
       'aria-live': 'polite',
     },
-    h('strong', null, t(notice.code)),
-    notice.detail ? h('p', null, notice.detail) : null,
+    h('strong', null, t(displayedNotice.code)),
+    displayedNotice.detail ? h('p', null, displayedNotice.detail) : null,
     ) : null
 
   return h('div', { className: styles.content, ref: contentRef },
