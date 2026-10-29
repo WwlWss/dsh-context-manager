@@ -489,10 +489,30 @@ const register = slotFace.register
 let injectedBusiness
 let registeredOverlayStore
 let registeredSidebarStore
+let delayNextUiRefresh = false
+let rejectDelayedUiRefresh
 slotFace.register = (options, component) => {
   if (options.name === 'shell.overlay') {
     injectedBusiness = options.inject
     registeredOverlayStore = options.store
+    const originalInject = options.inject
+    return register({
+      ...options,
+      inject: () => {
+        const face = originalInject()
+        return {
+          ...face,
+          // Test-only delayed UI read failure: Controller reads continue on
+          // their actual paths, so no invented Host/Remote mutation response.
+          refresh: () => delayNextUiRefresh
+            ? new Promise((_resolve, reject) => {
+              delayNextUiRefresh = false
+              rejectDelayedUiRefresh = reject
+            })
+            : face.refresh(),
+        }
+      },
+    }, component)
   }
   if (options.name === 'sidebar.footer.action') registeredSidebarStore = options.store
   return register(options, component)
@@ -963,6 +983,11 @@ await act(async () => {
   })
 })
 remoteFixture.makeUnknownNextWrite()
+// Start an unresolved UI-only refresh request before the uncertain write;
+// its rejected completion must not overwrite the later terminal outcome.
+delayNextUiRefresh = true
+await act(async () => { buttonByLabel(tree, 'Refresh').props.onClick() })
+assert.equal(typeof rejectDelayedUiRefresh, 'function')
 const beforeUnknownBinding = remoteFixture.writes.length
 await act(async () => {
   tree.root.findByProps({ 'data-context-manager-binding-edit-form': '' }).props.onSubmit({ preventDefault() {} })
@@ -973,6 +998,13 @@ assert.equal(remoteFixture.writes.length, beforeUnknownBinding + 1)
 assert.equal(remoteFixture.profiles.main.prompts['m8a2-ui'].resourceId, 'unknown-response-but-committed')
 assert.equal(tree.root.findByProps({ 'data-context-manager-binding-save': '' }).props.disabled, true)
 assert.ok(renderedText(tree.root).includes('write outcome is unknown'))
+await act(async () => {
+  rejectDelayedUiRefresh(new Error('late Profile refresh failure'))
+  for (let i = 0; i < 15; i += 1) await Promise.resolve()
+})
+await settleUI()
+assert.ok(renderedText(tree.root).includes('write outcome is unknown'),
+  'a late rejected UI refresh cannot relabel an uncertain Binding write')
 // An attempted tab switch must neither lose the uncertain result nor replay it.
 await act(async () => { tree.root.findByProps({ 'data-context-manager-tab': 'resources' }).props.onClick() })
 assert.equal(tree.root.findAllByProps({ 'data-context-manager-prompt-bindings': '' }).length, 1)
