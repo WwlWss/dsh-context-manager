@@ -269,7 +269,7 @@ test('DSH presentation store blocks uncertain replay, and older completions cann
 })
 
 
-test('M7C final Strict RED: first blocked Profile terminal receipt survives late UI actions', () => {
+test('M7C final Strict GREEN: first blocked Profile terminal receipt survives late UI actions', () => {
   for (const { reason, code } of [
     { reason: 'unknown', code: 'noticeOutcomeUnknown' },
     { reason: 'conflict', code: 'noticeConflict' },
