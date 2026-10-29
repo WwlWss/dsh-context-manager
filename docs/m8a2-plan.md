@@ -1,6 +1,6 @@
 # M8A2 — Profile PromptBinding Editor (Capability Contract)
 
-**Status:** **Draft final Strict Review repair candidate (Fix5) — not Ready and not merged.** Fix4 observed-Basis/Stamp and Resource terminal receipt repairs are retained; final independent review found a shared Profile/Binding terminal-owner edge, covered by executable RED and a focused Client Presentation repair (see §17). The three outstanding fourth-review threads were individually supported and closed (15/15 resolved). Exact-head Draft Quick, independent strict closure and unchanged 86-job Ready Full remain separate mandatory gates.
+**Status:** **Draft Fix6 retained Client compatibility repair complete — 4/4 targeted GREEN; exact-head Draft Quick and independent re-review precede Ready Full.** Fix4/5 authority, draft ownership and terminal-receipt safety remain unchanged. The first Ready Full [#40944447118](https://github.com/WwlWss/dsh-context-manager/actions/runs/40944447118) correctly failed closed on a real cross-generation React child type mismatch, recorded below; this is not a successful Full qualification. PR #41 was returned to Draft for focused repair and must requalify from a fresh exact Head.
 **Base:** merged M8A1 PR #40, `main` commit `e37fa7284cbed4ae8b8cc92969f6d75bb147d9ea`; independent post-merge Full Qualification [#40754041892](https://github.com/WwlWss/dsh-context-manager/actions/runs/40754041892) completed with **86/86 jobs successful, zero failed/skipped**.  
 **Branch:** `feat/m8a2-prompt-binding-editor`. This branch/one eventual Draft PR remains the single delivery vehicle from plan through qualification.  
 **Ownership:** M8A2 edits **Profile-local PromptBindings** through the existing **Profile** write domain. M8A1 edits **PromptResources** through the independent **Resource** write domain.
@@ -433,3 +433,21 @@ The temporary workflow and test-label cleanup are complete. Exact-head Draft Qui
 ### 17.3 Qualification boundary
 
 Production and test changes were committed on the existing PR #41 branch. RED is established by the two immutable CI links above; GREEN must be verified at the actual latest PR Head, followed by independent no-P1/P2 Strict Review, Ready transition, unchanged Full Qualification, exact-head Final Review and later independent main Full after merge. Draft Quick does not establish a dedicated packed Chromium Binding/Resource browser path; retained Full Browser tests continue to exercise the frozen M7D Profile scenario.
+
+## 18. Fix6 — first Ready Full fail-closed and retained Client typing repair (2026-10-30 CST)
+
+### 18.1 First Ready Full observed failure — no bypass
+
+- The first Ready transition at candidate commit da3679bda58eb47d2e63f48eb21dbb417bec0b9d triggered the unchanged [Full CI run #40944447118](https://github.com/WwlWss/dsh-context-manager/actions/runs/40944447118). The run **FAILED** with 67 successful, 5 failed and 4 skipped jobs (76 jobs materialized instead of the complete successful 86 due to failed dependencies). The fail-closed full-qualification aggregator correctly refused success.
+- All four M7B1-2 Client business bridge contracts (DSH 0.1.2-rc.1, 0.1.5-rc.1, 0.1.5-rc.2, 0.1.6-alpha.2) reported the same real TS2769 at src/client/prompt-binding-section.ts:59: a labeled form helper accepted child content typed unknown, which is not assignable to the published React createElement ReactNode argument. The failure was not network, flaky infrastructure or a Host/Remote authority problem.
+- PR #41 was deliberately returned to Draft to retain the fail-closed release gate and avoid automatically spawning additional unqualified Ready Full runs during repair.
+
+### 18.2 Exact one-line production fix and four published-generation GREEN
+
+- The labeled() helper argument changes only from unknown to ReturnType<typeof h>. Each passed child is the actual result of React createElement, and the return-type expression is compatible with both the local lightweight declared React shim and the real published React overload. No casting to any, suppressed diagnostics, implementation redesign, Host mutation or version-specific branch.
+- A **temporary** four-generation Client Bridge preflight was added at .github/workflows/m8a2-fix6-client-compat-preflight.yml, replaying the failed upstream strict TypeScript contract command and then the real published Slot Bridge and complete M7C/M8A1/M8A2 React Renderer interaction script. [Focused CI #40945155929](https://github.com/WwlWss/dsh-context-manager/actions/runs/40945155929) is **4/4 SUCCESS** on commit 5a6de27c2fe826ed37b22b15c9d9dbcfb07a7e82.
+- The disposable preflight is temporary evidence only and must be removed before Ready. It does not replace the unchanged official Full, oldest-built artifact, cross-platform and packed Chromium matrices. After removal the exact final code/document HEAD requires a fresh Draft Quick and independent post-Fix6 strict technical review before another Ready transition.
+
+### 18.3 Qualification principles preserved
+
+The original full run remains explicitly RED; the 4/4 compatible published surface is focused GREEN, not a claim that the 86-job Full passed. No job, supported version, published Renderer test, Client/Host Authority boundary or fail-closed aggregator was disabled or relaxed.
