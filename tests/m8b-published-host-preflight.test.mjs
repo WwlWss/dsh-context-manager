@@ -204,7 +204,7 @@ test('M8B B0 H10-H11: exact Settings path identity including special JS keys', a
   await manager.createProfile('keys', { name: 'Exact keys', basePreset: 'standard', skills: {}, prompts: {} })
   const observed = []
   for (const id of [
-    'constructor', 'prototype', '  exact  ', '用户/\tSkill', ' ', '',
+    'constructor', 'prototype', 'toString', 'valueOf', '  exact  ', '用户/\tSkill', ' ', '',
     '__proto__',
   ]) {
     const current = basis(remote)
@@ -223,11 +223,11 @@ test('M8B B0 H10-H11: exact Settings path identity including special JS keys', a
       if (id === '__proto__') assert.equal(response.error.code, 'unsafe-path-key')
     }
   }
-  for (const id of ['constructor', 'prototype', '  exact  ', '用户/\tSkill']) {
+  console.log('M8B_B0_PATH_RESULTS ' + JSON.stringify(observed))
+  for (const id of ['constructor', 'prototype', 'toString', 'valueOf', '  exact  ', '用户/\tSkill']) {
     assert.equal(observed.find(x => x.id === id)?.outcome, 'accepted', JSON.stringify(id))
   }
   assert.equal(observed.find(x => x.id === '__proto__')?.outcome, 'rejected')
-  console.log('M8B_B0_PATH_RESULTS ' + JSON.stringify(observed))
   proof('H10')
 
   const before = basis(remote)
