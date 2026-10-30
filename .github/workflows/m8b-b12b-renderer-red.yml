@@ -154,7 +154,7 @@ jobs:
       fail-fast: false
       matrix:
         version: [0.1.2-rc.1, 0.1.6-alpha.2]
-        probe: [R01, R02, R03, R04, R05]
+        probe: [R01, R02, R03, R04, R05, R06V, R06H, R07, R08, R08U, R09, R10]
     steps:
       - uses: actions/checkout@v7
         with:

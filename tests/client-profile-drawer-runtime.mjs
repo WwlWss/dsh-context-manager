@@ -762,6 +762,253 @@ if (process.env.M8B_SKILL_PROBE) {
       break
     }
 
+
+    case 'R06V': {
+      // Observable external Settings writer: stale Save emits ZERO RPC.
+      await act(async () => {
+        tree.root.findByProps({ 'data-context-manager-skill-edit': 'manual' }).props.onClick()
+      })
+      await act(async () => {
+        tree.root.findByProps({ id: 'cm-skill-mode-edit' })
+          .props.onChange({ currentTarget: { value: 'off' } })
+      })
+      const oldSave = tree.root.findByProps({
+        'data-context-manager-skill-edit-form': '',
+      }).props.onSubmit
+      remoteFixture.externalSkillMode('main', 'toString', 'manual')
+      await act(async () => { await injectedBusiness?.()?.refresh() })
+      await settleUI()
+      await act(async () => {
+        oldSave({ preventDefault() {} })
+        for (let i = 0; i < 30; i += 1) await Promise.resolve()
+      })
+      assert.equal(remoteFixture.writes.length, beforeWrites,
+        'B1-R06V: visible stale Settings Basis must be rejected before RPC')
+      assert.equal(remoteFixture.profiles.main.skills.manual.mode, 'manual')
+      await act(async () => { buttonByLabel(tree, 'Cancel').props.onClick() })
+      await act(async () => {
+        tree.root.findByProps({ 'data-context-manager-skill-edit': 'manual' }).props.onClick()
+      })
+      await act(async () => {
+        tree.root.findByProps({ id: 'cm-skill-mode-edit' })
+          .props.onChange({ currentTarget: { value: 'off' } })
+      })
+      await act(async () => {
+        tree.root.findByProps({ 'data-context-manager-skill-edit-form': '' })
+          .props.onSubmit({ preventDefault() {} })
+        for (let i = 0; i < 35; i += 1) await Promise.resolve()
+      })
+      await settleUI()
+      assert.equal(remoteFixture.writes.length, beforeWrites + 1,
+        'B1-R06V RED: fresh rendered Save must work at the new revision')
+      assert.equal(remoteFixture.profiles.main.skills.manual.mode, 'off')
+      break
+    }
+
+    case 'R06H': {
+      // Host-only external writer, invisible to Client until attempted CAS.
+      await act(async () => {
+        tree.root.findByProps({ 'data-context-manager-skill-edit': 'manual' }).props.onClick()
+      })
+      await act(async () => {
+        tree.root.findByProps({ id: 'cm-skill-mode-edit' })
+          .props.onChange({ currentTarget: { value: 'pinned' } })
+      })
+      const originalBasis = live()?.draft?.basis
+      remoteFixture.externalSkillMode('main', 'toString', 'manual')
+      await act(async () => {
+        tree.root.findByProps({ 'data-context-manager-skill-edit-form': '' })
+          .props.onSubmit({ preventDefault() {} })
+        for (let i = 0; i < 35; i += 1) await Promise.resolve()
+      })
+      await settleUI()
+      assert.equal(remoteFixture.writes.length, beforeWrites + 1,
+        'B1-R06H RED: one original-Basis RPC must reach actual Host CAS')
+      assert.deepEqual(remoteFixture.writes.at(-1)?.basis, originalBasis)
+      assert.equal(remoteFixture.profiles.main.skills.manual.mode, 'manual',
+        'rejected CAS must never persist the stale mode')
+      assert.equal(live()?.draft?.blocked, 'conflict')
+      assert.equal(live()?.notice?.code, 'noticeConflict')
+      break
+    }
+
+    case 'R07': {
+      // Old Save after Cancel and new same-Profile draft must not consume the
+      // new Token. Positive current Save makes an inert implementation fail.
+      await act(async () => {
+        tree.root.findByProps({ 'data-context-manager-skill-edit': 'manual' }).props.onClick()
+      })
+      await act(async () => {
+        tree.root.findByProps({ id: 'cm-skill-mode-edit' })
+          .props.onChange({ currentTarget: { value: 'pinned' } })
+      })
+      const obsolete = tree.root.findByProps({
+        'data-context-manager-skill-edit-form': '',
+      }).props.onSubmit
+      const oldToken = live()?.draft?.token
+      await act(async () => { buttonByLabel(tree, 'Cancel').props.onClick() })
+      await act(async () => {
+        tree.root.findByProps({ 'data-context-manager-skill-edit': 'manual' }).props.onClick()
+      })
+      assert.notEqual(live()?.draft?.token, oldToken)
+      await act(async () => {
+        tree.root.findByProps({ id: 'cm-skill-mode-edit' })
+          .props.onChange({ currentTarget: { value: 'off' } })
+      })
+      await act(async () => {
+        obsolete({ preventDefault() {} })
+        for (let i = 0; i < 20; i += 1) await Promise.resolve()
+      })
+      assert.equal(remoteFixture.writes.length, beforeWrites,
+        'B1-R07: an old Save cannot write or claim a newer Token')
+      assert.equal(live()?.draft?.kind, 'skill-mode-edit')
+      await act(async () => {
+        tree.root.findByProps({ 'data-context-manager-skill-edit-form': '' })
+          .props.onSubmit({ preventDefault() {} })
+        for (let i = 0; i < 35; i += 1) await Promise.resolve()
+      })
+      await settleUI()
+      assert.equal(remoteFixture.writes.length, beforeWrites + 1,
+        'B1-R07 RED: genuine new Save must commit exactly once')
+      assert.equal(remoteFixture.profiles.main.skills.manual.mode, 'off')
+      break
+    }
+
+    case 'R08': {
+      // Same-render Save twice, then Save->Cancel, must claim synchronously.
+      await act(async () => {
+        tree.root.findByProps({ 'data-context-manager-skill-edit': 'manual' }).props.onClick()
+      })
+      await act(async () => {
+        tree.root.findByProps({ id: 'cm-skill-mode-edit' })
+          .props.onChange({ currentTarget: { value: 'pinned' } })
+      })
+      const submit = tree.root.findByProps({
+        'data-context-manager-skill-edit-form': '',
+      }).props.onSubmit
+      const cancel = buttonByLabel(tree, 'Cancel').props.onClick
+      await act(async () => {
+        submit({ preventDefault() {} })
+        submit({ preventDefault() {} })
+        cancel()
+        for (let i = 0; i < 35; i += 1) await Promise.resolve()
+      })
+      await settleUI()
+      assert.equal(remoteFixture.writes.length, beforeWrites + 1,
+        'B1-R08 RED: exactly one synchronous claim survives double Save/Cancel')
+      assert.equal(remoteFixture.profiles.main.skills.manual.mode, 'pinned')
+      assert.equal(live()?.draft, null)
+      break
+    }
+
+    case 'R08U': {
+      // The Host has applied a write but the response was dropped: Unknown
+      // blocks automatic replay and preserves the one original receipt.
+      await act(async () => {
+        tree.root.findByProps({ 'data-context-manager-skill-edit': 'manual' }).props.onClick()
+      })
+      await act(async () => {
+        tree.root.findByProps({ id: 'cm-skill-mode-edit' })
+          .props.onChange({ currentTarget: { value: 'off' } })
+      })
+      remoteFixture.makeUnknownNextWrite()
+      await act(async () => {
+        tree.root.findByProps({ 'data-context-manager-skill-edit-form': '' })
+          .props.onSubmit({ preventDefault() {} })
+        for (let i = 0; i < 35; i += 1) await Promise.resolve()
+      })
+      await settleUI()
+      assert.equal(remoteFixture.writes.length, beforeWrites + 1,
+        'B1-R08U RED: the real Host must receive one write before lost reply')
+      assert.equal(remoteFixture.profiles.main.skills.manual.mode, 'off')
+      assert.equal(live()?.draft?.blocked, 'unknown')
+      assert.equal(live()?.notice?.code, 'noticeOutcomeUnknown')
+      assert.ok(live()?.notice?.detail?.includes('simulated lost reply'))
+      const originalReceipt = live()?.notice
+      await act(async () => {
+        tree.root.findByProps({ 'data-context-manager-tab': 'resources' }).props.onClick()
+      })
+      assert.deepEqual(live()?.notice, originalReceipt)
+      assert.equal(remoteFixture.writes.length, beforeWrites + 1)
+      await act(async () => { buttonByLabel(tree, 'Discard draft').props.onClick() })
+      assert.equal(live()?.draft, null)
+      break
+    }
+
+    case 'R09': {
+      // Applied+Degraded means the write is confirmed but the read-back is
+      // not; neither Unknown nor a retry is permitted.
+      await act(async () => {
+        tree.root.findByProps({ 'data-context-manager-skill-edit': 'manual' }).props.onClick()
+      })
+      await act(async () => {
+        tree.root.findByProps({ id: 'cm-skill-mode-edit' })
+          .props.onChange({ currentTarget: { value: 'off' } })
+      })
+      remoteFixture.failProfileReads()
+      await act(async () => {
+        tree.root.findByProps({ 'data-context-manager-skill-edit-form': '' })
+          .props.onSubmit({ preventDefault() {} })
+        for (let i = 0; i < 35; i += 1) await Promise.resolve()
+      })
+      await settleUI()
+      assert.equal(remoteFixture.writes.length, beforeWrites + 1,
+        'B1-R09 RED: exactly one real acknowledged write')
+      assert.equal(remoteFixture.profiles.main.skills.manual.mode, 'off')
+      assert.equal(live()?.draft?.blocked, 'unverified')
+      assert.equal(live()?.notice?.code, 'noticeSavedDegraded')
+      assert.ok(renderedText(tree.root).includes('read-back')
+        || renderedText(tree.root).includes('重新读取'))
+      const first = live()?.notice
+      await act(async () => { tree.root.findByProps({
+        'data-context-manager-tab': 'resources',
+      }).props.onClick() })
+      assert.deepEqual(live()?.notice, first,
+        'B1-R09: late reads/pane changes cannot overwrite confirmed degraded receipt')
+      assert.equal(remoteFixture.writes.length, beforeWrites + 1)
+      break
+    }
+
+    case 'R10': {
+      // F01-SR1 semantics extend to retained Skill drafts, not just legacy.
+      await act(async () => {
+        tree.root.findByProps({ 'data-context-manager-skill-edit': 'manual' }).props.onClick()
+      })
+      await act(async () => {
+        tree.root.findByProps({ id: 'cm-skill-mode-edit' })
+          .props.onChange({ currentTarget: { value: 'pinned' } })
+      })
+      const oldSave = tree.root.findByProps({
+        'data-context-manager-skill-edit-form': '',
+      }).props.onSubmit
+      const original = live()?.draft
+      await act(async () => { trigger().props.onClick() })
+      assert.equal(live()?.open, false)
+      await act(async () => { trigger().props.onClick() })
+      await settleUI()
+      assert.equal(live()?.open, true)
+      assert.equal(live()?.draft?.token, original.token)
+      assert.deepEqual(live()?.draft?.basis, original.basis)
+      await act(async () => {
+        oldSave({ preventDefault() {} })
+        for (let i = 0; i < 20; i += 1) await Promise.resolve()
+      })
+      assert.equal(remoteFixture.writes.length, beforeWrites,
+        'B1-R10: pre-Close Save callback must never write in reopened session')
+      assert.equal(live()?.draft?.token, original.token)
+      await act(async () => {
+        tree.root.findByProps({ 'data-context-manager-skill-edit-form': '' })
+          .props.onSubmit({ preventDefault() {} })
+        for (let i = 0; i < 35; i += 1) await Promise.resolve()
+      })
+      await settleUI()
+      assert.equal(remoteFixture.writes.length, beforeWrites + 1,
+        'B1-R10 RED: new reopened Save may write once with old original Basis')
+      assert.equal(remoteFixture.profiles.main.skills.manual.mode, 'pinned')
+      assert.equal(live()?.draft, null)
+      break
+    }
+
     default:
       throw new Error('Unknown B1-3 real Renderer probe: ' + probe)
   }
