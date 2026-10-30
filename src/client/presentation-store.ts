@@ -2,7 +2,7 @@ import { defineStore } from '@deepseek-ai/dsh-client-store'
 import type { ContextManagerClientProfileMutationBasis } from './mutation-types.js'
 import type { ContextManagerClientPromptResourceReadStamp } from './model-types.js'
 import type { ContextManagerClientResourceCreateBasis } from './resource-mutation-types.js'
-import type { ContextManagerRemotePromptResource, ContextManagerRemotePromptPlacement } from '../remote/types.js'
+import type { ContextManagerRemotePromptResource, ContextManagerRemotePromptPlacement, ContextManagerRemoteSkillMode } from '../remote/types.js'
 import type { ResourceDraft, ResourceDraftBlock, ResourceNotice } from './resource-editor.js'
 import { isPromptBindingDraft } from './prompt-binding-editor.js'
 import type {
@@ -215,6 +215,29 @@ export function createContextManagerPresentationStore() {
         }
         state.notice = null
       },
+      /** B1-2b RED-only typed action seams. Deliberately inert until B2 GREEN.
+       * Old M7C/M8A2/M8A1 behavior is unchanged. Neither Host nor UI calls
+       * can be accidentally dispatched through these placeholders. */
+      beginSkillModeCreate(_state, _input: {
+        profileId: string
+        basis: ContextManagerClientProfileMutationBasis
+        observedSkillNames: readonly string[]
+      }) {},
+      updateSkillCreateName(_state, _token: number, _value: string) {},
+      beginSkillModeEdit(_state, _input: {
+        profileId: string
+        skillName: string
+        originalMode: ContextManagerRemoteSkillMode
+        basis: ContextManagerClientProfileMutationBasis
+      }) {},
+      updateSkillMode(_state, _token: number, _mode: ContextManagerRemoteSkillMode) {},
+      beginSkillBindingDelete(_state, _input: {
+        profileId: string
+        skillName: string
+        originalMode: ContextManagerRemoteSkillMode
+        basis: ContextManagerClientProfileMutationBasis
+      }) {},
+      setSkillDraftNotice(_state, _token: number, _notice: ProfileNotice) {},
       beginPromptBindingCreate(state, input: {
         profileId: string
         basis: ContextManagerClientProfileMutationBasis

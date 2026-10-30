@@ -52,7 +52,7 @@
     "typecheck:host": "tsc -p tsconfig.json --noEmit",
     "typecheck:client": "tsc -p tsconfig.client.json --noEmit",
     "typecheck:client-tests": "tsc -p tsconfig.client-model-test.json --noEmit",
-    "test:client-model": "pnpm run typecheck:client-tests && tsdown --config tsdown.client-model-test.config.ts && node --test ./.artifacts/client-model-tests/client-model-runtime.test.mjs ./.artifacts/client-model-tests/client-business-face.test.mjs ./.artifacts/client-model-tests/client-profile-editor.test.mjs ./.artifacts/client-model-tests/client-resource-mutation.test.mjs ./.artifacts/client-model-tests/client-resource-editor.test.mjs ./.artifacts/client-model-tests/client-prompt-binding-editor.test.mjs",
+    "test:client-model": "pnpm run typecheck:client-tests && tsdown --config tsdown.client-model-test.config.ts && node --test ./.artifacts/client-model-tests/client-model-runtime.test.mjs ./.artifacts/client-model-tests/client-business-face.test.mjs ./.artifacts/client-model-tests/client-profile-editor.test.mjs ./.artifacts/client-model-tests/client-resource-mutation.test.mjs ./.artifacts/client-model-tests/client-resource-editor.test.mjs ./.artifacts/client-model-tests/client-prompt-binding-editor.test.mjs ./.artifacts/client-model-tests/client-skill-policy-editor.test.mjs",
     "test:client-upstream-runtime": "node ./tests/client-upstream-runtime.mjs"
   },
   "engines": {
