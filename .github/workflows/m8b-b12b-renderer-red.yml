@@ -1,4 +1,4 @@
-name: M8B F01-SR1 Draft Published Renderer qualification
+name: M8B F01-SR2 Draft four-version Published Renderer regression
 
 on:
   pull_request:
@@ -156,7 +156,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        version: [0.1.2-rc.1, 0.1.6-alpha.2]
+        version: [0.1.2-rc.1, 0.1.5-rc.1, 0.1.5-rc.2, 0.1.6-alpha.2]
     steps:
       - uses: actions/checkout@v7
         with:
