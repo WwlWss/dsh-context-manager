@@ -1,6 +1,6 @@
 # M8B — Profile Skill Policy Editor (Capability & Implementation Contract)
 
-**Status:** **B0 Complete; B1-1 source-level RED contract drafted (design only).** Published nine-lane B0 [#41072313964](https://github.com/WwlWss/dsh-context-manager/actions/runs/41072313964) passed **5 Host + 4 Client lanes / 107 assertions** on exact B0 code HEAD `26a6d13c22bf04c81af0cdc6e4cd180a44ec5f86`; the cleanup HEAD `9d978283abf5eff440e47be466f5f77ff1c2a966` independently passed Draft Quick [#41073592201](https://github.com/WwlWss/dsh-context-manager/actions/runs/41073592201). RED history is archived in §12, narrow Host `Object.hasOwn` repair/GREEN in §13. **PR #42 remains Draft/unmerged. B1 executable RED, Skill editor UI, Ready 86-job Full and merge have not occurred.**
+**Status:** **B0 PASS; B1-1 contract frozen; B1-2a closed-Drawer Begin behavior RED→GREEN PASS** (evidence §15). B0 published nine-lane [#41072313964](https://github.com/WwlWss/dsh-context-manager/actions/runs/41072313964) passed **5 Host + 4 Client / 107 assertions**. B1-2a RED [#41092543407](https://github.com/WwlWss/dsh-context-manager/actions/runs/41092543407) proved 9 observable stale Begin violations; B1-2a code/Renderer GREEN [#41093422442](https://github.com/WwlWss/dsh-context-manager/actions/runs/41093422442) passed **156/156 Client, 268/268 Node, 1/1 Slot** at `242758a9038921011eaa53e6ca73db085e7f068e`. **PR #42 remains Draft/unmerged. B1-2b Skill Draft RED, B1-3 Skill Renderer RED, M8B Editor GREEN, Ready 86-job Full and merge have not occurred.** A later documentation-only HEAD needs its own Draft Quick.
 **Baseline:** merged M8A2 PR #41, main commit `5a21df1b5f27fbcc22cdb389de3c1d765b96a95d`; independent main Full [#41009808239](https://github.com/WwlWss/dsh-context-manager/actions/runs/41009808239), 86/86 SUCCESS, 0 failed/skipped.
 **Branch:** `feat/m8b-skill-policy-editor`. This branch is separate from qualified main. Keep PR Draft until B0 preflight + RED + GREEN + independent strict review closeout.
 **Purpose:** edit explicit Profile-local Skill policy configuration with the existing Profile Settings authority; explain known native/Agent effectiveness separately, never infer an Agent's behavior from a reusable Profile record alone.
@@ -558,3 +558,50 @@ Extend the existing `tests/client-profile-drawer-runtime.mjs` *after* its establ
 ### 14.9 Source-level review disposition / handoff
 
 The B1-1 plan is **ready for targeted implementation review**, with the following decisions frozen: three Skill kinds in the existing `ProfileDraft`; Profile-only original `instanceId+revision` and own-key target evidence; one existing setter or remove RPC per confirmed Save; Profile/Resource pane exclusivity; fail-closed closed Begin; exact-token first result; separate visible-selection currentness; no second controller/store. The potential **close/reopen stale handler** requires its own RED to choose whether a monotonic presentation-only epoch is necessary. All test IDs above are **planned**, not executed, and B1-2/B1-3 remain pending.
+
+
+## 15. B1-2a closed-Drawer stale Begin — executed behavioral RED→GREEN (2026-10-31 CST)
+
+### 15.1 Independent RED: nine actual Presentation Store actions
+
+**RED source HEAD:** `d5b5ea5b5bc94c8f6cc21108a7ded34518ab54a9`.
+**Run:** [CI `#41092543407`](https://github.com/WwlWss/dsh-context-manager/actions/runs/41092543407) **FAILED as intended**, with strictly compiled TS and built executable Client tests: **156 tests, 147 PASS, 9 FAILED**. All nine failures were new assertions over **real** `createContextManagerPresentationStore().create()` actions, not missing files, mocks, TypeScript/import failures or missing Skill UI.
+
+The nine distinct failures cover every existing Begin family:
+- **M7C Profile**: `beginCreate`, `beginFieldEdit`, `beginDelete`;
+- **M8A2 PromptBinding**: `beginPromptBindingCreate`, `beginPromptBindingFieldEdit`, `beginPromptBindingDelete`;
+- **M8A1 Resource**: `beginResourceCreate`, `beginResourceEdit`, `beginResourceDelete`.
+
+Each test opens the real Presentation Store, captures a stale Begin callback, closes the Drawer, invokes the retained callback and expects **both drafts null, zero token consumption, unchanged pane/selection and no phantom warning**. On original code, `open=false` was ignored by `canBeginProfileDraft`/`canBeginResourceDraft` and the test observed a non-null hidden draft. The independent positive control verifies that **an already active Profile or Resource draft, original Token and first terminal receipt survive Close→Reopen**, and that fresh authorized Begin remains available after explicit Discard.
+
+### 15.2 Minimal production repair and controlled old-fixture migration
+
+At `src/client/presentation-store.ts:59–76`, only four local guards changed:
+1. `canBeginProfileDraft` now requires `state.open` in addition to pane and mutual draft absence.
+2. `canBeginResourceDraft` now requires `state.open` with the previous pane/slot conditions.
+3. `notifyOccupiedProfileDraft` returns without writing a misleading `noticeDraftActive` while the Drawer is closed, and continues to respect the first terminal notice.
+4. `notifyOccupiedResourceDraft` likewise returns silently while closed, retaining the existing Resource blocked notice protection.
+
+This does **not** change `close()` or `toggle()`, clear any in-flight/terminal draft, recapture Profile Basis or Resource Stamp, introduce a new Store or modify Host/Remote/Controllers/DSH Slot ABI. The shared Profile and Resource live Save owners already require `open=true`, so the new change is strictly **Begin** authorization and closed-only notice behavior.
+
+A controlled migration adds `actions.open()` to **9 historical tests** whose positive Begin scenario had used a newly initialized (`open=false`) Store: 1 M7C Profile, 6 M8A2 Binding, 2 M8A1 Resource. One intermediate run [`#41092832943`](https://github.com/WwlWss/dsh-context-manager/actions/runs/41092832943) uncovered a test-only migration typo: the second Resource fixture used variable `s`, so a naive insertion into the next test's `store` left `s` closed. That run had **155 PASS, 1 FAILED**; the fixture was corrected by adding `s.actions.open()` to the exact test and removing the misplaced redundant line. **No production change** was required for this intermediate failure.
+
+**First complete Store GREEN:** [CI `#41093082725`](https://github.com/WwlWss/dsh-context-manager/actions/runs/41093082725) at `893a8bc1184fba0f6e73fe6d17fc92b6eb652a57`: Client **156/156 PASS**, Node **268/268 PASS**, Slot **1/1 PASS**; the ordinary Draft Quick completed SUCCESS.
+
+### 15.3 Additional actual published Renderer race control
+
+After Store GREEN, `tests/client-profile-drawer-runtime.mjs` gained a focused **real published DSH Renderer** test using actual `lib/client.js`, `@deepseek-ai/dsh-client-ui-renderer`, `StoreInstance.actions` and `react-test-renderer`. The test captures enabled Profile Create, PromptBinding Create and Resource Create `onClick` callbacks from the mounted, open Drawer, then closes the Drawer and invokes each **in the same React `act()` batch before stale mounted callbacks have rerendered**. It independently asserts:
+
+- `open=false`, `draft=null` and `resourceDraft=null` after retained callbacks;
+- neither Profile nor Resource draft Token increments;
+- no phantom Profile/Resource notice remains to be displayed at the next Reopen;
+- both Profile and Resource **actual fixture RPC write counters remain unchanged**;
+- a new Open returns a usable Drawer, and switching Resources→Profiles remains functional.
+
+**Published Renderer GREEN:** [CI `#41093422442`](https://github.com/WwlWss/dsh-context-manager/actions/runs/41093422442) at exact **code HEAD** `242758a9038921011eaa53e6ca73db085e7f068e`. The standard Draft Quick's actual verify job is **SUCCESS**, with **156/156 Client, 268/268 Node, 1/1 Slot**. The remaining 21 Ready-only jobs were intentionally **skipped** under the normal Draft gating; these must **not** be counted as an unchanged 86-job Ready Full or falsely described as 22/22 executed. The real published Renderer test is **not** a dedicated packed Chromium browser E2E.
+
+### 15.4 Verified scope and next gate
+
+[Commit comparison `d5b5ea5…242758a9`](https://github.com/WwlWss/dsh-context-manager/compare/d5b5ea5b5bc94c8f6cc21108a7ded34518ab54a9...242758a9038921011eaa53e6ca73db085e7f068e) contains exactly five changed files: one Production Presentation Store with **four guard adjustments**, three historical test files, and the real Published Renderer regression. No Skill editor implementation, new Agent diagnostics, Host RPC shape, Remote v4, package dependencies or official CI job matrix was touched by B1-2a.
+
+**B1-2a behavioral exit: PASS at exact `242758a9…` code HEAD.** A subsequent documentation-only closeout commit must independently pass Draft Quick on its own Head. PR #42 remains Draft; B1-2b typed Skill Draft/Store behavioral RED and B1-3 full Skill Editor Renderer RED have **not** begun. Specifically, an **obsolete React Save callback captured before Close→Reopen against the same preserved draft** is a separate B1-2b/B1-3 lifecycle case from the *closed-time Begin* hole solved here; no session epoch was added or claimed effective by B1-2a.
