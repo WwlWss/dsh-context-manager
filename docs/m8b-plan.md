@@ -605,3 +605,87 @@ After Store GREEN, `tests/client-profile-drawer-runtime.mjs` gained a focused **
 [Commit comparison `d5b5ea5…242758a9`](https://github.com/WwlWss/dsh-context-manager/compare/d5b5ea5b5bc94c8f6cc21108a7ded34518ab54a9...242758a9038921011eaa53e6ca73db085e7f068e) contains exactly five changed files: one Production Presentation Store with **four guard adjustments**, three historical test files, and the real Published Renderer regression. No Skill editor implementation, new Agent diagnostics, Host RPC shape, Remote v4, package dependencies or official CI job matrix was touched by B1-2a.
 
 **B1-2a behavioral exit: PASS at exact `242758a9…` code HEAD.** A subsequent documentation-only closeout commit must independently pass Draft Quick on its own Head. PR #42 remains Draft; B1-2b typed Skill Draft/Store behavioral RED and B1-3 full Skill Editor Renderer RED have **not** begun. Specifically, an **obsolete React Save callback captured before Close→Reopen against the same preserved draft** is a separate B1-2b/B1-3 lifecycle case from the *closed-time Begin* hole solved here; no session epoch was added or claimed effective by B1-2a.
+
+## 16. B1-2b Skill Draft typed behavioral RED — executed (2026-10-31 CST)
+
+**Status: RED REPRODUCED; NOT GREEN.** PR #42 remains Draft. This section records
+the *test-only* B1-2b boundary on exact behavior-test HEAD
+`5753fdddd0b08e210e32ad6099123486850790cf`, based on unchanged
+B1-2a final `a768f2cd533a7e5f4b43eefa3d2bfa6ddedf6cc0`.
+
+### 16.1 Exact executed RED evidence
+
+- [Draft Quick CI #41109486995](https://github.com/WwlWss/dsh-context-manager/actions/runs/41109486995):
+  `verify` FAILED *intentionally*, after TypeScript typecheck and executable
+  test bundling succeeded. **156 existing Client assertions PASS, 23 newly
+  introduced Skill Draft behavioral assertions FAIL, 0 skips** in that Client
+  model test phase. These failures are actual assertion mismatches (e.g. no
+  actual Skill draft after an inert Begin, unimplemented Skill result/dispatch
+  logic), **not** missing imports, undefined functions, or TypeScript failure.
+  Full Node/Slot phase was not reached because `pnpm check` stops on RED.
+- [Draft-only genuine Published Renderer RED #41109487074](https://github.com/WwlWss/dsh-context-manager/actions/runs/41109487074):
+  one pinned-oldest artifact build PASS. Both independent retained real
+  `@deepseek-ai/dsh-client-ui-renderer` versions **0.1.2-rc.1** and
+  **0.1.6-alpha.2** reached the new Close→Reopen obsolete Save assertion
+  and FAILED for the same observable reason: the old pre-Close callback
+  actually submitted an extra Profile RPC (**actual write count 20,
+  expected 19**). Strict retained declaration check and earlier Renderer
+  controls completed before this RED assertion. This independently proves a
+  previously unqualified session-lifecycle hole using existing M7C UI,
+  without pretending the not-yet-implemented Skill UI is mounted.
+- An earlier test-only `8ec299b50cefb59238b0e3106e8ea9f5d05ae8ca`
+  had the Renderer assertion but only ordinary Draft Quick
+  [#41108457821](https://github.com/WwlWss/dsh-context-manager/actions/runs/41108457821)
+  SUCCESS; **that run did not execute the Ready-only published Renderer
+  job and is not a valid Renderer RED**. The dedicated published run above
+  is the correct qualifying evidence.
+
+### 16.2 Changed source and intentional inert seam
+
+New `tests/client-skill-policy-editor.test.ts` is included in strict
+`tsconfig.client-model-test.json`, `tsdown.client-model-test.config.ts`,
+and `package.json` `test:client-model`, without removing old test entries.
+It exercises the **real** `createContextManagerPresentationStore().create()`
+root Store for the 3 Skill Draft kinds and shares the existing Profile
+Draft Token/occupied-pane/terminal operations; typed helper tests cover
+exact UTF-16 Skill keys, `__proto__` denial, immutable captured Basis,
+original identity, four modes, single existing RPC and receipt classification.
+
+`src/client/profile-editor.ts` adds the 3 SkillDraft discriminants to the
+existing union only; `src/client/presentation-store.ts` adds explicitly
+inert typed Skill actions; `src/client/skill-policy-editor.ts` is a
+deliberately inert typed helper seam. **These are not a Skill Editor,
+not Skill mutation GREEN, not Host changes and not new Remote API.**
+The existing Profile/Binding/Resource production behavior stays unchanged.
+
+`.github/workflows/m8b-b12b-renderer-red.yml` is a **temporary Draft-only**
+two-version Published Renderer RED probe, independent of the official
+unchanged Ready Full matrix. It should be removed after later immutable
+published GREEN artifacts and evidence are archived. Its failure is expected
+at this exact RED HEAD and must never be called a passing regression.
+
+### 16.3 Independent old Save hole and B2 exit constraints
+
+At the existing `profile-drawer.ts` Save callback, the live Store check
+requires `open=true`, same pane and original *draft object identity*.
+After Close→Reopen, the original draft object survives, and
+`presentation-store.ts` does not differentiate render/open sessions.
+Therefore an obsolete pre-Close React Save closure can re-enter the
+same retained draft and issue a Profile write. The two genuine Published
+Renderer RED jobs above reproduce this without changes to Host/Remote/CAS.
+
+B2 may consider a monotonic **presentation-only** open-session epoch, advanced
+only on transition to a newly opened Drawer session. The callback must
+capture epoch from its original render; Save must check this against the
+actual live root Store, while allowing a freshly rendered handler in the
+reopened session to operate on the unchanged authorized draft. Preserve
+original Settings Basis and Token, keep same-frame single claim, never
+misuse Resource Authority/Host generation as Drawer epoch.
+
+**Next required gate:** independently review each executable RED for test
+rigor, especially downstream assertions masked behind earlier inert
+Skill-Begin failures. Stage a later independently reviewed B2 GREEN
+implementation; run targeted Client + real Published Renderer tests, and
+later four-version compatibility plus exact-head 86-job Ready Full.
+Do not mark PR Ready, merge, or claim B1-3 Skill UI RED based only on the
+present M7C old-Save proof.
