@@ -9,6 +9,7 @@ import type {
   ContextManagerClientProfileMutations,
 } from './mutation-types.js'
 import { isProfileBeginCurrent } from './profile-view.js'
+import { noticeForMutationResult } from './profile-editor.js'
 import type { ProfileDraft, ProfileDraftBlock, ProfileNotice, SkillDraft } from './profile-editor.js'
 
 /** Skill bindings occupy the existing shared Profile Draft slot.
@@ -79,25 +80,66 @@ export function skillModeEditChanged(
   return draft.mode !== draft.originalMode
 }
 
-/** B2-B1 authorization gate: *no* Skill mutation is dispatched during
- * B2-A1/A2. Actual writes require a separately evidenced mounted Save,
- * live owner, first receipt and Host CAS validation. */
+/** ONE existing Profile RPC per explicit valid Save. No Host authority
+ * recapture; call-site must first win the current root Store submission claim.
+ * Explicit Auto Create is a real write, whereas unchanged Edit is a no-op. */
 export function commitSkillDraft(
-  _draft: SkillDraft,
-  _api: ContextManagerClientProfileMutations,
+  draft: SkillDraft,
+  api: ContextManagerClientProfileMutations,
 ): Promise<ContextManagerClientProfileMutationResult> | undefined {
-  return undefined
+  if (!isWritableSkillPath(draft.profileId, draft.skillName)) return undefined
+  switch (draft.kind) {
+    case 'skill-mode-create':
+      return validateSkillCreate(draft) === 'valid'
+        ? api.setSkillMode(draft.basis, draft.profileId, draft.skillName, draft.mode)
+        : undefined
+    case 'skill-mode-edit':
+      return skillModeEditChanged(draft)
+        ? api.setSkillMode(draft.basis, draft.profileId, draft.skillName, draft.mode)
+        : undefined
+    case 'skill-binding-delete':
+      return api.removeSkillBinding(draft.basis, draft.profileId, draft.skillName)
+  }
 }
 
-/** Result behavior remains an independent B2-B1 RED. */
+/** First terminal states remain distinct: confirmed-but-degraded is not
+ * Unknown; missing bindings/Profiles cannot be silently recreated. */
 export function blockForSkillResult(
-  _result: ContextManagerClientProfileMutationResult,
+  result: ContextManagerClientProfileMutationResult,
 ): ProfileDraftBlock | undefined {
-  return undefined
+  switch (result.status) {
+    case 'applied': return result.refresh === 'degraded' ? 'unverified' : undefined
+    case 'unknown': return 'unknown'
+    case 'detached':
+    case 'disposed':
+    case 'incompatible':
+    case 'superseded': return 'stale'
+    case 'rejected':
+      if (result.error.kind === 'precondition') {
+        return result.error.code === 'profile-basis-unavailable'
+          || result.error.code === 'profile-basis-stale' ? 'stale' : undefined
+      }
+      if (result.error.code === 'profile-conflict'
+        || result.error.code === 'host-instance-conflict') return 'conflict'
+      if (result.error.code === 'profile-not-found'
+        || result.error.code === 'skill-binding-not-found'
+        || result.error.code === 'profile-path-not-editable'
+        || result.error.code === 'persistence-document-invalid') return 'stale'
+      return undefined
+  }
 }
 
 export function noticeForSkillResult(
-  _result: ContextManagerClientProfileMutationResult,
+  result: ContextManagerClientProfileMutationResult,
 ): ProfileNotice | undefined {
-  return undefined
+  if (result.status === 'rejected' && result.error.kind === 'business') {
+    const error = result.error
+    if (error.code === 'skill-binding-not-found' || error.code === 'profile-not-found') {
+      return { code: 'noticeSkillMissing', kind: 'warning', detail: error.message }
+    }
+    if (error.code === 'invalid-skill-mode' || error.code === 'unsafe-path-key') {
+      return { code: 'noticeInvalidInput', kind: 'error', detail: error.message }
+    }
+  }
+  return noticeForMutationResult(result)
 }

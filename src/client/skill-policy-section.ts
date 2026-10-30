@@ -1,15 +1,15 @@
-import { createElement as h } from 'react'
+import { createElement as h, useRef } from 'react'
 import type {
   ContextManagerRemoteProfile, ContextManagerRemoteSkillBinding, ContextManagerRemoteSkillMode,
 } from '../remote/types.js'
 import type { ContextManagerDrawerProps } from './profile-drawer.js'
 import { deriveProfileView, isProfileDraftCurrent } from './profile-view.js'
 import {
-  isSkillBeginCurrent, isSkillDraft, sortedSkillBindings, skillModeEditChanged,
-  validateSkillCreate,
+  blockForSkillResult, commitSkillDraft, isSkillBeginCurrent, isSkillDraft,
+  noticeForSkillResult, sortedSkillBindings, skillModeEditChanged, validateSkillCreate,
 } from './skill-policy-editor.js'
 import {
-  isLiveDrawerOpenSession, readLivePresentationForActions,
+  isLiveDrawerOpenSession, ownsLiveProfileDraft, readLivePresentationForActions,
 } from './presentation-store.js'
 import styles from './plugin.module.css'
 
@@ -48,6 +48,7 @@ export function ContextManagerSkillPolicySection(props: SkillPolicySectionProps)
   const profileDraft = props.useStore(s => s.draft)
   const resourceDraft = props.useStore(s => s.resourceDraft)
   const selectedProfileId = props.useStore(s => s.selectedProfileId)
+  const committing = useRef<number | null>(null)
   const canStart = writable && operation.status !== 'running'
     && profileDraft === null && resourceDraft === null
     && profileId !== '__proto__'
@@ -116,10 +117,87 @@ export function ContextManagerSkillPolicySection(props: SkillPolicySectionProps)
     }, ...(['auto', 'manual', 'off', 'pinned'] as const).map(mode =>
       h('option', { key: mode, value: mode }, mode)))
 
-  // B2-A2 real mounted form RED frontier. Saves are deliberately inert until
-  // separate B2-B1 RPC/Controller RED qualification. Do not fake a success.
-  const stagedSubmit = (event: { preventDefault(): void }) => {
+  /** B2-B1 single existing Profile RPC, never a separate Skill controller.
+   * Current UI, live root Store identity, Drawer session and original Model
+   * Basis all authorize the single synchronous submission claim. */
+  const commit = async () => {
+    const original = active
+    const live = readLivePresentationForActions(actions)
+    if (!canSubmit || original === null || committing.current !== null
+      || !isLiveDrawerOpenSession(live, renderedOpenSessionEpoch)
+      || !ownsLiveProfileDraft(live, original)
+      || live?.selectedProfileId !== profileId) return
+
+    const freshBasis = props.captureProfileMutationBasis()
+    if (freshBasis === undefined
+      || freshBasis.instanceId !== original.basis.instanceId
+      || freshBasis.revision !== original.basis.revision) {
+      actions.setSkillDraftNotice(original.token, {
+        code: 'noticeDraftStale', kind: 'warning',
+      })
+      return
+    }
+    if (original.kind === 'skill-mode-create') {
+      const validity = validateSkillCreate(original)
+      if (validity !== 'valid') {
+        actions.setSkillDraftNotice(original.token, {
+          code: 'noticeInvalidInput', kind: 'warning',
+          detail: validity === 'exists' ? t('skillIdDuplicate') : t('skillUnsafePath'),
+        })
+        return
+      }
+    } else {
+      if (!Object.hasOwn(profile.skills, original.skillName)
+        || profile.skills[original.skillName].mode !== original.originalMode) {
+        actions.setSkillDraftNotice(original.token, {
+          code: 'noticeSkillMissing', kind: 'warning',
+        })
+        return
+      }
+      if (original.kind === 'skill-mode-edit' && !skillModeEditChanged(original)) return
+    }
+
+    actions.beginProfileSubmission(original.token)
+    const claimed = readLivePresentationForActions(actions)?.draft
+    if (claimed?.token !== original.token || claimed.kind !== original.kind
+      || claimed.submitting !== true) return
+    committing.current = original.token
+    let ordinaryNotice: ReturnType<typeof noticeForSkillResult>
+    try {
+      const call = commitSkillDraft(original, props.profileMutations)
+      if (call === undefined) return
+      const result = await call
+      if (result.status === 'superseded') {
+        actions.blockDraft(original.token, 'stale', null)
+        return
+      }
+      const notice = noticeForSkillResult(result)
+      if (result.status === 'applied' && result.refresh === 'fresh') {
+        actions.completeDraft(original.token, notice ?? null)
+        return
+      }
+      const blocked = blockForSkillResult(result)
+      if (blocked !== undefined) {
+        actions.blockDraft(original.token, blocked, notice ?? null)
+        return
+      }
+      ordinaryNotice = notice
+    } catch (error) {
+      actions.blockDraft(original.token, 'unknown', {
+        code: 'noticeOutcomeUnknown', kind: 'warning',
+        detail: error instanceof Error ? error.message : undefined,
+      })
+    } finally {
+      actions.finishProfileSubmission(original.token)
+      // Nonterminal business notices must be published after the submit
+      // claim is released without altering an existing terminal receipt.
+      if (ordinaryNotice !== undefined) actions.setSkillDraftNotice(original.token, ordinaryNotice)
+      if (committing.current === original.token) committing.current = null
+    }
+  }
+  const formSubmit = (event: { preventDefault(): void }) => {
     event.preventDefault()
+    void commit()
   }
   const cancel = (token: number) => {
     if (isLiveDrawerOpenSession(readLivePresentationForActions(actions),
@@ -135,7 +213,7 @@ export function ContextManagerSkillPolicySection(props: SkillPolicySectionProps)
 
   const createForm = active?.kind === 'skill-mode-create'
     ? h('form', {
-      className: styles.form, onSubmit: stagedSubmit,
+      className: styles.form, onSubmit: formSubmit,
       'data-context-manager-skill-create-form': '',
     },
     h('h4', null, t('skillNew')),
@@ -154,7 +232,7 @@ export function ContextManagerSkillPolicySection(props: SkillPolicySectionProps)
 
   const editForm = active?.kind === 'skill-mode-edit'
     ? h('form', {
-      className: styles.form, onSubmit: stagedSubmit,
+      className: styles.form, onSubmit: formSubmit,
       'data-context-manager-skill-edit-form': '',
     },
     h('h4', null, t('skillEdit')),
@@ -176,7 +254,7 @@ export function ContextManagerSkillPolicySection(props: SkillPolicySectionProps)
     h('p', null, t('skillTitle'), ': ',
       h('code', null, JSON.stringify(active.skillName))),
     h('div', { className: styles.actions },
-      button(t('confirmDelete'), () => stagedSubmit({ preventDefault() {} }),
+      button(t('confirmDelete'), () => { void commit() },
         !canSubmit, { 'data-context-manager-skill-confirm-delete': '' }),
       button(t('cancel'), () => cancel(active.token), active.submitting === true),
     ),

@@ -32,6 +32,7 @@ import {
 import { ContextManagerPromptBindingSection } from './prompt-binding-section.js'
 import { ContextManagerSkillPolicySection } from './skill-policy-section.js'
 import { isPromptBindingDraft } from './prompt-binding-editor.js'
+import { isSkillDraft } from './skill-policy-editor.js'
 import styles from './plugin.module.css'
 
 export type ContextManagerDrawerProps = ComposedProps<
@@ -361,8 +362,10 @@ export function ContextManagerProfileDrawerContent(props: ContextManagerDrawerPr
     ? h('div', { role: 'alert', className: styles.warning },
       h('strong', null, t(
         draft.blocked === 'unknown' ? 'draftUnknown'
-          : isPromptBindingDraft(draft) && draft.blocked === 'unverified' ? 'noticeSavedDegraded'
-            : isPromptBindingDraft(draft) && draft.blocked === 'conflict' ? 'noticeConflict'
+          : (isPromptBindingDraft(draft) || isSkillDraft(draft))
+            && draft.blocked === 'unverified' ? 'noticeSavedDegraded'
+            : (isPromptBindingDraft(draft) || isSkillDraft(draft))
+              && draft.blocked === 'conflict' ? 'noticeConflict'
               : 'draftNeedsReload',
       )),
       h('p', null, t('draftPreservedHint')),

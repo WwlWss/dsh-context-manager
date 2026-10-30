@@ -129,6 +129,7 @@ export type ContextManagerLocaleKey =
   | 'skillDelete'
   | 'skillUnsafePath'
   | 'skillRedProbe'
+  | 'skillIdDuplicate'
   | 'skillExactIdHint'
   | 'skillDeleteWholeHint'
   | 'bindingTitle'
@@ -166,6 +167,7 @@ export type ContextManagerLocaleKey =
   | 'bindingPathReadOnly'
   | 'noticeBindingExists'
   | 'noticeBindingMissing'
+  | 'noticeSkillMissing'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface LocaleNamespaceMap {
@@ -299,7 +301,8 @@ export const CONTEXT_MANAGER_LOCALES = Object.freeze({
     skillEdit: "编辑模式",
     skillDelete: "移除绑定",
     skillUnsafePath: "__proto__ 是无法安全修改的 Settings 路径键；保留现有配置只读展示。",
-    skillRedProbe: "B2-A2 测试阶段：草稿与表单已可用，保存仍待独立验证，当前不会写入 Skill。",
+    skillRedProbe: "仅显示明确配置的 Skill；修改须经 Save 和 Host CAS 确认，不代表某个 Agent 已生效。",
+    skillIdDuplicate: "此 Profile 中已经存在完全相同的 Skill ID；请使用 Edit Mode 而不是 Configure。",
     skillExactIdHint: "Skill ID 精确保留空字符串、空白和 Unicode；只有 __proto__ 不可写入。",
     skillDeleteWholeHint: "确认后将删除整个 Skill 绑定，包括未知的 Stored 扩展字段；不等于改为 Auto。",
     bindingTitle: "PromptBinding 绑定",
@@ -337,6 +340,7 @@ export const CONTEXT_MANAGER_LOCALES = Object.freeze({
     bindingPathReadOnly: "此 Profile 或 Binding 使用 Settings 无法安全修改的 __proto__ 路径键；保留原样只读展示。",
     noticeBindingExists: "Binding ID 已存在，请保留草稿核对。",
     noticeBindingMissing: "绑定或 Profile 已不存在；请刷新并重新开始。",
+    noticeSkillMissing: "Skill 绑定或 Profile 已不存在；请刷新权威配置并重新开始。",
   }),
   en: Object.freeze({
     title: "Context Manager",
@@ -461,7 +465,8 @@ export const CONTEXT_MANAGER_LOCALES = Object.freeze({
     skillEdit: "Edit mode",
     skillDelete: "Remove binding",
     skillUnsafePath: "The __proto__ Settings path key cannot be safely edited; existing configuration stays visible read-only.",
-    skillRedProbe: "B2-A2 staged validation: drafts and forms are live, but Save remains inert until independently qualified.",
+    skillRedProbe: "Only explicitly configured Skills are shown. Save uses Host CAS; this does not establish Agent effectiveness.",
+    skillIdDuplicate: "This exact Skill ID is already configured in the Profile. Use Edit Mode.",
     skillExactIdHint: "Skill IDs preserve empty strings, whitespace and Unicode exactly; only __proto__ is unsafe.",
     skillDeleteWholeHint: "Confirmation removes the entire Skill binding, including unknown Stored extension fields; it is not Auto.",
     bindingTitle: "Prompt bindings",
@@ -499,5 +504,6 @@ export const CONTEXT_MANAGER_LOCALES = Object.freeze({
     bindingPathReadOnly: "This Profile or Binding has an unsafe __proto__ Settings path key. The stored record remains visible but read-only.",
     noticeBindingExists: "Binding ID already exists; review the retained draft.",
     noticeBindingMissing: "Binding or Profile no longer exists; refresh and begin again.",
+    noticeSkillMissing: "Skill binding or Profile no longer exists; refresh and begin again.",
   }),
 }) satisfies Readonly<Record<'zh' | 'en', LocaleDictOf<typeof CONTEXT_MANAGER_LOCALE>>>
