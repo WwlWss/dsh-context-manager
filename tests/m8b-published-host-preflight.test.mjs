@@ -224,11 +224,6 @@ test('M8B B0 H10-H11: exact Settings path identity including special JS keys', a
     }
   }
   console.log('M8B_B0_PATH_RESULTS ' + JSON.stringify(observed))
-  for (const id of ['constructor', 'prototype', 'toString', 'valueOf', '  exact  ', '用户/\tSkill']) {
-    assert.equal(observed.find(x => x.id === id)?.outcome, 'accepted', JSON.stringify(id))
-  }
-  assert.equal(observed.find(x => x.id === '__proto__')?.outcome, 'rejected')
-  proof('H10')
 
   const before = basis(remote)
   const stored = structuredClone(manager.getStoredProfile('keys'))
@@ -238,6 +233,13 @@ test('M8B B0 H10-H11: exact Settings path identity including special JS keys', a
   assert.equal(remote.profiles().persistence.revision, before.revision)
   assert.deepEqual(manager.getStoredProfile('keys'), stored)
   proof('H11')
+
+  // Keep H11 independent of the known H10 inherited-key RED.
+  for (const id of ['constructor', 'prototype', 'toString', 'valueOf', '  exact  ', '用户/\tSkill']) {
+    assert.equal(observed.find(x => x.id === id)?.outcome, 'accepted', JSON.stringify(id))
+  }
+  assert.equal(observed.find(x => x.id === '__proto__')?.outcome, 'rejected')
+  proof('H10')
 })
 
 test('M8B B0 H12: Host local repair does not make invalid Profiles writable in ordinary UI', async t => {
