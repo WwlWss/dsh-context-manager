@@ -261,6 +261,7 @@ test('presentation store keeps Resource draft across close/reopen and prevents t
 
 test('resource presentation token prevents late completion from clearing a new draft', () => {
   const s = createContextManagerPresentationStore().create()
+  s.actions.open()
   s.actions.selectPane('resources')
   s.actions.beginResourceCreate(CREATE)
   const old = s.getSnapshot().resourceDraft?.token
@@ -278,7 +279,6 @@ test('resource presentation token prevents late completion from clearing a new d
 
 test('M8A2 Fix3: obsolete Resource edit events cannot modify a different same-kind draft', () => {
   const store = createContextManagerPresentationStore().create()
-  store.actions.open()
   const a = store.actions
   a.open()
   a.selectPane('resources')
