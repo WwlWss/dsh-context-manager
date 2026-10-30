@@ -1306,8 +1306,8 @@ if (process.env.M8B_SKILL_PROBE) {
       throw new Error('Unknown B1-3 real Renderer probe: ' + probe)
   }
 
-  assert.equal(remoteFixture.resourceWrites.length, 0,
-    'B1-3 Skill authoring must never dispatch a PromptResource RPC')
+  assert.equal(remoteFixture.resourceWrites.length, probe === 'R11TR' ? 1 : 0,
+    'M8B Skill interactions must never dispatch a Resource RPC; R11TR deliberately creates one Resource Unknown receipt')
   await act(async () => { tree.unmount() })
   disposeRoot()
   await disposePlugin()
