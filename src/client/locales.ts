@@ -120,6 +120,15 @@ export type ContextManagerLocaleKey =
   | 'noticeDraftActive'
   | 'noticeRefreshFailed'
   | 'noticeRefreshRequested'
+  | 'skillTitle'
+  | 'skillNew'
+  | 'skillConfiguredOnly'
+  | 'skillNoItems'
+  | 'skillMode'
+  | 'skillEdit'
+  | 'skillDelete'
+  | 'skillUnsafePath'
+  | 'skillRedProbe'
   | 'bindingTitle'
   | 'bindingNew'
   | 'bindingNoItems'
@@ -280,6 +289,15 @@ export const CONTEXT_MANAGER_LOCALES = Object.freeze({
     noticeDraftActive: "请先保存或取消当前草稿。",
     noticeRefreshFailed: "刷新请求失败。",
     noticeRefreshRequested: "已请求刷新。",
+    skillTitle: "Skill 策略",
+    skillNew: "配置新 Skill",
+    skillConfiguredOnly: "仅展示本 Profile 中已有的显式 Skill 配置；不代表该 Skill 对具体 Agent 已生效。",
+    skillNoItems: "暂无显式 Skill 绑定。",
+    skillMode: "已配置模式",
+    skillEdit: "编辑模式",
+    skillDelete: "移除绑定",
+    skillUnsafePath: "__proto__ 是无法安全修改的 Settings 路径键；保留现有配置只读展示。",
+    skillRedProbe: "B1-3 测试入口：尚未实现编辑或保存，不会提交 Skill 写入。",
     bindingTitle: "PromptBinding 绑定",
     bindingNew: "新增绑定",
     bindingNoItems: "此 Profile 尚无 PromptBinding。",
@@ -431,6 +449,15 @@ export const CONTEXT_MANAGER_LOCALES = Object.freeze({
     noticeDraftActive: "Save or cancel the current draft first.",
     noticeRefreshFailed: "Refresh request failed.",
     noticeRefreshRequested: "Refresh requested.",
+    skillTitle: "Skill policy",
+    skillNew: "Configure Skill",
+    skillConfiguredOnly: "Shows only explicitly configured Skills in this Profile; actual effect for a specific Agent is unverified.",
+    skillNoItems: "No explicit Skill bindings.",
+    skillMode: "Configured mode",
+    skillEdit: "Edit mode",
+    skillDelete: "Remove binding",
+    skillUnsafePath: "The __proto__ Settings path key cannot be safely edited; existing configuration stays visible read-only.",
+    skillRedProbe: "B1-3 test entrypoint: edit and save are not implemented and cannot issue Skill writes.",
     bindingTitle: "Prompt bindings",
     bindingNew: "New binding",
     bindingNoItems: "No PromptBindings in this profile.",

@@ -30,6 +30,7 @@ import {
   type ProfileListRow,
 } from './profile-view.js'
 import { ContextManagerPromptBindingSection } from './prompt-binding-section.js'
+import { ContextManagerSkillPolicySection } from './skill-policy-section.js'
 import { isPromptBindingDraft } from './prompt-binding-editor.js'
 import styles from './plugin.module.css'
 
@@ -461,6 +462,10 @@ export function ContextManagerProfileDrawerContent(props: ContextManagerDrawerPr
                   unverified: 'presetUnverified',
                 } as const)[resolveProfilePreset(snapshot, selected.id)])),
               ),
+              h(ContextManagerSkillPolicySection, {
+                ...props, profileId: selected.id, profile: selected.profile,
+                writable: view.writable,
+              }),
               h(ContextManagerPromptBindingSection, {
                 ...props, profileId: selected.id, profile: selected.profile,
                 writable: view.writable,

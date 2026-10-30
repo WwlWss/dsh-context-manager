@@ -605,26 +605,169 @@ assert.equal(remoteFixture.writes.length, 0)
 // The probe branch isolates each intentional RED from the long historical
 // M7C/M8A1/M8A2 green scenario; it never substitutes a fake UI renderer.
 if (process.env.M8B_SKILL_PROBE) {
-  assert.equal(process.env.M8B_SKILL_PROBE, 'R01',
-    'B1-3 mount preflight supports only the independent R01 probe at this stage')
-  const section = tree.root.findAllByProps({ 'data-context-manager-skills': '' })
-  assert.equal(section.length, 1,
-    'B1-R01 RED: real selected usable Profile has no Skill policy section')
-  const rows = tree.root.findAll(node =>
+  const probe = process.env.M8B_SKILL_PROBE
+  const live = () => registeredOverlayStore.readLiveSnapshot()
+  const skillRows = () => tree.root.findAll(node =>
     node.props?.['data-context-manager-skill-row'] !== undefined)
-  assert.deepEqual(rows.map(row => row.props['data-context-manager-skill-row']),
+  const beforeWrites = remoteFixture.writes.length
+  const initialProfiles = injectedBusiness?.()?.hooks.contextManager.getSnapshot().profiles
+  assert.equal(initialProfiles.status, 'ready',
+    'B1-3: the actual published Client must have hydrated the Profile snapshot')
+  assert.equal(initialProfiles.data?.profiles.main.skills.manual.mode, 'manual')
+
+  // Independent mount control; subsequent REDs must reach real React Begin
+  // callbacks, not fail because the Skill section itself is absent.
+  const sections = tree.root.findAllByProps({ 'data-context-manager-skills': '' })
+  assert.equal(sections.length, 1,
+    'B1-R01: real selected usable Profile must mount Skill section')
+  assert.deepEqual(skillRows().map(row => row.props['data-context-manager-skill-row']),
     ['__proto__', 'constructor', 'manual', 'toString', '日本語'],
-    'B1-R01: only five exact own configured Skill keys, code-unit sorted')
+    'B1-R01: only exact own configured keys, code-unit order; no native inventory')
   for (const [name, mode] of [
     ['__proto__', 'manual'], ['constructor', 'auto'], ['manual', 'manual'],
     ['toString', 'pinned'], ['日本語', 'off'],
   ]) {
     const row = tree.root.findByProps({ 'data-context-manager-skill-row': name })
     assert.ok(renderedText(row).includes(mode),
-      'B1-R01: show explicit stored mode for ' + JSON.stringify(name))
+      'B1-R01: visible explicit mode for ' + JSON.stringify(name))
   }
-  assert.equal(remoteFixture.writes.length, 0,
-    'B1-R01: merely rendering configured Skills must not trigger mutations')
+  assert.equal(tree.root.findByProps({
+    'data-context-manager-skill-edit': '__proto__',
+  }).props.disabled, true, 'unsafe own Skill key is viewable but not editable')
+  assert.equal(tree.root.findByProps({
+    'data-context-manager-skill-edit': 'constructor',
+  }).props.disabled, false, 'constructor is a valid Skill path key')
+  assert.equal(remoteFixture.writes.length, beforeWrites,
+    'B1-R01: rendering explicit Skills must not issue Host writes')
+  assert.equal(live()?.draft, null)
+  assert.equal(live()?.resourceDraft, null)
+
+  switch (probe) {
+    case 'R01':
+      // Read-only mount/sort proof. R02-R05 independently exercise handlers.
+      break
+
+    case 'R02': {
+      const startCreate = tree.root.findByProps({
+        'data-context-manager-skill-new': '',
+      })
+      assert.equal(startCreate.props.disabled, false)
+      const tokenBefore = live()?.nextDraftToken
+      await act(async () => { startCreate.props.onClick() })
+      assert.equal(live()?.draft?.kind, 'skill-mode-create',
+        'B1-R02 RED: real Skill Configure Begin must enter the one Profile Store slot')
+      assert.equal(live()?.nextDraftToken, tokenBefore + 1)
+      assert.equal(live()?.draft?.mode, 'auto',
+        'B1-R02: explicit Auto must be default for the new draft')
+      assert.equal(remoteFixture.writes.length, beforeWrites,
+        'Begin is not a Host write')
+      const form = tree.root.findByProps({ 'data-context-manager-skill-create-form': '' })
+      assert.ok(form, 'Create draft must expose a real editable form')
+      // Empty Skill key must be accepted without trimming or coercion.
+      await act(async () => {
+        tree.root.findByProps({ id: 'cm-skill-create-name' }).props.onChange({
+          currentTarget: { value: '' },
+        })
+      })
+      await act(async () => {
+        form.props.onSubmit({ preventDefault() {} })
+        for (let i = 0; i < 25; i += 1) await Promise.resolve()
+      })
+      await settleUI()
+      assert.equal(remoteFixture.writes.length, beforeWrites + 1)
+      assert.deepEqual(remoteFixture.writes.at(-1), {
+        kind: 'skill-mode', basis: { instanceId: 'm7c-real-ui-host', revision: 7 },
+        profileId: 'main', skillName: '', mode: 'auto',
+      })
+      assert.equal(Object.hasOwn(remoteFixture.profiles.main.skills, ''), true)
+      assert.equal(remoteFixture.profiles.main.skills[''].mode, 'auto')
+      break
+    }
+
+    case 'R03': {
+      const click = tree.root.findByProps({
+        'data-context-manager-skill-edit': 'manual',
+      }).props.onClick
+      await act(async () => { click() })
+      assert.equal(live()?.draft?.kind, 'skill-mode-edit',
+        'B1-R03 RED: mounted Skill mode Edit must create one Profile draft')
+      assert.equal(live()?.draft?.originalMode, 'manual')
+      assert.equal(live()?.draft?.skillName, 'manual')
+      assert.equal(remoteFixture.writes.length, beforeWrites,
+        'Mode Edit Begin is not an RPC')
+      const mode = tree.root.findByProps({ id: 'cm-skill-mode-edit' })
+      await act(async () => { mode.props.onChange({ currentTarget: { value: 'pinned' } }) })
+      await act(async () => {
+        tree.root.findByProps({ 'data-context-manager-skill-edit-form': '' })
+          .props.onSubmit({ preventDefault() {} })
+        for (let i = 0; i < 25; i += 1) await Promise.resolve()
+      })
+      await settleUI()
+      assert.equal(remoteFixture.writes.length, beforeWrites + 1)
+      assert.equal(remoteFixture.writes.at(-1)?.kind, 'skill-mode')
+      assert.equal(remoteFixture.writes.at(-1)?.mode, 'pinned')
+      assert.equal(remoteFixture.profiles.main.skills.manual.mode, 'pinned')
+      break
+    }
+
+    case 'R04': {
+      const click = tree.root.findByProps({
+        'data-context-manager-skill-delete': '日本語',
+      }).props.onClick
+      await act(async () => { click() })
+      assert.equal(live()?.draft?.kind, 'skill-binding-delete',
+        'B1-R04 RED: removal must create confirmation, not immediate RPC')
+      assert.equal(live()?.draft?.skillName, '日本語')
+      assert.equal(live()?.draft?.originalMode, 'off')
+      assert.equal(remoteFixture.writes.length, beforeWrites,
+        'Begin Remove must not delete anything before confirmation')
+      const confirmation = tree.root.findByProps({
+        'data-context-manager-skill-delete-confirm': '',
+      })
+      const text = renderedText(confirmation)
+      assert.ok(text.includes(JSON.stringify('main')))
+      assert.ok(text.includes(JSON.stringify('日本語')))
+      assert.ok(text.includes('extension') || text.includes('扩展'),
+        'destructive confirmation must warn about unknown Stored sibling fields')
+      await act(async () => {
+        confirmation.findByProps({ 'data-context-manager-skill-confirm-delete': '' })
+          .props.onClick()
+        for (let i = 0; i < 25; i += 1) await Promise.resolve()
+      })
+      await settleUI()
+      assert.equal(remoteFixture.writes.length, beforeWrites + 1)
+      assert.equal(remoteFixture.writes.at(-1)?.kind, 'skill-remove')
+      assert.equal(Object.hasOwn(remoteFixture.profiles.main.skills, '日本語'), false)
+      break
+    }
+
+    case 'R05': {
+      const oldEdit = tree.root.findByProps({
+        'data-context-manager-skill-edit': 'manual',
+      }).props.onClick
+      remoteFixture.externalSkillMode('main', 'manual', 'pinned')
+      await act(async () => { await injectedBusiness?.()?.refresh() })
+      await settleUI()
+      await act(async () => { oldEdit() })
+      assert.equal(live()?.draft, null,
+        'B1-R05: obsolete rendered Edit cannot create a draft on newer Settings revision')
+      assert.equal(remoteFixture.writes.length, beforeWrites)
+      const freshEdit = tree.root.findByProps({
+        'data-context-manager-skill-edit': 'manual',
+      }).props.onClick
+      await act(async () => { freshEdit() })
+      assert.equal(live()?.draft?.kind, 'skill-mode-edit',
+        'B1-R05 RED: fresh displayed mode must permit editing at new Settings revision')
+      assert.equal(live()?.draft?.originalMode, 'pinned')
+      break
+    }
+
+    default:
+      throw new Error('Unknown B1-3 real Renderer probe: ' + probe)
+  }
+
+  assert.equal(remoteFixture.resourceWrites.length, 0,
+    'B1-3 Skill authoring must never dispatch a PromptResource RPC')
   await act(async () => { tree.unmount() })
   disposeRoot()
   await disposePlugin()

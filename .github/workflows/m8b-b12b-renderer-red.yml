@@ -13,6 +13,7 @@ on:
       - 'tests/client-profile-editor.test.ts'
       - 'src/client/profile-drawer.ts'
       - 'src/client/skill-policy-section.ts'
+      - 'src/client/locales.ts'
       - 'src/client/prompt-binding-section.ts'
       - 'src/client/resource-drawer.ts'
       - 'tests/client-profile-drawer-runtime.mjs'
@@ -145,7 +146,7 @@ jobs:
         run: node ./tests/client-profile-drawer-runtime.mjs
 
   b13-skill-renderer:
-    name: B1-3 R01 / real Published Renderer mounting RED (${{ matrix.version }})
+    name: B1-3 ${{ matrix.probe }} / real Published Renderer RED (${{ matrix.version }})
     needs: oldest-built-client
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -153,6 +154,7 @@ jobs:
       fail-fast: false
       matrix:
         version: [0.1.2-rc.1, 0.1.6-alpha.2]
+        probe: [R01, R02, R03, R04, R05]
     steps:
       - uses: actions/checkout@v7
         with:
@@ -196,6 +198,6 @@ jobs:
             src/client/model-types.ts src/client/mutation-types.ts src/client/remote-port.ts \
             src/client/mutation-controller.ts src/client/model.ts src/client/business-face.ts src/client/plugin.ts \
             tests/client-upstream-contract.ts tests/client-generated-remote-contract.ts
-      - name: B1-3 R01 real Profile Skill section behavioral mount RED
-        run: M8B_SKILL_PROBE=R01 node ./tests/client-profile-drawer-runtime.mjs
+      - name: B1-3 published React Skill interaction frontier
+        run: M8B_SKILL_PROBE=${{ matrix.probe }} node ./tests/client-profile-drawer-runtime.mjs
 
