@@ -277,7 +277,12 @@ export class ContextManagerService extends Service {
 
     const state = this.captureWritableState(expectedRevision)
     const skills = this.requireSkillsObjectOrAbsent(state.stored, profileId)
-    const binding = skills?.[skillName]
+    // An absent stored binding must not resolve to an inherited Object.prototype
+    // member (constructor, toString, valueOf). Keep rejecting malformed OWN
+    // scalar bindings; only __proto__ remains forbidden as a Settings path key.
+    const binding = skills !== undefined && Object.hasOwn(skills, skillName)
+      ? skills[skillName]
+      : undefined
     if (binding !== undefined && !isPlainObject(binding)) {
       throw new ContextManagerError(
         'profile-path-not-editable',
