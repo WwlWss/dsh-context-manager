@@ -957,8 +957,12 @@ if (process.env.M8B_SKILL_PROBE) {
       assert.equal(remoteFixture.profiles.main.skills.manual.mode, 'off')
       assert.equal(live()?.draft?.blocked, 'unverified')
       assert.equal(live()?.notice?.code, 'noticeSavedDegraded')
-      assert.ok(renderedText(tree.root).includes('read-back')
-        || renderedText(tree.root).includes('重新读取'))
+      const degradedUiText = renderedText(tree.root)
+      assert.ok(
+        degradedUiText.includes('Write confirmed, but reconciliation is incomplete. Refresh; do not resubmit.')
+          || degradedUiText.includes('写入已确认，但重新同步不完整；请刷新，不要再次提交。'),
+        'B1-R09: the confirmed-degraded notice must be rendered using the actual localized Profile message',
+      )
       const first = live()?.notice
       await act(async () => { tree.root.findByProps({
         'data-context-manager-tab': 'resources',
