@@ -231,6 +231,7 @@ test('outcome classification never treats unknown as applied or retries applied-
 
 test('presentation store keeps Resource draft across close/reopen and prevents tab/selection loss', () => {
   const store = createContextManagerPresentationStore().create()
+  store.actions.open()
   store.actions.selectPane('resources')
   store.actions.beginResourceCreate(CREATE)
   const initialToken = store.getSnapshot().resourceDraft?.token
@@ -277,6 +278,7 @@ test('resource presentation token prevents late completion from clearing a new d
 
 test('M8A2 Fix3: obsolete Resource edit events cannot modify a different same-kind draft', () => {
   const store = createContextManagerPresentationStore().create()
+  store.actions.open()
   const a = store.actions
   a.open()
   a.selectPane('resources')
