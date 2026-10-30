@@ -8,6 +8,7 @@ import {
   mayDispatchImmediateProfileWrite,
   ownsLiveProfileDraft,
   isLiveDrawerOpenSession,
+  mayApplyCurrentDraftEvent,
   readLivePresentationForActions,
   terminalProfileNotice,
   type ContextManagerPresentationStoreHandle,
@@ -134,6 +135,9 @@ export function ContextManagerProfileDrawerContent(props: ContextManagerDrawerPr
   const ownsRenderSession = () => isLiveDrawerOpenSession(
     readLivePresentationForActions(actions), renderedOpenSessionEpoch,
   )
+  const applyDraftEvent = (token: number, event: () => void): void => {
+    if (mayApplyCurrentDraftEvent(actions, renderedOpenSessionEpoch, 'profiles', token)) event()
+  }
   const notifyUnavailable = (): void => {
     actions.setNotice({ code: 'noticeUnavailable', kind: 'warning' })
   }
@@ -340,20 +344,20 @@ export function ContextManagerProfileDrawerContent(props: ContextManagerDrawerPr
     },
     h('h3', null, t('createTitle')),
     labelFor('cm-create-id', t('fieldId')),
-    fieldInput('cm-create-id', draft.id, value => actions.updateCreate(draft.token, 'id', value), !canSubmit),
+    fieldInput('cm-create-id', draft.id, value => applyDraftEvent(draft.token, () => actions.updateCreate(draft.token, 'id', value)), !canSubmit),
     h('p', { className: styles.hint }, t('idImmutableHint')),
     labelFor('cm-create-name', t('fieldName')),
-    fieldInput('cm-create-name', draft.name, value => actions.updateCreate(draft.token, 'name', value), !canSubmit),
+    fieldInput('cm-create-name', draft.name, value => applyDraftEvent(draft.token, () => actions.updateCreate(draft.token, 'name', value)), !canSubmit),
     labelFor('cm-create-description', t('fieldDescription')),
-    fieldInput('cm-create-description', draft.description, value => actions.updateCreate(draft.token, 'description', value), !canSubmit, true),
+    fieldInput('cm-create-description', draft.description, value => applyDraftEvent(draft.token, () => actions.updateCreate(draft.token, 'description', value)), !canSubmit, true),
     labelFor('cm-create-preset', t('fieldBasePreset')),
-    fieldInput('cm-create-preset', draft.basePreset, value => actions.updateCreate(draft.token, 'basePreset', value), !canSubmit, false, view.catalogAvailable ? 'cm-profile-preset-choices' : undefined),
+    fieldInput('cm-create-preset', draft.basePreset, value => applyDraftEvent(draft.token, () => actions.updateCreate(draft.token, 'basePreset', value)), !canSubmit, false, view.catalogAvailable ? 'cm-profile-preset-choices' : undefined),
     h('p', { className: styles.hint }, t('createDefaultHint')),
     h('div', { className: styles.actions },
       h('button', { type: 'submit', className: styles.primary,
         disabled: !canSubmit || validateCreateDraft(draft, new Set(view.rows.map(row => row.id))) !== 'valid',
       }, t('create')),
-      button(t('cancel'), () => actions.cancelDraft(draft.token), running || draft.submitting === true),
+      button(t('cancel'), () => applyDraftEvent(draft.token, () => actions.cancelDraft(draft.token)), running || draft.submitting === true),
     ),
     )
     : null
@@ -371,9 +375,10 @@ export function ContextManagerProfileDrawerContent(props: ContextManagerDrawerPr
       h('p', null, t('draftPreservedHint')),
       h('div', { className: styles.actions },
         button(t('refresh'), refresh, running),
-        button(t('discardDraft'), () => draft.blocked !== undefined
-          ? actions.discardBlockedDraft(draft.token) : actions.cancelDraft(draft.token),
-          running || draft.submitting === true),
+        button(t('discardDraft'), () => applyDraftEvent(draft.token, () => {
+          if (draft.blocked !== undefined) actions.discardBlockedDraft(draft.token)
+          else actions.cancelDraft(draft.token)
+        }), running || draft.submitting === true),
       ),
     )
     : null
@@ -403,11 +408,11 @@ export function ContextManagerProfileDrawerContent(props: ContextManagerDrawerPr
         },
         labelFor(fieldId, label),
         fieldInput(fieldId, draft.removeDescription ? '' : draft.value,
-          next => actions.updateField(draft.token, next), !canSubmit,
+          next => applyDraftEvent(draft.token, () => actions.updateField(draft.token, next)), !canSubmit,
           field === 'description',
           field === 'basePreset' && view.catalogAvailable ? 'cm-profile-preset-choices' : undefined),
         field === 'description'
-          ? button(t('removeDescription'), () => actions.markDescriptionRemoved(draft.token),
+          ? button(t('removeDescription'), () => applyDraftEvent(draft.token, () => actions.markDescriptionRemoved(draft.token)),
             !canSubmit || draft.original === undefined)
           : null,
         draft.removeDescription
@@ -417,7 +422,7 @@ export function ContextManagerProfileDrawerContent(props: ContextManagerDrawerPr
           h('button', { type: 'submit', className: styles.primary,
             disabled: !canSubmit || !editValueChanged(draft),
           }, t('save')),
-          button(t('cancel'), () => actions.cancelDraft(draft.token), running || draft.submitting === true),
+          button(t('cancel'), () => applyDraftEvent(draft.token, () => actions.cancelDraft(draft.token)), running || draft.submitting === true),
         ),
         )
         : h('p', { className: styles.value }, value === undefined
@@ -482,7 +487,7 @@ export function ContextManagerProfileDrawerContent(props: ContextManagerDrawerPr
               ? h('p', null, t('deleteDefaultHint')) : null,
             h('div', { className: styles.actions },
               button(t('confirmDelete'), () => { void commitDraft() }, !canSubmit, 'danger'),
-              button(t('cancel'), () => actions.cancelDraft(draft.token), running || draft.submitting === true),
+              button(t('cancel'), () => applyDraftEvent(draft.token, () => actions.cancelDraft(draft.token)), running || draft.submitting === true),
             ),
           )
           : h('div', { className: styles.actions },

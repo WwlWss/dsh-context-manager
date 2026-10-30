@@ -92,6 +92,29 @@ export function isLiveDrawerOpenSession(
     && current.openSessionEpoch === renderedOpenSessionEpoch
 }
 
+/** F01-SR2: authorize a *user-originated* draft event from its rendered
+ * Drawer opening, not merely the retained Token. Close -> Reopen preserves
+ * the same draft Token, so old onChange/Cancel/Discard callbacks must not
+ * gain authority in a later opening. Do NOT apply this gate to RPC receipts:
+ * a valid in-flight Host outcome must still settle when the Drawer closes.
+ *
+ * This is presentation-only; neither Profile Basis nor Resource authority
+ * is re-read, and no second Store or lifecycle counter is created.
+ */
+export function mayApplyCurrentDraftEvent(
+  actions: object,
+  renderedOpenSessionEpoch: number,
+  pane: 'profiles' | 'resources',
+  token: number,
+): boolean {
+  const current = readLivePresentationForActions(actions)
+  if (!isLiveDrawerOpenSession(current, renderedOpenSessionEpoch)
+    || current?.pane !== pane) return false
+  return pane === 'profiles'
+    ? current.draft?.token === token && current.resourceDraft === null
+    : current.resourceDraft?.token === token && current.draft === null
+}
+
 export function mayDispatchImmediateProfileWrite(
   current: ContextManagerPresentationState | undefined,
   selectedProfileId: string | null,

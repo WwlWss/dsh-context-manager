@@ -20,7 +20,7 @@ import {
   sortedPromptBindings,
   validatePromptBindingCreate,
 } from './prompt-binding-editor.js'
-import { isLiveDrawerOpenSession, ownsLiveProfileDraft, readLivePresentationForActions } from './presentation-store.js'
+import { isLiveDrawerOpenSession, mayApplyCurrentDraftEvent, ownsLiveProfileDraft, readLivePresentationForActions } from './presentation-store.js'
 import styles from './plugin.module.css'
 
 interface PromptBindingSectionProps extends ContextManagerDrawerProps {
@@ -104,6 +104,9 @@ export function ContextManagerPromptBindingSection(props: PromptBindingSectionPr
     ? resourceList.data?.filter(row => row.status === 'usable') ?? []
     : []
 
+  const applyDraftEvent = (token: number, event: () => void): void => {
+    if (mayApplyCurrentDraftEvent(actions, renderedOpenSessionEpoch, 'profiles', token)) event()
+  }
   const unavailable = () =>
     actions.setNotice({ code: 'noticeUnavailable', kind: 'warning' })
   const begin = (bindingId?: string, renderedBinding?: ContextManagerRemotePromptBinding) => {
@@ -258,27 +261,27 @@ export function ContextManagerPromptBindingSection(props: PromptBindingSectionPr
     h('h4', null, t('bindingCreateTitle')),
     labeled('cm-binding-create-id', t('bindingId'),
       input('cm-binding-create-id', active.bindingId,
-        value => actions.updatePromptBindingCreate(active.token, 'bindingId', value), !canSubmit)),
+        value => applyDraftEvent(active.token, () => actions.updatePromptBindingCreate(active.token, 'bindingId', value)), !canSubmit)),
     h('p', { className: styles.hint }, t('bindingExactIdHint')),
     labeled('cm-binding-create-resource', t('bindingResourceId'),
       input('cm-binding-create-resource', active.resourceId,
-        value => actions.updatePromptBindingCreate(active.token, 'resourceId', value), !canSubmit,
+        value => applyDraftEvent(active.token, () => actions.updatePromptBindingCreate(active.token, 'resourceId', value)), !canSubmit,
         'cm-binding-resource-suggestions')),
     labeled('cm-binding-create-enabled', t('bindingEnabled'),
       booleanSelect('cm-binding-create-enabled', active.enabled, !canSubmit,
-        value => actions.updatePromptBindingCreate(active.token, 'enabled', value))),
+        value => applyDraftEvent(active.token, () => actions.updatePromptBindingCreate(active.token, 'enabled', value)))),
     labeled('cm-binding-create-placement', t('bindingPlacement'),
       placementSelect('cm-binding-create-placement', active.placement, !canSubmit,
-        value => actions.updatePromptBindingCreate(active.token, 'placement', value))),
+        value => applyDraftEvent(active.token, () => actions.updatePromptBindingCreate(active.token, 'placement', value)))),
     labeled('cm-binding-create-order', t('bindingOrder'),
       input('cm-binding-create-order', active.orderText,
-        value => actions.updatePromptBindingCreate(active.token, 'orderText', value), !canSubmit)),
+        value => applyDraftEvent(active.token, () => actions.updatePromptBindingCreate(active.token, 'orderText', value)), !canSubmit)),
     h('div', { className: styles.actions },
       h('button', { type: 'submit', className: styles.primary,
         disabled: !canSubmit || validatePromptBindingCreate(active, reservedIds) !== 'valid',
         'data-context-manager-binding-save': '',
       }, t('create')),
-      button(t('cancel'), () => actions.cancelDraft(active.token), running || active.submitting === true)),
+      button(t('cancel'), () => applyDraftEvent(active.token, () => actions.cancelDraft(active.token)), running || active.submitting === true)),
     ) : null
 
   const editForm = active?.kind === 'prompt-binding-edit-field'
@@ -288,26 +291,26 @@ export function ContextManagerPromptBindingSection(props: PromptBindingSectionPr
     active.field === 'resourceId'
       ? labeled('cm-binding-edit-resourceId', t('bindingResourceId'),
         input('cm-binding-edit-resourceId', active.value,
-          v => actions.updatePromptBindingField(active.token, v), !canSubmit,
+          v => applyDraftEvent(active.token, () => actions.updatePromptBindingField(active.token, v)), !canSubmit,
           'cm-binding-resource-suggestions'))
       : active.field === 'enabled'
         ? labeled('cm-binding-edit-enabled', t('bindingEnabled'),
           booleanSelect('cm-binding-edit-enabled', active.value, !canSubmit,
-            v => actions.updatePromptBindingField(active.token, v)))
+            v => applyDraftEvent(active.token, () => actions.updatePromptBindingField(active.token, v))))
         : active.field === 'placement'
           ? labeled('cm-binding-edit-placement', t('bindingPlacement'),
             placementSelect('cm-binding-edit-placement', active.value, !canSubmit,
-              v => actions.updatePromptBindingField(active.token, v)))
+              v => applyDraftEvent(active.token, () => actions.updatePromptBindingField(active.token, v))))
           : labeled('cm-binding-edit-order', t('bindingOrder'),
             input('cm-binding-edit-order', active.value,
-              v => actions.updatePromptBindingField(active.token, v), !canSubmit)),
+              v => applyDraftEvent(active.token, () => actions.updatePromptBindingField(active.token, v)), !canSubmit)),
     h('p', { className: styles.hint }, t('bindingOneFieldHint')),
     h('div', { className: styles.actions },
       h('button', { type: 'submit', className: styles.primary,
         disabled: !canSubmit || !promptBindingEditChanged(active),
         'data-context-manager-binding-save': '',
       }, t('save')),
-      button(t('cancel'), () => actions.cancelDraft(active.token), running || active.submitting === true)),
+      button(t('cancel'), () => applyDraftEvent(active.token, () => actions.cancelDraft(active.token)), running || active.submitting === true)),
     ) : null
 
   const deleteConfirmation = active?.kind === 'prompt-binding-delete'
@@ -319,7 +322,7 @@ export function ContextManagerPromptBindingSection(props: PromptBindingSectionPr
     h('div', { className: styles.actions },
       button(t('confirmDelete'), () => { void commit() }, !canSubmit,
         { 'data-context-manager-binding-save': '' }, true),
-      button(t('cancel'), () => actions.cancelDraft(active.token), running || active.submitting === true)),
+      button(t('cancel'), () => applyDraftEvent(active.token, () => actions.cancelDraft(active.token)), running || active.submitting === true)),
     ) : null
 
   return h('section', { className: styles.bindingSection,

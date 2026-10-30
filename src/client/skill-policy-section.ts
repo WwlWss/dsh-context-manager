@@ -9,7 +9,7 @@ import {
   noticeForSkillResult, sortedSkillBindings, skillModeEditChanged, validateSkillCreate,
 } from './skill-policy-editor.js'
 import {
-  isLiveDrawerOpenSession, ownsLiveProfileDraft, readLivePresentationForActions,
+  isLiveDrawerOpenSession, mayApplyCurrentDraftEvent, ownsLiveProfileDraft, readLivePresentationForActions,
 } from './presentation-store.js'
 import styles from './plugin.module.css'
 
@@ -199,10 +199,10 @@ export function ContextManagerSkillPolicySection(props: SkillPolicySectionProps)
     event.preventDefault()
     void commit()
   }
-  const cancel = (token: number) => {
-    if (isLiveDrawerOpenSession(readLivePresentationForActions(actions),
-      renderedOpenSessionEpoch)) actions.cancelDraft(token)
+  const applyDraftEvent = (token: number, event: () => void): void => {
+    if (mayApplyCurrentDraftEvent(actions, renderedOpenSessionEpoch, 'profiles', token)) event()
   }
+  const cancel = (token: number) => applyDraftEvent(token, () => actions.cancelDraft(token))
   const actionRow = (token: number, saveDisabled: boolean) =>
     h('div', { className: styles.actions },
       h('button', {
@@ -222,10 +222,11 @@ export function ContextManagerSkillPolicySection(props: SkillPolicySectionProps)
       id: 'cm-skill-create-name', className: styles.input,
       type: 'text', value: active.skillName, disabled: !canSubmit,
       onChange: (event: { currentTarget: { value: string } }) =>
-        actions.updateSkillCreateName(active.token, event.currentTarget.value),
+        applyDraftEvent(active.token, () =>
+          actions.updateSkillCreateName(active.token, event.currentTarget.value)),
     }),
     h('label', { htmlFor: 'cm-skill-mode-create', className: styles.label }, t('skillMode')),
-    options(active.mode, mode => actions.updateSkillMode(active.token, mode)),
+    options(active.mode, mode => applyDraftEvent(active.token, () => actions.updateSkillMode(active.token, mode))),
     h('p', { className: styles.hint }, t('skillExactIdHint')),
     actionRow(active.token, !canSubmit || validateSkillCreate(active) !== 'valid'),
     ) : null
@@ -239,7 +240,7 @@ export function ContextManagerSkillPolicySection(props: SkillPolicySectionProps)
     h('code', { className: styles.value }, JSON.stringify(active.skillName)),
     h('p', { className: styles.hint }, t('skillMode') + ': ' + active.originalMode),
     h('label', { htmlFor: 'cm-skill-mode-edit', className: styles.label }, t('skillMode')),
-    options(active.mode, mode => actions.updateSkillMode(active.token, mode)),
+    options(active.mode, mode => applyDraftEvent(active.token, () => actions.updateSkillMode(active.token, mode))),
     actionRow(active.token, !canSubmit || !skillModeEditChanged(active)),
     ) : null
 
