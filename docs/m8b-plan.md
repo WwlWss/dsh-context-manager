@@ -154,3 +154,106 @@ B2/B3 may be broken into smaller PR-safe commits within this **one Draft PR**, b
 **Compatibility:** built/current retained DSH versions are 0.1.2-rc.1, 0.1.5-rc.1, 0.1.5-rc.2, 0.1.6-alpha.2 for Client Bridge; earlier 0.1.1 paths remain in frozen Host/Slot compatibility. DSH 0.1.7+/0.2.x are not newly qualified by this plan.
 
 **Historical docs:** main README/roadmap still contain pre-merge M8A2 wording; these may be updated in this Draft branch as docs housekeeping, but documentation changes do not constitute a new M8B GREEN or supersede the original M8A2 main Full evidence.
+
+
+## 11. B0 executable published-contract preflight — detailed implementation plan (design only, 2026-10-30)
+
+This section specifies **what to implement next**; none of its proposed tests, temporary workflow or B0 artifacts has been executed yet. Current source-check-only B0 status and existing M8A2 independent main Full remain distinct. Stage B0 must not add a Skill Editor, mutate Host/Remote/Controller/runtime code or promote the Draft PR to Ready.
+
+### 11.1 Frozen targets, dependency generations and evidence classes
+
+- **Exact starting commit:** `5a21df1b5f27fbcc22cdb389de3c1d765b96a95d`, the independently qualified post-merge M8A2 main (Full `#41009808239`, 86/86). Execute new B0 scripts from PR #42 HEAD; record both base and actual test HEAD in each manifest.
+- **Five Host/Remote generations:** `0.1.1-rc.2` (Cordis `4.0.1`, Schemastery `3.18.1`); `0.1.2-rc.1`, `0.1.5-rc.1`, `0.1.5-rc.2`, `0.1.6-alpha.2` (Cordis `4.0.2`, Schemastery `3.18.2`). Cover published DSH Settings, Typert/Gateway and native Skill/Scope without silently translating APIs.
+- **Four real Client Renderer generations:** `0.1.2-rc.1`, `0.1.5-rc.1`, `0.1.5-rc.2`, `0.1.6-alpha.2` with `react@18.3.1`, `@types/react@18.3.31`, Node `22.20.0`, pnpm `11.7.0`. The legacy `0.1.1-rc.2` has a different retained Slot/Host path and is **not** claimed to expose the newer Client Renderer; keep its frozen legacy proof.
+- **Separate evidence classes:** (H) actual published Settings-backed Host mutates Stored data; (R) actual strict generated Typert Gateway carries Host Profile RPC and sanitized diagnostic projections; (C) actual retained Client declarations and Renderer mount/teardown compile/execute; (N) native Skill/Scope and M5B/M5C runtime compatibility already qualified by the main Full and optionally rerun as supplemental—not interchangeable with H/R/C.
+- **No source-implementation test masquerading as a published test:** importing local types or `RemoteService` without the selected package overlay does not qualify a version. A fake native runtime port proves Remote projection/redaction, **not** native resolution or actual SkillDefinition body loading.
+
+### 11.2 Planned implementation files (four additions; one temporary workflow; one plan update)
+
+| Artifact | Purpose | Retention |
+|---|---|---|
+| `tests/m8b-published-host-preflight.test.mjs` | Real `Context` + published `SettingsProvider` + `ContextManagerService` + `ContextManagerChangeTracker` + `ContextManagerRemoteService`, exact leaf mode/set/delete behavior, Settings CAS, path matrix, malformed diagnostics | **Permanent**, automatically included by existing `node --test ./tests/*.test.mjs` |
+| `tests/m8b-published-gateway-preflight.test.mjs` | Actual `TypertRegistry` + `TypertGatewayService` + generated `TYPERT` + real Profile Host, and explicit fake Skill/Pinned read-only ports solely for poisoned projection/strict schema safety | **Permanent**, glob-included |
+| `tests/m8b-client-contract-preflight.ts` | Typed, compile-only proof of frozen Profile `setSkillMode` / `removeSkillBinding` facade, explicit Profile Basis, lazy Agent read model interfaces, with existing `tests/client-upstream-contract.ts` and generated Remote declarations | **Permanent**, invoked under 4-generation strict TypeScript preflight; does not claim new UI |
+| `scripts/verify-m8b-b0-evidence.mjs` | Parse structured per-version results and fail closed on missing, duplicate, wrong HEAD, skipped or non-PASS H/R/C proof; never print secrets | **Permanent** evidence verifier, not a replacement for official Full |
+| `.github/workflows/m8b-b0-published-preflight.yml` | **Temporary Draft-only** published package test matrix and evidence collection; independent from unchanged official 86-job CI | Delete **after** immutable GREEN links and machine-readable manifest hashes are archived in `docs/m8b-plan.md` |
+| `docs/m8b-plan.md` | This implementation contract, subsequent actual cases/versions/CI links, B0 decision & remaining capability gaps | **Permanent** |
+
+Use exact base fixtures already established by `tests/m8a2-published-host-preflight.test.mjs`, `tests/context-manager.test.mjs`, `tests/remote-upstream-runtime.mjs`, `tests/remote-m6c.test.mjs` and `tests/skill-runtime-upstream-runtime.mjs`. Reuse their service lifecycle and generated Gateway invocation idioms; do not duplicate an alternate Settings or Remote implementation.
+
+### 11.3 H lane — real Settings and Host operation probes
+
+**Fixture:** isolated fresh `Context` per `node:test` case; a minimal class extending **the selected published** `SettingsProvider`, using `structuredClone` on `load()`/`persist()`. Mount published-memory provider, real `ContextManagerService`, `ContextManagerChangeTracker` and real `ContextManagerRemoteService` in dependency order. Dispose in reverse through `t.after`. Gather `basis = { instanceId: remote.changes().instanceId, revision: remote.profiles().persistence.revision }` immediately **before each** intentional successful write; retain an old basis only for explicitly stale/conflict tests.
+
+**Positive test table (every supported Host generation, not merely localhost latest):**
+
+| Case | Operation | Assert |
+|---|---|---|
+| H01 | Real `createProfile` with known and unknown Profile and Skill fields | Stored data has exact unknown siblings; Remote typed projection contains `mode` but not unknown siblings |
+| H02 | Missing name → `setSkillMode(...,'auto',basis)` | Exactly one native Settings revision increment; **explicit** Auto Binding now exists |
+| H03 | Existing Mode Auto → Manual → Off → Pinned → Auto | Every Save is one leaf write, one revision increment; exact stored mode; non-`mode` siblings and other Skill bindings remain byte/structurally equal |
+| H04 | `removeSkillBinding` for explicit existing name | Exactly one revision increment and whole entry absent; other bindings and Profile extension preserved |
+| H05 | Same Skill mode received again | Observe Host behavior and version increment **as implemented**; Editor B1 may suppress unchanged writes, but never falsely claim Host deduplicates |
+| H06 | Delete missing name | `skill-binding-not-found`, no persisted modification and no revision increment |
+| H07 | Invalid mode such as `banana` | `invalid-skill-mode` (or strict Gateway rejection at Gateway boundary), no persistence mutation |
+| H08 | Captured stale Settings revision, after another legitimate write | `profile-conflict` with expected/actual revision; original Stored content retained |
+| H09 | Correct revision but wrong `instanceId` | `host-instance-conflict`; no write/no revision bump |
+| H10 | Legal path IDs `constructor`/`prototype`, Unicode, whitespace, empty (observed, version-reported) | Exact key preserved by `Object.hasOwn` and projection; no trimming or prototype mutation. Pin accepted/rejected verdicts only after actual per-generation proof |
+| H11 | `__proto__` Skill name and Host-unsafe Profile ID | `unsafe-path-key`; snapshot, Stored and revision strictly unchanged |
+| H12 | Malformed Skill Binding / scalar `skills` / scalar Profile in `setRawProfile` | Host's path-local repair capability is recorded accurately; existing unrelated sibling data must not be destroyed. **UI remains read-only on an invalid Profile** |
+| H13 | Explicit Auto versus Remove versus absent | All three persistently distinct (Auto present, Remove absent); no auto-cleanup on mode change |
+
+For each write compare `manager.getStoredProfile` before/after and `remote.profiles()`. Use the actual native `Settings` revision and `Object.hasOwn`; do not count FakeProfiles writes or rely only on the returned Remote snapshot. The existing Host `setSkillMode` accepts absent Binding by targeting a `mode` leaf, but Settings path creation behavior **must be proved on every selected published generation**.
+
+**Important qualification:** H10 does not predeclare whether empty/whitespace-only names are supported. If any retained version deviates, fail the cross-version universal-editability claim and explicitly record the version-specific limitation, then choose a conservative UI gate; never normalize the user's exact authored Skill name.
+
+### 11.4 R lane — real Gateway/strict codec and sanitized runtime projection
+
+Mount `TypertRegistry` and `TypertGatewayService` against the exact selected dependency generation and register the **generated existing** `TYPERT` descriptor. Use the real `ContextManagerService` and published `Settings` when testing `setSkillMode` / `removeSkillBinding`; do **not** use `FakeProfiles.setSkillMode` for preservation/CAS evidence because its implementation overwrites Binding siblings.
+
+For each version call:
+- `ctx.typertGateway.invoke({namespace:'contextManager',method:'protocol',args:{}})` => Remote `apiVersion===3`.
+- `profiles`, `setSkillMode`, `removeSkillBinding` using their **actual generated argument object** names (`profileId`, `skillName`, `mode`, `basis`), and re-read `profiles` and underlying Stored data after each.
+- Reuse `TYPERT` / `TYPERT_REMOTE` strict codec assertions from `tests/remote-upstream-runtime.mjs` for just those method descriptors plus two inspection methods. A method check alone is insufficient; require an end-to-end successful call and rejection cases under the generated codec.
+
+**Runtime projection security fixture:** register separate read-only faux `dshContextSkillRuntime` and `dshContextPinnedSkillRuntime` services returning controlled (and deliberately **host-private**) extra properties such as `instructions`, `content`, `path`, a secret marker `M8B_B0_PRIVATE_SKILL_DEFINITION` and private nested profile data. Verify the **actual** `inspectSkillRuntime(agentId)` and `inspectPinnedSkillRuntime(agentId)` projections independently:
+- preserve the authorized states/metadata (`native-pass-through`, `policy-applied`, `policy-not-effective`, `missing-native-skill`, `catalog-incomplete`; Pinned `loaded`, `definition-unavailable`, `policy-not-effective`, `assembly-bypassed` and native-state values);
+- remove the unexpected private keys from the returned objects; assert exact projection shape **and** `JSON.stringify(result)` excludes both secret marker and private host path;
+- return `runtime-unavailable` / `agent-not-live` as actual report states, never a manufactured successful/effective record;
+- assert correct `agentId` identity, `profile.status`/`profileId` and finite native verdicts; do **not** fabricate Agent enumeration or infer "Profile effective" from a different Agent's result;
+- explicitly distinguish faux-port projection safety from actual M5B/M5C native SkillRegistry availability; cite/rerun the frozen M5B/M5C native test suite as supplemental evidence if needed.
+
+The Remote public inspector must **never** call a `SkillDefinition` content loader merely for B0 introspection. A real native-provider side-effect counter is a useful additional N case, but cannot be proved merely from the faux `inspect()` return value. Pinned's own M5C assembly may load definitions internally; the requirement is **no body in Remote/Client inspection result**, not "no internal Pinned loading under any circumstances".
+
+### 11.5 C lane — four genuine retained Client generations
+
+Test **published** Client Slots/Store/Locale/Renderer/React versions, not just the local React shim. Use the frozen official `client-presentation-contract` install and TypeScript command as the baseline. Append `tests/m8b-client-contract-preflight.ts` to the strict compile inputs; additionally run existing `tests/client-renderer-bridge-runtime.mjs` and `tests/client-profile-drawer-runtime.mjs`. No new Skill UI is expected or asserted at B0.
+
+The typed probe must demonstrate:
+- the two published Business Face mutations accept one original `ContextManagerClientProfileMutationBasis` and return `Promise<ContextManagerClientProfileMutationResult>`;
+- the Model exposes `loadAgentSkillRuntime` and `loadAgentPinnedRuntime` and the diagnostics cache distinguishes `skills` and `pinned` by exact Agent ID;
+- the frozen Business Face currently does **not** expose those two lazy loaders. The B3 proposal must be additive and must not accidentally change the public Slot factory ABI;
+- a real published Renderer can still mount the existing Profile/Resource/PromptBinding view without hook-order, ReactNode or `StoreInstance.actions` drift.
+
+B0's pass does **not** qualify M8B Skill editor buttons, submission state, or its Agent diagnostic UI: those do not exist yet. Those are B1/B2/B3 RED/GREEN targets.
+
+### 11.6 Temporary workflow and reproducible qualification sequence
+
+1. **Commit H/R/C tests separately** on `feat/m8b-skill-policy-editor` with no production-code changes. Add no TypeScript/editor exports, no new Remote v4 methods, and no alternative Source of Truth.
+2. Create `.github/workflows/m8b-b0-published-preflight.yml` with `pull_request` `opened/synchronize/reopened` and path filters covering the exact B0 files + itself. Run in **Draft**, not by marking PR Ready. Use Node `22.20.0`, pnpm `11.7.0`, `actions/checkout@v7`, `setup-node@v7` and `fail-fast:false`.
+3. Build the candidate's generated `lib` and `TYPERT` **once using pinned oldest dependencies** in a producer Job. Upload that exact artifact. In **each** five-version Host matrix job restore this artifact after `rm -rf lib`, overlay only the selected published Settings/Scope/Skill/Typert/Gateway/Cordis/Schemastery packages via `pnpm add --ignore-scripts --save-dev --save-exact`, and run the H + R node tests plus existing focused real-native M5 tests as compatible.
+4. In four Client matrix jobs restore the **same** baseline Client `lib`/Remote declaration, overlay the real selected DSH Client packages plus React dependencies as in official `client-presentation-contract`, then execute strict `tsc`, existing Renderer bridge and current full Profile Drawer script. Do **not** rebuild `lib` after overlay (that would test a new per-version artifact rather than oldest-built compatibility).
+5. Every matrix job writes `.artifacts/m8b-b0/<lane>-<version>.json` containing `testHeadSha`, `baseSha`, lane, exact package versions, named assertion IDs, allowed outcome/code, `status:"pass"` only when all required assertions ran. No private Skill content or host path appears in artifacts/logging. `actions/upload-artifact@v4` runs with `if:always()` so failed cases remain inspectable; missing artifact is always failure.
+6. Add a single **B0 fail-closed aggregator** `if:always()` depending on the build producer + five Host + four Client lanes. It downloads nine expected manifests, checks exact **same** Head, unique versions, non-skipped required assertion IDs, all PASS and no missing/duplicate/unrecognized files, then runs `scripts/verify-m8b-b0-evidence.mjs`. A failed or canceled job is a failed B0, not "8/9 is enough". Archive final aggregator run URL and the source HEAD.
+7. Independently verify the exact workflow run, matrix job count and artifact provenance through GitHub, including a source-only check that `.github/workflows/ci.yml`, Remote v3, Domain Host, Controllers, runtime services and packed Slot ABI did not change. A temporary workflow, if any, must be removed **only after** published GREEN and full evidence are linked in this document. Once removed, run exact final Draft Quick. Document that the canceled intermediate CI and the old pre-removal GREEN apply to different HEADs and are not exact-head qualification substitutes.
+8. **B0 exit:** all nine published-generation H/R/C matrix lanes PASS, fail-closed aggregator PASS, B0 contract table verified and exceptions documented. No automatic PR Ready or Full/merge; request B1 executable RED implementation review next.
+
+### 11.7 Expected failure triage / no-bypass rule
+
+- **Typed/public ABI mismatch:** identify exact affected published DSH version and strict `tsc`/Gateway schema error. Do not claim success based on the latest generation only, suppress TypeScript errors or widen the published `Remote` type.
+- **Settings path key or revision discrepancy:** report actual version, old/new Stored payload, expected and actual revision, exact path and error code **without leaking private values**. A failed retained version blocks unconditional B2 support until a product restriction is explicitly adopted or a separately scoped real upstream defect is repaired.
+- **Agent inspection leak:** P0 for B3 diagnostic exposure; do not display body or private host-path data. Isolate whether the leak occurs in Host inspection, projection or Gateway and require a targeted RED before any production fix.
+- **Environment/publish failure:** distinguish dependency unavailable, registry timeout, unsupported package or runner issue from an assertion failure. Keep the affected lane marked *not qualified* until rerun; do not silently skip or replace it with fake services.
+- **Misleading claim:** distinguish real Settings-backed H result, real Gateway R result, real published Client C result and existing M5 native-runtime N results in every PR note. Do not call Draft Quick or nine-lane B0 an 86-job Ready Full.
+
+**Proposed checkpoint:** after implementing the H/R/C tests but before temporary-workflow launch, perform a small contract-only review of the test fixture, exact published package overlay and evidence schema. Only then run the published B0 preflight and decide whether B1 RED may begin.
