@@ -572,9 +572,9 @@ The editor work is split by independent mutation domains:
 
 **M8A2 — Profile PromptBinding editor** (**COMPLETE**, merged [PR #41](https://github.com/WwlWss/dsh-context-manager/pull/41), [detailed contract](m8a2-plan.md)): Profile-local binding CRUD, one explicit Profile mutation RPC per Save, immutable observed Settings Basis, stored sibling preservation, defined terminal safety and independent Resource authority. Merged on main as `5a21df1b5f27fbcc22cdb389de3c1d765b96a95d`; independent main [Full #41009808239](https://github.com/WwlWss/dsh-context-manager/actions/runs/41009808239) passed **86/86 jobs, zero failed/skipped**. Resource deletion does not cascade to Profile bindings. M8B starts separately from this immutable baseline.
 
-### M8B — Skill policy editor (B0 design-only Draft; [capability contract](m8b-plan.md))
+### M8B — Skill policy editor (PR #42 Draft / implemented; [contract and execution ledger](m8b-plan.md))
 
-**B0 source preflight:** existing Host/Remote v3 Profile Controller already supports `setSkillMode` and `removeSkillBinding`; current Agent-scoped `inspectSkillRuntime` / `inspectPinnedSkillRuntime` reads are lazy and not a complete native Skill catalog. M8B B1/B2/B3 implementation and all targeted RED/GREEN remain pending. Do not claim an M8B Editor or M8B Full qualification at this stage.
+**B0/B1/B2 execution:** the existing Host/Remote v3 Profile Controller supports `setSkillMode` and `removeSkillBinding`; the M8B Profile-local Skill Editor implements exact configured own-key display, explicit Auto/Manual/Off/Pinned, Configure, Mode Edit and whole-Binding Remove. Its independent B1/B2 RED->GREEN tests and historical pre-repair Ready Full [#41125921741](https://github.com/WwlWss/dsh-context-manager/actions/runs/41125921741) (86/86) are archived. The PR remains **Draft/unmerged** while F01-SR2 retained old-event authorization and permanent Full Skill-probe integration are verified. A **new** independent Final Strict Review and new exact-HEAD 86-job Full are required before merge. Agent-scoped `inspectSkillRuntime` / `inspectPinnedSkillRuntime` are still lazy and do not form a native Skill catalog; B3 diagnostic UI remains separately planned.
 
 - edit Pinned / Auto / Manual / Off through explicit leaf mutations;
 - show native resolution and policy-effectiveness diagnostics separately;

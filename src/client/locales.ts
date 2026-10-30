@@ -128,7 +128,7 @@ export type ContextManagerLocaleKey =
   | 'skillEdit'
   | 'skillDelete'
   | 'skillUnsafePath'
-  | 'skillRedProbe'
+  | 'skillEffectivenessDisclaimer'
   | 'skillIdDuplicate'
   | 'skillExactIdHint'
   | 'skillDeleteWholeHint'
@@ -301,7 +301,7 @@ export const CONTEXT_MANAGER_LOCALES = Object.freeze({
     skillEdit: "编辑模式",
     skillDelete: "移除绑定",
     skillUnsafePath: "__proto__ 是无法安全修改的 Settings 路径键；保留现有配置只读展示。",
-    skillRedProbe: "仅显示明确配置的 Skill；修改须经 Save 和 Host CAS 确认，不代表某个 Agent 已生效。",
+    skillEffectivenessDisclaimer: "仅显示明确配置的 Skill；修改须经 Save 和 Host CAS 确认，不代表某个 Agent 已生效。",
     skillIdDuplicate: "此 Profile 中已经存在完全相同的 Skill ID；请使用 Edit Mode 而不是 Configure。",
     skillExactIdHint: "Skill ID 精确保留空字符串、空白和 Unicode；只有 __proto__ 不可写入。",
     skillDeleteWholeHint: "确认后将删除整个 Skill 绑定，包括未知的 Stored 扩展字段；不等于改为 Auto。",
@@ -465,7 +465,7 @@ export const CONTEXT_MANAGER_LOCALES = Object.freeze({
     skillEdit: "Edit mode",
     skillDelete: "Remove binding",
     skillUnsafePath: "The __proto__ Settings path key cannot be safely edited; existing configuration stays visible read-only.",
-    skillRedProbe: "Only explicitly configured Skills are shown. Save uses Host CAS; this does not establish Agent effectiveness.",
+    skillEffectivenessDisclaimer: "Only explicitly configured Skills are shown. Save uses Host CAS; this does not establish Agent effectiveness.",
     skillIdDuplicate: "This exact Skill ID is already configured in the Profile. Use Edit Mode.",
     skillExactIdHint: "Skill IDs preserve empty strings, whitespace and Unicode exactly; only __proto__ is unsafe.",
     skillDeleteWholeHint: "Confirmation removes the entire Skill binding, including unknown Stored extension fields; it is not Auto.",

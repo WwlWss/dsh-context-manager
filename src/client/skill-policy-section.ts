@@ -30,15 +30,15 @@ function button(
 }
 
 /**
- * B1-3 INERT Published Renderer interaction seam, NOT a Skill Editor.
+ * M8B Profile-local Skill Policy editor on the existing DSH Presentation
+ * Store. Configure, Edit Mode and confirmed whole-Binding Remove dispatch
+ * exactly one existing Profile Mutation RPC with the original Settings Basis.
  *
- * Real, mounted React buttons expose captured callbacks to the retained DSH
- * Renderer tests. Begin delegates to the already typed but deliberately inert
- * Skill Store actions; there are no Skill forms, Save handlers or mutations.
- * This prevents a superficial missing-DOM RED from masking all subsequent
- * Begin tests. B2 must replace this seam with the reviewed full editor.
- *
- * Do not advertise an Agent/native catalog or infer effective Skill state.
+ * All user-originated callbacks are fenced by their rendered Drawer session,
+ * while Token ownership and the Controller govern RPC receipts, even if the
+ * Drawer closes during an in-flight mutation. Only explicitly configured
+ * Skill entries are listed: this is not a native Skill catalog or an
+ * Agent-specific runtime-effectiveness verdict.
  */
 export function ContextManagerSkillPolicySection(props: SkillPolicySectionProps) {
   const { profile, profileId, writable, actions, t } = props
@@ -272,7 +272,7 @@ export function ContextManagerSkillPolicySection(props: SkillPolicySectionProps)
       { 'data-context-manager-skill-new': '' }),
   ),
   h('p', { className: styles.hint }, t('skillConfiguredOnly')),
-  h('p', { className: styles.hint }, t('skillRedProbe')),
+  h('p', { className: styles.hint }, t('skillEffectivenessDisclaimer')),
   createForm, editForm, deleteConfirm,
   rows.length === 0
     ? h('p', { className: styles.empty }, t('skillNoItems'))

@@ -23,7 +23,9 @@ import type {
 } from '../src/client/mutation-types.js'
 
 /**
- * M8B B1-2b executable behavior RED, not an implemented Skill editor.
+ * M8B Skill Policy Editor executable behavioral regression contracts.
+ * Historical RED->GREEN evidence is recorded in docs/m8b-plan.md; these
+ * assertions now exercise the implemented shared Profile Store and helper.
  * Importable typed seams exist on purpose; missing exports, TS errors, and
  * a synthetic test Store do not qualify as RED. Every Store assertion uses
  * actual DSH StoreInstance.actions + getSnapshot. The B2 GREEN implementation
@@ -131,7 +133,7 @@ function spyProfileMutations(
 }
 
 for (const mode of MODES) {
-  test('B1-S01 RED: real Profile Store begins explicit Skill Create and retains mode ' + mode, () => {
+  test('B1-S01 contract: real Profile Store begins explicit Skill Create and retains mode ' + mode, () => {
     const store = newStore()
     store.actions.beginSkillModeCreate({
       profileId: 'main', basis: BASIS, observedSkillNames: ['present'],
@@ -150,7 +152,7 @@ for (const mode of MODES) {
   })
 }
 
-test('B1-S02 RED: exact own Skill IDs use code-unit sorting, no whitespace normalization', () => {
+test('B1-S02 contract: exact own Skill IDs use code-unit sorting, no whitespace normalization', () => {
   const skills = Object.create(null) as Record<string, ContextManagerRemoteSkillBinding>
   const keys = ['z', ' ', 'constructor', '', 'prototype', 'toString', 'valueOf', '人物', 'A']
   for (const key of keys) Object.defineProperty(skills, key, {
@@ -168,7 +170,7 @@ test('B1-S02 RED: exact own Skill IDs use code-unit sorting, no whitespace norma
   assert.equal(isWritableSkillPath('__proto__', 'safe'), false)
 })
 
-test('B1-S03 RED: Configure refuses existing exact own key, not empty or Unicode keys', () => {
+test('B1-S03 contract: Configure refuses existing exact own key, not empty or Unicode keys', () => {
   assert.equal(validateSkillCreate(fixtureCreate('present')), 'exists')
   assert.equal(validateSkillCreate(fixtureCreate('')), 'valid')
   assert.equal(validateSkillCreate(fixtureCreate(' ')), 'valid')
@@ -196,7 +198,7 @@ test('B1-S03 RED: Configure refuses existing exact own key, not empty or Unicode
   assert.equal(Object.isFrozen(current.observedSkillNames), true)
 })
 
-test('B1-S04 RED: mode Edit keeps original identity and only changes one leaf', async () => {
+test('B1-S04 contract: mode Edit keeps original identity and only changes one leaf', async () => {
   const store = newStore()
   store.actions.beginSkillModeEdit({
     profileId: 'main', skillName: 'present', originalMode: 'manual', basis: BASIS,
@@ -216,7 +218,7 @@ test('B1-S04 RED: mode Edit keeps original identity and only changes one leaf', 
   }])
 })
 
-test('B1-S04 RED: unchanged Mode emits no RPC; explicit Delete emits one remove', async () => {
+test('B1-S04 contract: unchanged Mode emits no RPC; explicit Delete emits one remove', async () => {
   const { calls, api } = spyProfileMutations()
   const unchanged = fixtureEdit('manual')
   assert.equal(skillModeEditChanged(unchanged), false)
@@ -231,7 +233,7 @@ test('B1-S04 RED: unchanged Mode emits no RPC; explicit Delete emits one remove'
   }])
 })
 
-test('B1-S01/S04 RED: explicit Auto Create cannot collapse into absent binding', async () => {
+test('B1-S01/S04 contract: explicit Auto Create cannot collapse into absent binding', async () => {
   const { calls, api } = spyProfileMutations()
   const result = commitSkillDraft(fixtureCreate('', 'auto'), api)
   assert.ok(result, 'explicit Auto is one actual setter, not a no-op or removal')
@@ -241,7 +243,7 @@ test('B1-S01/S04 RED: explicit Auto Create cannot collapse into absent binding',
   }])
 })
 
-test('B1-S05 RED: Skill draft occupies same visible Profile slot as existing editors', () => {
+test('B1-S05 contract: Skill draft occupies same visible Profile slot as existing editors', () => {
   const store = newStore()
   store.actions.beginSkillBindingDelete({
     profileId: 'main', skillName: 'present', originalMode: 'manual', basis: BASIS,
@@ -265,7 +267,7 @@ test('B1-S05 RED: Skill draft occupies same visible Profile slot as existing edi
     'Skill Begin must not override an existing M8A2 draft')
 })
 
-test('B1-S06 RED: old Token Input/Cancel/Discard cannot mutate a newer Skill draft', () => {
+test('B1-S06 contract: old Token Input/Cancel/Discard cannot mutate a newer Skill draft', () => {
   const store = newStore()
   store.actions.beginSkillModeCreate({
     profileId: 'main', basis: BASIS, observedSkillNames: ['present'],
@@ -292,7 +294,7 @@ test('B1-S06 RED: old Token Input/Cancel/Discard cannot mutate a newer Skill dra
   assert.equal(current.mode, 'off')
 })
 
-test('B1-S07 RED: synchronous same-frame submit claim forbids double dispatch or Cancel', () => {
+test('B1-S07 contract: synchronous same-frame submit claim forbids double dispatch or Cancel', () => {
   const store = newStore()
   store.actions.beginSkillModeEdit({
     profileId: 'main', skillName: 'present', originalMode: 'manual', basis: BASIS,
@@ -309,7 +311,7 @@ test('B1-S07 RED: synchronous same-frame submit claim forbids double dispatch or
   assert.equal(ownsLiveProfileDraft(readLivePresentationForActions(store.actions), draft), false)
 })
 
-test('B1-S08 RED: closed Skill Begin stays inert and reopened fresh Begin is authorized', () => {
+test('B1-S08 contract: closed Skill Begin stays inert and reopened fresh Begin is authorized', () => {
   const store = newStore()
   store.actions.close()
   const before = store.getSnapshot()
@@ -335,7 +337,7 @@ test('B1-S08 RED: closed Skill Begin stays inert and reopened fresh Begin is aut
   assert.equal(store.getSnapshot().draft?.token, preserved.token)
 })
 
-test('B1-S09 RED: old root Store actions revoked on remount, new Skill Begin still works', () => {
+test('B1-S09 contract: old root Store actions revoked on remount, new Skill Begin still works', () => {
   const owner = createContextManagerPresentationStore()
   const old = owner.create()
   old.actions.open()
@@ -355,7 +357,7 @@ test('B1-S09 RED: old root Store actions revoked on remount, new Skill Begin sti
   assert.equal(readLivePresentationForActions(next.actions), undefined)
 })
 
-test('B1-B01 RED: old Profile Settings revision or instance rejects Begin, not silently recaptured', () => {
+test('B1-B01 contract: old Profile Settings revision or instance rejects Begin, not silently recaptured', () => {
   const profile = skillProfile()
   const snapshot = fixtureSnapshot(profile)
   assert.equal(isSkillBeginCurrent(snapshot, 'main', profile, BASIS), true)
@@ -367,7 +369,7 @@ test('B1-B01 RED: old Profile Settings revision or instance rejects Begin, not s
     'main', profile, BASIS), false)
 })
 
-test('B1-B02 RED: Edit/Delete must target the exact original own Skill binding', () => {
+test('B1-B02 contract: Edit/Delete must target the exact original own Skill binding', () => {
   const profile = skillProfile()
   const snapshot = fixtureSnapshot(profile)
   const binding = profile.skills.present
@@ -386,7 +388,7 @@ test('B1-B02 RED: Edit/Delete must target the exact original own Skill binding',
   assert.equal(isSkillBeginCurrent(snapshot, 'main', { ...profile }, BASIS), false)
 })
 
-test('B1-B03 RED: Resource-only authority rotation must not invalidate Profile Basis', () => {
+test('B1-B03 contract: Resource-only authority rotation must not invalidate Profile Basis', () => {
   const profile = skillProfile()
   const snapshot = fixtureSnapshot(profile)
   const resourceOnly: ContextManagerClientSnapshot = {
@@ -402,7 +404,7 @@ test('B1-B03 RED: Resource-only authority rotation must not invalidate Profile B
   }), true)
 })
 
-test('B1-B04 RED: old Skill Begin cannot reselect a different active Profile', () => {
+test('B1-B04 contract: old Skill Begin cannot reselect a different active Profile', () => {
   const store = newStore('other')
   const before = store.getSnapshot()
   store.actions.beginSkillModeEdit({
@@ -418,7 +420,7 @@ test('B1-B04 RED: old Skill Begin cannot reselect a different active Profile', (
   requireSkillDraft(store, 'skill-mode-edit')
 })
 
-test('B1-B05 RED: writable published Profile only; invalid rows are never synthesized', () => {
+test('B1-B05 contract: writable published Profile only; invalid rows are never synthesized', () => {
   const profile = skillProfile()
   const snapshot = fixtureSnapshot(profile)
   assert.equal(isSkillBeginCurrent(snapshot, 'main', profile, BASIS), true)
@@ -437,7 +439,7 @@ test('B1-B05 RED: writable published Profile only; invalid rows are never synthe
     'main', profile, BASIS), false)
 })
 
-test('B1-T01 RED: Unknown, Conflict, confirmed degraded are three different outcomes', () => {
+test('B1-T01 contract: Unknown, Conflict, confirmed degraded are three different outcomes', () => {
   const unknown: ContextManagerClientProfileMutationResult = {
     status: 'unknown', refresh: 'fresh',
     error: { kind: 'call-rejected', message: 'transport lost after write' },
@@ -459,7 +461,7 @@ test('B1-T01 RED: Unknown, Conflict, confirmed degraded are three different outc
   assert.equal(noticeForSkillResult({ status: 'applied', refresh: 'fresh' })?.code, 'noticeSaved')
 })
 
-test('B1-T02 RED: first terminal Skill receipt survives late refresh and navigation', () => {
+test('B1-T02 contract: first terminal Skill receipt survives late refresh and navigation', () => {
   const store = newStore()
   store.actions.beginSkillModeEdit({
     profileId: 'main', skillName: 'present', originalMode: 'manual', basis: BASIS,
@@ -483,7 +485,7 @@ test('B1-T02 RED: first terminal Skill receipt survives late refresh and navigat
   assert.equal(store.getSnapshot().selectedProfileId, 'main')
 })
 
-test('B1-T03 RED: wrong-token Discard or notice cannot clear Skill terminal owner', () => {
+test('B1-T03 contract: wrong-token Discard or notice cannot clear Skill terminal owner', () => {
   const store = newStore()
   store.actions.beginSkillBindingDelete({
     profileId: 'main', skillName: 'present', originalMode: 'manual', basis: BASIS,
@@ -503,7 +505,7 @@ test('B1-T03 RED: wrong-token Discard or notice cannot clear Skill terminal owne
   assert.equal(store.getSnapshot().draft, null)
 })
 
-test('B1-T04 RED: unseen external Settings writer causes one original-basis CAS attempt', async () => {
+test('B1-T04 contract: unseen external Settings writer causes one original-basis CAS attempt', async () => {
   const conflict: ContextManagerClientProfileMutationResult = {
     status: 'rejected', refresh: 'fresh',
     error: { kind: 'business', code: 'profile-conflict', message: 'CAS 7 != 8' },
@@ -520,7 +522,7 @@ test('B1-T04 RED: unseen external Settings writer causes one original-basis CAS 
   assert.equal(blockForSkillResult(reply), 'conflict')
 })
 
-test('B1-S02 independent RED: recognize all three Skill draft kinds, not legacy Profile kinds', () => {
+test('B1-S02 independent contract: recognize all three Skill draft kinds, not legacy Profile kinds', () => {
   for (const draft of [fixtureCreate('', 'auto'), fixtureEdit('off'), fixtureDelete()]) {
     assert.equal(isSkillDraft(draft), true, draft.kind)
   }
@@ -530,7 +532,7 @@ test('B1-S02 independent RED: recognize all three Skill draft kinds, not legacy 
   }), false)
 })
 
-test('B1-S02 independent RED: inherited Skill keys never masquerade as own stored bindings', () => {
+test('B1-S02 independent contract: inherited Skill keys never masquerade as own stored bindings', () => {
   const inherited = Object.create(null) as Record<string, ContextManagerRemoteSkillBinding>
   Object.defineProperty(inherited, 'constructor', {
     enumerable: true, value: { mode: 'manual' }, configurable: true,
@@ -552,7 +554,7 @@ test('B1-S02 independent RED: inherited Skill keys never masquerade as own store
   assert.equal(isWritableSkillPath('main', 'constructor'), true)
 })
 
-test('B1-S03 independent RED: observed duplicate cannot silently become explicit Auto', () => {
+test('B1-S03 independent contract: observed duplicate cannot silently become explicit Auto', () => {
   const duplicate = fixtureCreate('present', 'auto')
   assert.equal(validateSkillCreate(duplicate), 'exists')
   const { calls, api } = spyProfileMutations()
@@ -561,7 +563,7 @@ test('B1-S03 independent RED: observed duplicate cannot silently become explicit
   assert.equal(calls.length, 0)
 })
 
-test('B1-S04 independent RED: mode mutation keeps exact original Basis and name', async () => {
+test('B1-S04 independent contract: mode mutation keeps exact original Basis and name', async () => {
   const { calls, api } = spyProfileMutations()
   const draft = fixtureEdit('pinned')
   assert.equal(skillModeEditChanged(draft), true)
@@ -591,7 +593,7 @@ test('B1-S05 positive control: a real Resource draft excludes Skill Begin and pr
   assert.equal(store.getSnapshot().pane, 'resources')
 })
 
-test('B1-T01 independent RED: missing Skill/invalid mode/unsafe path are not outcome Unknown', () => {
+test('B1-T01 independent contract: missing Skill/invalid mode/unsafe path are not outcome Unknown', () => {
   const missing: ContextManagerClientProfileMutationResult = {
     status: 'rejected', refresh: 'fresh',
     error: { kind: 'business', code: 'skill-binding-not-found', message: 'own Skill key missing' },

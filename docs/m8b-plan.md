@@ -1,8 +1,8 @@
 # M8B — Profile Skill Policy Editor (Capability & Implementation Contract)
 
-**Status:** **B0 PASS; B1-1 frozen; B1-2a GREEN; F01-SR1 scoped RED→GREEN qualified; B1-2b test-depth SR1 reviewed with 28 intentional Skill behavior RED; B1-3 real Published Renderer R01 independently mounted RED then read-only staging GREEN, R02–R05 independently qualified Begin-frontier RED; R06–R10 NOT qualified.** See §§15–18 and [B1 test-depth Strict Review](m8b-b1-test-depth-review.md). **PR #42 remains Draft/unmerged; B2/B3 actual Skill Editor GREEN, Ready 86-job Full and merge have NOT occurred.**
+**Status (2026-10-31):** **M8B B0/B1/B2 Skill Policy Editor implemented on PR #42 (Draft/unmerged); F01-SR2 old-event lifecycle Fix A RED→Fix B GREEN qualified, permanent official Full Skill Renderer gate Fix C qualified in four DSH versions; F4 documentation cleanup underway.** Historical B1 staged RED in §§15–18 remains immutable; final executed Fix A–C evidence in §19. Original pre-review Ready Full [#41125921741](https://github.com/WwlWss/dsh-context-manager/actions/runs/41125921741) passed 86/86 at old HEAD `c4de841d`; it **does not qualify the modified branch**. New independent Final Strict Review and exact-head Ready 86-job Full, merge, and post-merge main Full remain pending.
 **Baseline:** merged M8A2 PR #41, main commit `5a21df1b5f27fbcc22cdb389de3c1d765b96a95d`; independent main Full [#41009808239](https://github.com/WwlWss/dsh-context-manager/actions/runs/41009808239), 86/86 SUCCESS, 0 failed/skipped.
-**Branch:** `feat/m8b-skill-policy-editor`. This branch is separate from qualified main. Keep PR Draft until B0 preflight + RED + GREEN + independent strict review closeout.
+**Branch:** `feat/m8b-skill-policy-editor`, PR #42, Draft/unmerged. The original frozen B0/B1 preflight gates are qualified and archived. Keep Draft through F01-SR2 Final Strict Review and all-code qualification; update to Ready only for the required new exact-head Full, never treat the prior 86/86 run as a post-fix result.
 **Purpose:** edit explicit Profile-local Skill policy configuration with the existing Profile Settings authority; explain known native/Agent effectiveness separately, never infer an Agent's behavior from a reusable Profile record alone.
 
 ## 1. Frozen outcome and non-goals
@@ -877,3 +877,115 @@ implementation needs separate authorization and must immediately expose
 new **independent Save/CAS/outcome RED** before the next GREEN step.
 **B2 implementation is NOT authorized by this B1-3 RED closeout**;
 never enable production merge or Ready Full in the meantime.
+
+## 19. F01-SR2 Final Strict Review repair — Fix 0 → A → B → C → D
+
+**Scope.** An independent Final Strict Review on exact old
+`c4de841dc8db6a30975ac8bd651af658a341250a` found:
+F1/P1 old Cancel/Discard events could delete the retained cross-open-session
+Profile or Resource draft and its first terminal receipt; F2/P2 old text/
+mode events could edit that same retained Token; F3/P1 the protected Full
+never entered `M8B_SKILL_PROBE` cases despite a historical 86/86 PASS;
+F4/P3 source comments/README/roadmap were left in the old inert-editor phase.
+No Host, Remote v3, Controller, CAS, native Skill registry or second Store
+was introduced in this repair.
+
+### 19.1 Fix 0: keep original qualification immutable
+
+- PR #42 was converted from Ready back to **Draft** at old HEAD
+  `c4de841dc8db6a30975ac8bd651af658a341250a`.
+- Original [Ready 86/86 Full #41125921741](https://github.com/WwlWss/dsh-context-manager/actions/runs/41125921741)
+  **really passed**, 0 skipped/failed. It qualifies **only that exact
+  original HEAD**, not any of the repairs below.
+
+### 19.2 Fix A: real old-event behavioral RED before production fix
+
+- **Test-only HEAD** `df64cb7fc511248394e686df9a38ab296bc2a7b8`.
+- [Actual Published Renderer RED #41136015042](https://github.com/WwlWss/dsh-context-manager/actions/runs/41136015042):
+  **18/18 deliberate failures** in two real DSH Renderer generations,
+  each at the intended observable old-callback-state assertion, while the
+  **five legacy F01-SR1 / Store / Node / Slot controls passed**.
+- Nine independent probes: R11P (old Profile Cancel), R11B (Binding
+  Cancel), R11R (Resource Cancel), R11T (Unknown Skill Discard),
+  R11TR (Unknown Resource Discard), R12S (Skill name and mode input,
+  including a closed Drawer), R12P (Profile input), R12B (Binding input),
+  R12R (Resource input). Every negative event includes preserved original
+  draft/Token/receipt and a fresh current-session positive control.
+- No production code changed in the RED commit.
+
+### 19.3 Fix B: one shared user-event authorization fence
+
+- **Production implementation HEAD**
+  `63a19378a10e2a2abcbb133e2e6b69d5537eb0a1`.
+  `presentation-store.ts` adds
+  `mayApplyCurrentDraftEvent(actions, renderedOpenSessionEpoch, pane, token)`:
+  check the exact live root DSH Store via registered actions identity,
+  `open=true`, the captured original Drawer epoch, pane, and the
+  retained draft Token. No new state/authority, hidden Store or
+  regenerated Basis/Token.
+- `profile-drawer.ts`, `prompt-binding-section.ts`,
+  `resource-drawer.ts`, `skill-policy-section.ts` apply this
+  **only to user-initiated** inputs, Cancel/Discard, description removal
+  and analogous editing actions. Existing Begin/Save fences remain.
+  **In-flight Host result callbacks deliberately do NOT use the Drawer
+  epoch**; they continue to honor original Token, Controller outcome and
+  first-terminal receipt across Close/Reopen.
+- A test-only postcondition correction at
+  `3ba9017f152a846810ab852a96c84c904922285e` recognizes that
+  R11TR intentionally issues **one Resource RPC** to obtain a genuine
+  Unknown result; every actual Skill probe still requires **zero Resource
+  RPCs**. No old/new Discard negative/positive assertion was weakened.
+- [Exact-head Fix B scoped GREEN #41136626407](https://github.com/WwlWss/dsh-context-manager/actions/runs/41136626407):
+  **48/48 SUCCESS**, including **18/18 new F01-SR2** and
+  **5/5 legacy F01-SR1** tasks; the remaining old Skill probes are
+  also green. [Draft Quick #41136626409](https://github.com/WwlWss/dsh-context-manager/actions/runs/41136626409)
+  SUCCESS.
+
+### 19.4 Fix C: independently failing structural Full gate, then four-version GREEN
+
+- **Structural audit RED** HEAD `23bded852b5dd7ca9f566213db1130e41d743a9c`.
+  [Draft Quick RED #41136972133](https://github.com/WwlWss/dsh-context-manager/actions/runs/41136972133):
+  **187/187 Client PASS** and **270/271 Node PASS**; the sole Node
+  failure explicitly proved that `client-presentation-contract` ran
+  only the historical default Drawer path and omitted M8B Skill probes.
+  It was an executable assertion mismatch, not TypeScript or missing files.
+- **Official CI gate code HEAD** `a5e376c0dc09fb2e194380b25555dee0235ea2e4`.
+  The single canonical `tests/m8b/run-skill-renderer-probes.mjs` runs
+  **21 independent case processes** (R01–R10 with R06V/H, R08U, and
+  R11/R12) using actual DSH published Renderer and fresh Model/Store,
+  prints per-case result and exits nonzero for any failure.
+  `.github/workflows/ci.yml` now invokes this runner **inside each
+  existing `client-presentation-contract` matrix Job**, after
+  retaining the historical Profile Drawer invocation. The four versions
+  remain `0.1.2-rc.1`, `0.1.5-rc.1`, `0.1.5-rc.2`,
+  `0.1.6-alpha.2`. The original **21-group full-qualification needs
+  graph and 86-job count are unchanged**.
+- [Fix C Draft Quick #41137111741](https://github.com/WwlWss/dsh-context-manager/actions/runs/41137111741)
+  **SUCCESS**: 187/187 Client, 271/271 Node (including three
+  official-Full-gate regression tests), 1/1 Slot.
+  [Two-version canonical suite #41137111747](https://github.com/WwlWss/dsh-context-manager/actions/runs/41137111747)
+  **8/8 SUCCESS**.
+- Four-version Draft preflight HEAD
+  `5b7315373ce02d44fafde2b950422eee3d9351a5`,
+  [real Published Renderer #41137338897](https://github.com/WwlWss/dsh-context-manager/actions/runs/41137338897)
+  **10/10 SUCCESS**, with **all 4 × 21 = 84 actual Skill
+  interaction cases green**, plus all four prior F01-SR1 Renderer
+  controls and Store/Node/Slot. This is **not** the protected Ready 86
+  Full; it is an exact-code four-version Draft qualification.
+
+### 19.5 Fix D and explicit remaining gates
+
+- Replace the once-valid B1-3 inert Skill UI comments and `skillRedProbe`
+  locale key with current Profile-local editor behavior and neutral
+  effectiveness disclaimer. Update live passing Client test labels from
+  `RED` to regression/contract, README and roadmap to distinguish
+  implemented-but-unmerged M8B from the merged M8A2 baseline.
+- Preserve §§12–18 and their immutable original RED evidence as
+  historical proof; do not retroactively change the earlier outcomes.
+- **Still required after the final Fix D code/docs HEAD:** independent
+  Final Strict Code Review with no outstanding P1/P2, exact-HEAD
+  Draft Quick and four-version scoped qualification, explicit Ready
+  transition and **new** protected 86-job Full with all 21 real Skill
+  tests in the official four-version Client matrix, then separate
+  merge approval and post-merge independent main Full.
+  PR remains **Draft/unmerged** until these gates pass.
