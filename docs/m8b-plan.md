@@ -304,7 +304,7 @@ Require a separately scoped focused RED→GREEN code review before applying it: 
 
 ### 13.1 Scope of actual product repair
 
-After the five-version reproduced H10 RED in `12, a separate test-only commit `d03269a4cc4f30d21aa60be9520367e7c8249191` expanded H12: a **genuine own** malformed Stored binding for `constructor`, `toString` or `docker` must still fail `profile-path-not-editable` without a revision increment or sibling mutation. The original prior H10 RED for **absent** inherited keys remains intact.
+After the five-version reproduced H10 RED in Section 12, a separate test-only commit `d03269a4cc4f30d21aa60be9520367e7c8249191` expanded H12: a **genuine own** malformed Stored binding for `constructor`, `toString` or `docker` must still fail `profile-path-not-editable` without a revision increment or sibling mutation. The original prior H10 RED for **absent** inherited keys remains intact.
 
 One narrow Host change was then committed as `e3b82e726c0815469b2879c48b256a52f17e523b` in `src/service/context-manager.ts`, inside existing `setSkillMode`:
 
@@ -352,6 +352,6 @@ All five Host job logs now independently report:
 
 The unchanged ordinary Draft Quick completed **SUCCESS** on exactly the **same code HEAD** in [CI #41072313972](https://github.com/WwlWss/dsh-context-manager/actions/runs/41072313972). No Host, Remote, Client, Controller, package manifest or official `.github/workflows/ci.yml` expansion accompanies the B0 patch beyond the one inherited-key Host lookup and permanent preflight/test/evidence code.
 
-**B0 implementation and published-compatibility acceptance: PASS at source HEAD `26a6d13c...`.** The next step under `11.6 is archiving this evidence, deleting the **temporary** `.github/workflows/m8b-b0-published-preflight.yml` file, and verifying the final documentation-only cleanup HEAD through a fresh Draft Quick. The archived B0 GREEN run remains associated with its exact earlier code HEAD; it must never be mislabeled as an 86-job Ready Full or a run on the later cleanup commit.
+**B0 implementation and published-compatibility acceptance: PASS at source HEAD `26a6d13c...`.** Evidence was archived in Section 13 by documentation-only commit `ffe68ae2a291393f09e3668562ae0293637e1943`; the **temporary** `.github/workflows/m8b-b0-published-preflight.yml` was deleted by cleanup commit `9e6558896cc83d8a0eb8f0d32ed31963c1d74cee`. A fresh **Draft Quick on the final cleanup HEAD** is separately mandatory. The original B0 GREEN remains bound to its exact pre-cleanup production/test code HEAD and is not a Ready 86-job Full or a run on the later documentation/workflow cleanup commit.
 
 **B1 remains unimplemented.** PR #42 must remain Draft through B1 RED, later B2/B3 GREEN and independent Strict Review. No Ready/full, merge or post-merge main qualification has occurred.
