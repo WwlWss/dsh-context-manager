@@ -427,6 +427,7 @@ isSkillBeginCurrent(
   target?: {
     skillName: string
     renderedBinding: ContextManagerRemoteSkillBinding
+    originalMode: ContextManagerRemoteSkillMode
   },
 ): boolean
 ```
