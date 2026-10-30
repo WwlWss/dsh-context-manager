@@ -6,6 +6,7 @@ on:
     paths:
       - '.github/workflows/m8b-b12b-renderer-red.yml'
       - 'src/client/profile-editor.ts'
+      - 'docs/m8b-plan.md'
       - 'src/client/presentation-store.ts'
       - 'src/client/skill-policy-editor.ts'
       - 'tests/client-skill-policy-editor.test.ts'

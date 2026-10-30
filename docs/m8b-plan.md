@@ -1,6 +1,6 @@
 # M8B — Profile Skill Policy Editor (Capability & Implementation Contract)
 
-**Status:** **B0 PASS; B1-1 contract frozen; B1-2a closed-Drawer Begin behavior RED→GREEN PASS** (evidence §15). B0 published nine-lane [#41072313964](https://github.com/WwlWss/dsh-context-manager/actions/runs/41072313964) passed **5 Host + 4 Client / 107 assertions**. B1-2a RED [#41092543407](https://github.com/WwlWss/dsh-context-manager/actions/runs/41092543407) proved 9 observable stale Begin violations; B1-2a code/Renderer GREEN [#41093422442](https://github.com/WwlWss/dsh-context-manager/actions/runs/41093422442) passed **156/156 Client, 268/268 Node, 1/1 Slot** at `242758a9038921011eaa53e6ca73db085e7f068e`. **PR #42 remains Draft/unmerged. B1-2b Skill Draft RED, B1-3 Skill Renderer RED, M8B Editor GREEN, Ready 86-job Full and merge have not occurred.** A later documentation-only HEAD needs its own Draft Quick.
+**Status:** **B0 PASS; B1-1 contract frozen; B1-2a closed-Drawer Begin RED→GREEN PASS; B1-2b Skill State RED retained (23 pending); F01-SR1 closed→reopened stale-callback targeted RED→GREEN PASS** (details §§15–17). Published F01-SR1 four-generation scoped GREEN [#41110710641](https://github.com/WwlWss/dsh-context-manager/actions/runs/41110710641) includes 52/52 targeted Client, 268/268 Node, 1/1 Client Slot and four real DSH React Renderer generations. **PR #42 remains Draft/unmerged; unrelated B1-2b Skill behavioral RED, B1-3 Skill Renderer RED, M8B Editor B2/B3 GREEN, independent Final Strict Review, Ready 86-job Full and merge have not occurred.**
 **Baseline:** merged M8A2 PR #41, main commit `5a21df1b5f27fbcc22cdb389de3c1d765b96a95d`; independent main Full [#41009808239](https://github.com/WwlWss/dsh-context-manager/actions/runs/41009808239), 86/86 SUCCESS, 0 failed/skipped.
 **Branch:** `feat/m8b-skill-policy-editor`. This branch is separate from qualified main. Keep PR Draft until B0 preflight + RED + GREEN + independent strict review closeout.
 **Purpose:** edit explicit Profile-local Skill policy configuration with the existing Profile Settings authority; explain known native/Agent effectiveness separately, never infer an Agent's behavior from a reusable Profile record alone.
@@ -689,3 +689,106 @@ implementation; run targeted Client + real Published Renderer tests, and
 later four-version compatibility plus exact-head 86-job Ready Full.
 Do not mark PR Ready, merge, or claim B1-3 Skill UI RED based only on the
 present M7C old-Save proof.
+
+## 17. F01-SR1 — Close→Reopen retained React callbacks: independent RED→GREEN (2026-10-31 CST)
+
+**Scope:** a narrow, already-reproduced Presentation UI authorization hole
+identified during M8B B1-2b. The old M7C Profile Save closure remained valid
+after the Drawer was closed and reopened with its *same* draft object. F01-SR1
+is the local tracking name for this scoped repair, **not** B2 Skill Editor
+GREEN. The 23 deliberately inert Skill Editor tests remain RED, and the
+official Full remains gated by PR Draft status.
+
+### 17.1 Exact RED provenance (test-only)
+
+- **Dedicated Store RED HEAD:** `5af6ac9632422bc6f62052ce8091da0f652f6b7e`.
+  New `tests/client-profile-editor.test.ts` checks one monotonic
+  `openSessionEpoch`: initially 0, +1 only for closed→open,
+  never for duplicate `open()`, close or open→close `toggle()`, while
+  preserving the active original draft, Token and Basis.
+- [Draft Quick RED #41110131474](https://github.com/WwlWss/dsh-context-manager/actions/runs/41110131474):
+  strict TypeScript and executable test bundling succeeded;
+  **156 existing Client PASS, 1 new F01-SR1 Store assertion FAIL**
+  (observed `undefined !== 0`, rather than a missing import or TS error),
+  and the unchanged **23 intentional B1-2b Skill assertions FAIL**.
+  The Node/Slot stage was not reached by `pnpm check` on this test-only RED.
+- [Actual Published Renderer RED #41110131320](https://github.com/WwlWss/dsh-context-manager/actions/runs/41110131320):
+  actual DSH React Renderer `0.1.2-rc.1` and `0.1.6-alpha.2`
+  both reached the old pre-Close Save callback, with a real live
+  `StoreInstance.actions` and RPC counter, and failed exactly because
+  an unauthorized Profile RPC was submitted across Close→Reopen. The
+  previously archived [#41109487074](https://github.com/WwlWss/dsh-context-manager/actions/runs/41109487074)
+  already demonstrated **actual 20, expected 19** on the earlier Skill RED
+  HEAD `5753fddd...`.
+
+### 17.2 Production fix — four Client-only files, no B2 Skill behavior
+
+- **Production fix HEAD:** `6132d8792a81a5e17a2e5f8e460e51b00ad2248e`.
+  `src/client/presentation-store.ts` now stores a **presentation-only**
+  integer `openSessionEpoch`, initialized to zero, incremented only on
+  a real closed→open transition through either `open` or `toggle`.
+  `close` never discards a draft or its Token/Basis/terminal receipt.
+  The helper `isLiveDrawerOpenSession` checks the captured render
+  epoch against the **actual live DSH root Store** and `open=true`.
+- `src/client/profile-drawer.ts` fences retained Profile Create/Edit/Delete
+  Begin callbacks, all Profile Save callbacks and immediate default-profile
+  mutation callbacks. `src/client/prompt-binding-section.ts` fences
+  Binding Begin/Save, and `src/client/resource-drawer.ts` fences
+  Resource Begin/Save, all against the epoch captured by that React render.
+  These checks *supplement*, never replace, existing original draft **object
+  identity**, Token, pane/selection, Profile Settings Basis, Resource Stamp,
+  synchronous submission claim, Host CAS and first terminal receipt.
+- Existing Profile, PromptBinding and Resource drafts remain available after
+  Reopen **through newly rendered callbacks**; old pre-Close callbacks have
+  no authorization to start an invisible or obsolete draft, issue an RPC,
+  or reselect an old Profile. No Resource Authority, Profile revision or
+  Host change generation is repurposed as a UI session clock.
+- No Host, Remote v3, Resource/Profile Controller, published Slot ABI,
+  new Skill Editor, Skill source or runtime semantics changed.
+
+### 17.3 Exact scoped GREEN qualification
+
+- Initial minimal-fix [Published Renderer GREEN #41110562669](https://github.com/WwlWss/dsh-context-manager/actions/runs/41110562669):
+  original two real published Renderer generations **2/2 SUCCESS** on
+  exact production code HEAD `6132d879...`. This was not the official
+  86-job Full or the standalone Draft Quick.
+- **Expanded exact-code HEAD**
+  `152ee54851f0fbcc1598bb52972219c55c103824`:
+  [scoped Published + Store CI #41110710641](https://github.com/WwlWss/dsh-context-manager/actions/runs/41110710641)
+  **SUCCESS**. A single pinned-oldest artifact was built; **all four**
+  retained actual React Renderer generations `0.1.2-rc.1`,
+  `0.1.5-rc.1`, `0.1.5-rc.2`, `0.1.6-alpha.2` passed.
+  Dedicated Client Model/Presentation controls **52/52 PASS**,
+  legacy Host/Node **268/268 PASS**, and Client Slot runtime verification
+  **PASS**. Strict Client test tsc, generated Client test bundling and
+  selected published Renderer declaration checks passed.
+- The expanded real Renderer regression now holds old callbacks across
+  Close→Reopen for **M7C Profile Save/Begin/default toggle**, **M8A2
+  PromptBinding Save/Begin**, and **M8A1 Resource Save/Begin**.
+  For the three draft lanes, an old Save dispatches **zero RPC**, the
+  old Token/Basis/Resource Stamp survives, and a new callback saves
+  **exactly once**. Old Begin/default callbacks cannot change draft
+  occupancy, consume a Token or issue a write.
+- [Ordinary Draft Quick #41110710650](https://github.com/WwlWss/dsh-context-manager/actions/runs/41110710650)
+  is still **FAILED AS EXPECTED** on this same code HEAD: TypeScript
+  passes, F01-SR1 unit assertions pass, and Client results are
+  **158/181 PASS, 23 intentional Skill behavioral RED**. Its later
+  Host/Slot stages do not run because `pnpm check` stops there;
+  the separate scoped green job supplies actual Host/Node/Slot evidence.
+  **Do not portray a scoped GREEN as an all-green Draft Quick.**
+
+### 17.4 Explicit exit / remaining work
+
+**F01-SR1 scoped RED→GREEN: PASS** at `152ee548...`.
+The `.github/workflows/m8b-b12b-renderer-red.yml` workflow remains a
+**temporary Draft-only scoped qualification** fixture, not an official
+Ready/86-job Full replacement. Preserve its immutable CI proof through B1/B2
+before removal. A subsequent **documentation-only** closeout HEAD cannot
+claim its own code-run qualification without a separate workflow run.
+
+**Remaining:** independent RED test-depth Strict Review, targeted B1-2b
+Skill state-machine implementation when its B2 gate is authorized,
+B1-3 actual Skill Renderer interaction RED, complete B2/B3 Skill Editor
+GREEN, full retained compatibility, independent exact-head Final Strict
+Review, Ready 86-job Full, and a distinct post-merge main Full. Do not
+merge PR #42 or turn Draft into Ready as part of this F01 repair.
