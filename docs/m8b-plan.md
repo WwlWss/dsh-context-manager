@@ -1,6 +1,6 @@
 # M8B — Profile Skill Policy Editor (Capability & Implementation Contract)
 
-**Status:** **B0 PASS; B1-1 contract frozen; B1-2a closed-Drawer Begin RED→GREEN PASS; B1-2b Skill State RED retained (23 pending); F01-SR1 closed→reopened stale-callback targeted RED→GREEN PASS** (details §§15–17). Published F01-SR1 four-generation scoped GREEN [#41110710641](https://github.com/WwlWss/dsh-context-manager/actions/runs/41110710641) includes 52/52 targeted Client, 268/268 Node, 1/1 Client Slot and four real DSH React Renderer generations. **PR #42 remains Draft/unmerged; unrelated B1-2b Skill behavioral RED, B1-3 Skill Renderer RED, M8B Editor B2/B3 GREEN, independent Final Strict Review, Ready 86-job Full and merge have not occurred.**
+**Status:** **B0 PASS; B1-1 frozen; B1-2a GREEN; F01-SR1 scoped RED→GREEN qualified; B1-2b test-depth SR1 reviewed with 28 intentional Skill behavior RED; B1-3 real Published Renderer R01 independently mounted RED then read-only staging GREEN, R02–R05 independently qualified Begin-frontier RED; R06–R10 NOT qualified.** See §§15–18 and [B1 test-depth Strict Review](m8b-b1-test-depth-review.md). **PR #42 remains Draft/unmerged; B2/B3 actual Skill Editor GREEN, Ready 86-job Full and merge have NOT occurred.**
 **Baseline:** merged M8A2 PR #41, main commit `5a21df1b5f27fbcc22cdb389de3c1d765b96a95d`; independent main Full [#41009808239](https://github.com/WwlWss/dsh-context-manager/actions/runs/41009808239), 86/86 SUCCESS, 0 failed/skipped.
 **Branch:** `feat/m8b-skill-policy-editor`. This branch is separate from qualified main. Keep PR Draft until B0 preflight + RED + GREEN + independent strict review closeout.
 **Purpose:** edit explicit Profile-local Skill policy configuration with the existing Profile Settings authority; explain known native/Agent effectiveness separately, never infer an Agent's behavior from a reusable Profile record alone.
@@ -792,3 +792,88 @@ B1-3 actual Skill Renderer interaction RED, complete B2/B3 Skill Editor
 GREEN, full retained compatibility, independent exact-head Final Strict
 Review, Ready 86-job Full, and a distinct post-merge main Full. Do not
 merge PR #42 or turn Draft into Ready as part of this F01 repair.
+
+## 18. B1-2b independent test-depth review and B1-3 true Published Renderer RED
+
+**Execution and limitations:** see the detailed
+[B1-2b test-depth SR1 and B1-3 evidence ledger](m8b-b1-test-depth-review.md).
+The design-only §14 matrix is historical; this section is the new executed
+status. Neither the test-only inert Skill Store nor the read-only Skill UI
+entrypoint is a production Skill editor. PR #42 stays Draft.
+
+### 18.1 B1-2b Strict Review / hardened RED
+
+- Exact tests-only HEAD `a9929dc35c941a7d38de45dd9cab4d86967567e7`;
+  [Draft Quick #41112699712](https://github.com/WwlWss/dsh-context-manager/actions/runs/41112699712):
+  strict TypeScript and bundled executable tests PASS; **187 Client,
+  159 PASS / 28 intentionally RED**. The inherited tests and F01
+  protections stay GREEN.
+- Scope: remove vacuous early-return guards by narrowing the actual Skill
+  draft discriminant; mutate **unfrozen caller Basis and observed Skill-key
+  array after Begin** to demand defensive immutable copies; split out
+  independent own/inherited-path, duplicate/no-RPC, exact RPC Basis,
+  occupied real Resource draft, and Skill business-outcome helper probes.
+- Important outstanding depth: Begin-inert Store tests still do not
+  independently exercise late Token/claim/Host receipt branches.
+  The typed `Pick<...>` helper spy does **not** prove actual Host CAS.
+  No test deletion or runtime mode substitution was used to hide RED.
+
+### 18.2 B1-3 real published Renderer stage 1: mounted section RED
+
+- Exact test-only HEAD `ac4f84b04bd81f12c599d61bbf6bde9c663e5ad0`;
+  [real published Renderer #41112996036](https://github.com/WwlWss/dsh-context-manager/actions/runs/41112996036):
+  **two independent versions** `0.1.2-rc.1` and `0.1.6-alpha.2`
+  fail R01 with expected one actual Profile Skill section, observed zero.
+  Their fixture uses actual `lib/client.js`, real DSH React Renderer,
+  actual root Store + Controller + Remote; the only new Remote fixture
+  calls are the two **existing** `setSkillMode` and
+  `removeSkillBinding` RPC signatures. Four old F01 Renderer jobs and
+  targeted Store/Node/Slot remained SUCCESS.
+- This is **R01 DOM-mount RED only**, not false evidence for R02–R10.
+
+### 18.3 B1-3 real published Renderer stage 2: independent Begin RED
+
+- Exact code HEAD `59c775343f3208f0fab6e5c5f63691aa43194fe1`;
+  [actual Renderer per-case CI #41113521571](https://github.com/WwlWss/dsh-context-manager/actions/runs/41113521571):
+  `R01` PASS on **both** published versions with five exact configured
+  own-key Skill rows (including Unicode and read-only unsafe
+  `__proto__`), sorted by code unit, with four explicit configured modes
+  and no native/Agent inventory invention.
+- Independently failing actual React callback jobs on both versions:
+  `R02` **Create Begin** expected `skill-mode-create`, actual null;
+  `R03` **Edit Begin** expected `skill-mode-edit`, actual null;
+  `R04` **Remove Begin** expected `skill-binding-delete`, actual
+  null; `R05` an old callback after external Settings revision
+  produces no draft/write, but a **new** rendered Edit cannot Begin
+  either. This R05 positive path is RED; the negative path does **not**
+  independently qualify stale protection while Begin is inert.
+- Existing four `F01-SR1` published Renderer jobs SUCCESS, targeted
+  **52/52 Client, 268/268 Node and Client Slot SUCCESS**.
+  [Draft Quick #41113521656](https://github.com/WwlWss/dsh-context-manager/actions/runs/41113521656)
+  is **intentionally FAILED** on unchanged 28 Skill Client behavior RED
+  (159/187 PASS); this is not an overall or Ready Full GREEN.
+- `src/client/skill-policy-section.ts` is an **inert, visibly disclosed
+  B1-3 read-only/Begin interaction seam**. Its three Begin buttons call
+  the intentionally inert typed Store actions; there are no Skill
+  edit/create/delete forms, Save RPC calls, Host changes, second Store,
+  or auto catalog/diagnostics. Replace this seam during a later,
+  separately qualified B2 production implementation.
+
+### 18.4 B1-3 exit remains OPEN
+
+R02–R04 are independently verified **Begin** REDs only; their later
+empty/Unicode ID, Save, and one-RPC checks have not executed.
+R05 is a qualified **fresh Begin** frontier RED, not a stale callback
+security GREEN. `R06`, `R07`, `R08`, `R09`, `R10` remain
+**not independently exercised**, because the actual Skill Store Begin,
+forms and Save still do not exist. Do **not** claim these races are proven,
+or change the frozen B2 gate by calling an inert early failure a complete
+Skill Renderer RED.
+
+The next narrowly authorized work is to deepen the independent
+R06–R10 test harness, review the staged probes and prepare an explicit,
+separate B2 entry proposal. Any eventual minimal Skill Draft Begin
+implementation needs separate authorization and must immediately expose
+new **independent Save/CAS/outcome RED** before the next GREEN step.
+**B2 implementation is NOT authorized by this B1-3 RED closeout**;
+never enable production merge or Ready Full in the meantime.
