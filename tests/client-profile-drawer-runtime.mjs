@@ -192,8 +192,8 @@ function createWritableRemoteFixture() {
     return accepted(kind === 'resource-delete' ? { id } : { id, revision: next.revision })
   }
 
-  async function write(kind, basis, update) {
-    writes.push({ kind, basis })
+  async function write(kind, basis, update, details = {}) {
+    writes.push({ kind, basis, ...details })
     if (readOnly) return rejected('persistence-read-only', 'read-only')
     if (basis.instanceId !== instanceId) return rejected('host-instance-conflict', 'different host')
     if (basis.revision !== revision) return okRead({
@@ -337,6 +337,23 @@ function createWritableRemoteFixture() {
     setDefaultProfile(id, basis) {
       return write('default', basis, () => { defaultId = id })
     },
+    // Test-only existing Remote v3 RPCs. Neither Skill UI nor controller
+    // behavior is mocked: these are reached only via the real Business Face.
+    setSkillMode(profileId, skillName, mode, basis) {
+      return write('skill-mode', basis, () => {
+        const map = profiles[profileId].skills
+        const previous = Object.hasOwn(map, skillName) ? map[skillName] : {}
+        Object.defineProperty(map, skillName, {
+          value: { ...previous, mode },
+          enumerable: true, writable: true, configurable: true,
+        })
+      }, { profileId, skillName, mode })
+    },
+    removeSkillBinding(profileId, skillName, basis) {
+      return write('skill-remove', basis, () => {
+        delete profiles[profileId].skills[skillName]
+      }, { profileId, skillName })
+    },
     addPromptBinding(profileId, bindingId, input, basis) {
       return write('binding-add', basis, () => {
         profiles[profileId].prompts[bindingId] = structuredClone(input)
@@ -371,6 +388,31 @@ function createWritableRemoteFixture() {
   return {
     face, profiles, writes, resources, resourceWrites,
     getDefault: () => defaultId,
+    // The chosen Profile snapshot is seeded before the real Renderer is
+    // mounted. Special names are own Settings-style keys, not native catalog.
+    seedSkillsForProbe() {
+      const skills = Object.create(null)
+      for (const [id, mode] of [
+        ['manual', 'manual'],
+        ['constructor', 'auto'],
+        ['日本語', 'off'],
+        ['toString', 'pinned'],
+        ['__proto__', 'manual'],
+      ]) Object.defineProperty(skills, id, {
+        value: { mode }, enumerable: true, configurable: true, writable: true,
+      })
+      profiles.main.skills = skills
+    },
+    externalSkillMode(profileId, skillName, mode) {
+      const map = profiles[profileId].skills
+      const previous = Object.hasOwn(map, skillName) ? map[skillName] : {}
+      Object.defineProperty(map, skillName, {
+        value: { ...previous, mode }, enumerable: true, configurable: true, writable: true,
+      })
+      revision += 1
+      profileCursor += 1
+      change += 1
+    },
     makeUnknownNextResourceWrite() { unknownNextResourceWrite = true },
     failNextResourceListRead() { failNextResourceListRead = true },
     externalResourceReplacement(id, newName) {
@@ -486,6 +528,7 @@ assert.equal(typeof slots.installLocale, 'function')
 slots.installLocale(locale)
 
 const remoteFixture = createWritableRemoteFixture()
+if (process.env.M8B_SKILL_PROBE) remoteFixture.seedSkillsForProbe()
 const remote = {
   contextManager: remoteFixture.face,
   async $mount() { return async () => {} },
@@ -557,6 +600,38 @@ assert.equal(registeredOverlayStore.readLiveSnapshot()?.open, true,
 assert.equal(registeredOverlayStore.readLiveSnapshot()?.pane, 'profiles')
 assert.equal(tree.root.findAllByProps({ 'data-context-manager-new-profile': '' }).length, 1)
 assert.equal(remoteFixture.writes.length, 0)
+
+// B1-3 uses this same Published Renderer + root Store + real Business Face.
+// The probe branch isolates each intentional RED from the long historical
+// M7C/M8A1/M8A2 green scenario; it never substitutes a fake UI renderer.
+if (process.env.M8B_SKILL_PROBE) {
+  assert.equal(process.env.M8B_SKILL_PROBE, 'R01',
+    'B1-3 mount preflight supports only the independent R01 probe at this stage')
+  const section = tree.root.findAllByProps({ 'data-context-manager-skills': '' })
+  assert.equal(section.length, 1,
+    'B1-R01 RED: real selected usable Profile has no Skill policy section')
+  const rows = tree.root.findAll(node =>
+    node.props?.['data-context-manager-skill-row'] !== undefined)
+  assert.deepEqual(rows.map(row => row.props['data-context-manager-skill-row']),
+    ['__proto__', 'constructor', 'manual', 'toString', '日本語'],
+    'B1-R01: only five exact own configured Skill keys, code-unit sorted')
+  for (const [name, mode] of [
+    ['__proto__', 'manual'], ['constructor', 'auto'], ['manual', 'manual'],
+    ['toString', 'pinned'], ['日本語', 'off'],
+  ]) {
+    const row = tree.root.findByProps({ 'data-context-manager-skill-row': name })
+    assert.ok(renderedText(row).includes(mode),
+      'B1-R01: show explicit stored mode for ' + JSON.stringify(name))
+  }
+  assert.equal(remoteFixture.writes.length, 0,
+    'B1-R01: merely rendering configured Skills must not trigger mutations')
+  await act(async () => { tree.unmount() })
+  disposeRoot()
+  await disposePlugin()
+  assert.equal(registeredOverlayStore.readLiveSnapshot(), undefined)
+  await sessionFiber.dispose()
+  await rendererFiber.dispose()
+} else {
 
 // M8A2 executable RED in the ACTUAL published DSH React Renderer:
 // the selected usable Profile must expose its PromptBindings section.
@@ -1673,3 +1748,4 @@ assert.equal(registeredOverlayStore.readLiveSnapshot(), undefined,
   'M8A2 live Store reader must be revoked on plugin disposal')
 await sessionFiber.dispose()
 await rendererFiber.dispose()
+}
