@@ -6,6 +6,8 @@ on:
     paths:
       - .github/workflows/m8b-b0-published-preflight.yml
       - tests/m8b-published-host-preflight.test.mjs
+      - src/service/context-manager.ts
+      - tests/m8b-b0-evidence.test.mjs
       - tests/m8b-published-gateway-preflight.mjs
       - tests/m8b-client-contract-preflight.ts
       - scripts/verify-m8b-b0-evidence.mjs
