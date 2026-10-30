@@ -245,6 +245,7 @@ test('DSH presentation store retains drafts across overlay close/reopen and guar
 
 test('DSH presentation store blocks uncertain replay, and older completions cannot clear newer drafts', () => {
   const store = createContextManagerPresentationStore().create()
+  store.actions.open()
   store.actions.beginCreate(BASIS)
   const firstToken = store.getSnapshot().draft?.token
   assert.ok(firstToken)
