@@ -4,7 +4,13 @@ import type { ComposedProps } from '@deepseek-ai/dsh-client-ui-slots'
 import {
   CONTEXT_MANAGER_LOCALE,
 } from './locales.js'
-import type { ContextManagerPresentationStoreHandle } from './presentation-store.js'
+import {
+  mayDispatchImmediateProfileWrite,
+  ownsLiveProfileDraft,
+  readLivePresentationForActions,
+  terminalProfileNotice,
+  type ContextManagerPresentationStoreHandle,
+} from './presentation-store.js'
 import type { ContextManagerClientBusinessFace } from './business-face.js'
 import type { ContextManagerClientProfileMutationResult } from './mutation-types.js'
 import type { ProfileDraft, ProfileEditField, ProfileNotice } from './profile-editor.js'
@@ -17,10 +23,13 @@ import {
 } from './profile-editor.js'
 import {
   deriveProfileView,
+  isProfileBeginCurrent,
   isProfileDraftCurrent,
   resolveProfilePreset,
   type ProfileListRow,
 } from './profile-view.js'
+import { ContextManagerPromptBindingSection } from './prompt-binding-section.js'
+import { isPromptBindingDraft } from './prompt-binding-editor.js'
 import styles from './plugin.module.css'
 
 export type ContextManagerDrawerProps = ComposedProps<
@@ -80,14 +89,28 @@ export function ContextManagerProfileDrawerContent(props: ContextManagerDrawerPr
   const operation = props.useProfileMutation(s => s.profile)
   const requestedId = useStore(s => s.selectedProfileId)
   const draft = useStore(s => s.draft)
+  const resourceDraft = useStore(s => s.resourceDraft)
   const notice = useStore(s => s.notice)
+  const displayedNotice = terminalProfileNotice({ draft }) ?? notice
   const view = deriveProfileView(snapshot, requestedId)
   const running = operation.status === 'running'
-  const canStart = view.writable && !running && draft === null
+  const canStart = view.writable && !running && draft === null && resourceDraft === null
   const draftCurrent = draft === null || isProfileDraftCurrent(snapshot, draft)
   const canSubmit = draft !== null && draft.blocked === undefined
-    && draftCurrent && view.writable && !running
+    && !draft.submitting && draftCurrent && view.writable && !running
   const contentRef = useRef<HTMLElement | null>(null)
+  const mounted = useRef(false)
+  const latestSelection = useRef(view.selectedId)
+  const latestDraftToken = useRef(draft?.token)
+  const latestDraftBlock = useRef(draft?.blocked)
+  latestSelection.current = view.selectedId
+  latestDraftToken.current = draft?.token
+  latestDraftBlock.current = draft?.blocked
+
+  useEffect(() => {
+    mounted.current = true
+    return () => { mounted.current = false }
+  }, [])
 
   useEffect(() => {
     if (typeof document === 'undefined') return
@@ -114,29 +137,40 @@ export function ContextManagerProfileDrawerContent(props: ContextManagerDrawerPr
     if (basis === undefined) notifyUnavailable()
     return basis
   }
+  const notifyStaleBegin = () => {
+    actions.setNotice({ code: 'noticeDraftStale', kind: 'warning' })
+  }
   const startCreate = () => {
     if (draft !== null) {
       actions.setNotice({ code: 'noticeDraftActive', kind: 'warning' })
       return
     }
     const basis = captureBasis()
-    if (basis) actions.beginCreate(basis)
+    if (!basis) return
+    if (!isProfileBeginCurrent(snapshot, basis)) return notifyStaleBegin()
+    actions.beginCreate(basis)
   }
-  const startEdit = (profileId: string, field: ProfileEditField, original: string | undefined) => {
+  const startEdit = (row: ProfileListRow, field: ProfileEditField, original: string | undefined) => {
+    if (row.id === '__proto__') return actions.setNotice({ code: 'noticeNotEditable', kind: 'warning' })
     if (draft !== null) {
       actions.setNotice({ code: 'noticeDraftActive', kind: 'warning' })
       return
     }
     const basis = captureBasis()
-    if (basis) actions.beginFieldEdit({ profileId, field, original, basis })
+    if (!basis) return
+    if (!isProfileBeginCurrent(snapshot, basis, row, field, original)) return notifyStaleBegin()
+    actions.beginFieldEdit({ profileId: row.id, field, original, basis })
   }
-  const startDelete = (profileId: string) => {
+  const startDelete = (row: ProfileListRow) => {
+    if (row.id === '__proto__') return actions.setNotice({ code: 'noticeNotEditable', kind: 'warning' })
     if (draft !== null) {
       actions.setNotice({ code: 'noticeDraftActive', kind: 'warning' })
       return
     }
     const basis = captureBasis()
-    if (basis) actions.beginDelete(profileId, basis)
+    if (!basis) return
+    if (!isProfileBeginCurrent(snapshot, basis, row)) return notifyStaleBegin()
+    actions.beginDelete(row.id, basis)
   }
   const afterMutation = (
     result: ContextManagerClientProfileMutationResult,
@@ -165,61 +199,92 @@ export function ContextManagerProfileDrawerContent(props: ContextManagerDrawerPr
     if (responseNotice !== undefined) actions.setNotice(responseNotice)
   }
   const commitDraft = async () => {
-    if (!canSubmit || draft === null) return
-    if (draft.kind === 'create') {
-      const reserved = new Set(view.rows.map(row => row.id))
-      const validation = validateCreateDraft(draft, reserved)
+    const original = draft
+    if (!canSubmit || original === null
+      || !ownsLiveProfileDraft(readLivePresentationForActions(actions), original)) return
+    if (original.kind === 'create') {
+      const validation = validateCreateDraft(original, new Set(view.rows.map(row => row.id)))
       if (validation !== 'valid') {
-        const noticeCode: ProfileNotice['code'] = validation === 'exists'
-          ? 'noticeProfileExists' : 'noticeInvalidInput'
-        actions.setNotice({ code: noticeCode, kind: 'warning' })
+        actions.setNotice({ code: validation === 'exists'
+          ? 'noticeProfileExists' : 'noticeInvalidInput', kind: 'warning' })
         return
       }
-      const result = await props.profileMutations.createProfile(
-        draft.basis, draft.id, createdProfileInput(draft),
-      )
-      afterMutation(result, draft, draft.id)
-    } else if (draft.kind === 'confirm-delete') {
-      const result = await props.profileMutations.deleteProfile(draft.basis, draft.profileId)
-      afterMutation(result, draft)
-    } else {
-      if (!editValueChanged(draft)) return
-      let result: ContextManagerClientProfileMutationResult
-      switch (draft.field) {
-        case 'name':
-          result = await props.profileMutations.setProfileName(
-            draft.basis, draft.profileId, draft.value,
-          )
-          break
-        case 'description':
-          result = await props.profileMutations.setProfileDescription(
-            draft.basis, draft.profileId,
-            draft.removeDescription ? null : draft.value,
-          )
-          break
-        case 'basePreset':
-          result = await props.profileMutations.setProfileBasePreset(
-            draft.basis, draft.profileId, draft.value,
-          )
-          break
+    }
+    if (original.kind === 'edit-field' && !editValueChanged(original)) return
+    // Claim this exact draft synchronously. Controller still owns Profile
+    // global single-flight, Host CAS and authoritative rehydration.
+    actions.beginProfileSubmission(original.token)
+    const claimed = readLivePresentationForActions(actions)?.draft
+    if (claimed?.token !== original.token || claimed.submitting !== true) return
+    try {
+      if (original.kind === 'create') {
+        const result = await props.profileMutations.createProfile(
+          original.basis, original.id, createdProfileInput(original),
+        )
+        afterMutation(result, original, original.id)
+      } else if (original.kind === 'confirm-delete') {
+        const result = await props.profileMutations.deleteProfile(original.basis, original.profileId)
+        afterMutation(result, original)
+      } else if (original.kind === 'edit-field') {
+        let result: ContextManagerClientProfileMutationResult
+        switch (original.field) {
+          case 'name':
+            result = await props.profileMutations.setProfileName(
+              original.basis, original.profileId, original.value)
+            break
+          case 'description':
+            result = await props.profileMutations.setProfileDescription(
+              original.basis, original.profileId,
+              original.removeDescription ? null : original.value)
+            break
+          case 'basePreset':
+            result = await props.profileMutations.setProfileBasePreset(
+              original.basis, original.profileId, original.value)
+            break
+        }
+        afterMutation(result, original)
       }
-      afterMutation(result, draft)
+    } catch (error) {
+      // Unexpected rejected call remains non-retriable outcome-unknown.
+      actions.blockDraft(original.token, 'unknown', {
+        code: 'noticeOutcomeUnknown', kind: 'warning',
+        detail: error instanceof Error ? error.message : undefined,
+      })
+    } finally {
+      actions.finishProfileSubmission(original.token)
     }
   }
   const changeDefault = async (id: string | null) => {
-    if (!canStart) return
+    if (!canStart || !mayDispatchImmediateProfileWrite(
+      readLivePresentationForActions(actions), requestedId,
+    )) return
     const basis = captureBasis()
     if (!basis) return
+    // Even an immediate default toggle carries an intent from this render.
+    // A new Settings revision cannot authorize a stale clear/set decision.
+    if (!isProfileBeginCurrent(snapshot, basis)) return notifyStaleBegin()
     afterMutation(await props.profileMutations.setDefaultProfile(basis, id))
   }
 
   const refresh = () => {
+    const selectionAtStart = latestSelection.current
+    const tokenAtStart = latestDraftToken.current
+    const report = (code: 'noticeUnavailable' | 'noticeRefreshFailed') => {
+      // A late read must never replace an outcome-unknown, conflict or
+      // confirmed-but-degraded Binding mutation notice, nor publish into a
+      // different selected Profile/closed tab/newer draft.
+      if (!mounted.current
+        || latestSelection.current !== selectionAtStart
+        || latestDraftToken.current !== tokenAtStart
+        || latestDraftBlock.current !== undefined) return
+      actions.setNotice({
+        code, kind: code === 'noticeRefreshFailed' ? 'error' : 'warning',
+      })
+    }
     void props.refresh().then(result => {
-      if (result.status !== 'completed') {
-        actions.setNotice({ code: 'noticeUnavailable', kind: 'warning' })
-      }
+      if (result.status !== 'completed') report('noticeUnavailable')
     }).catch(() => {
-      actions.setNotice({ code: 'noticeRefreshFailed', kind: 'error' })
+      report('noticeRefreshFailed')
     })
   }
 
@@ -261,31 +326,38 @@ export function ContextManagerProfileDrawerContent(props: ContextManagerDrawerPr
     },
     h('h3', null, t('createTitle')),
     labelFor('cm-create-id', t('fieldId')),
-    fieldInput('cm-create-id', draft.id, value => actions.updateCreate('id', value), !canSubmit),
+    fieldInput('cm-create-id', draft.id, value => actions.updateCreate(draft.token, 'id', value), !canSubmit),
     h('p', { className: styles.hint }, t('idImmutableHint')),
     labelFor('cm-create-name', t('fieldName')),
-    fieldInput('cm-create-name', draft.name, value => actions.updateCreate('name', value), !canSubmit),
+    fieldInput('cm-create-name', draft.name, value => actions.updateCreate(draft.token, 'name', value), !canSubmit),
     labelFor('cm-create-description', t('fieldDescription')),
-    fieldInput('cm-create-description', draft.description, value => actions.updateCreate('description', value), !canSubmit, true),
+    fieldInput('cm-create-description', draft.description, value => actions.updateCreate(draft.token, 'description', value), !canSubmit, true),
     labelFor('cm-create-preset', t('fieldBasePreset')),
-    fieldInput('cm-create-preset', draft.basePreset, value => actions.updateCreate('basePreset', value), !canSubmit, false, view.catalogAvailable ? 'cm-profile-preset-choices' : undefined),
+    fieldInput('cm-create-preset', draft.basePreset, value => actions.updateCreate(draft.token, 'basePreset', value), !canSubmit, false, view.catalogAvailable ? 'cm-profile-preset-choices' : undefined),
     h('p', { className: styles.hint }, t('createDefaultHint')),
     h('div', { className: styles.actions },
       h('button', { type: 'submit', className: styles.primary,
         disabled: !canSubmit || validateCreateDraft(draft, new Set(view.rows.map(row => row.id))) !== 'valid',
       }, t('create')),
-      button(t('cancel'), () => actions.cancelDraft(), running),
+      button(t('cancel'), () => actions.cancelDraft(draft.token), running || draft.submitting === true),
     ),
     )
     : null
 
   const blockedBanner = draft !== null && (draft.blocked !== undefined || !draftCurrent)
     ? h('div', { role: 'alert', className: styles.warning },
-      h('strong', null, t(draft.blocked === 'unknown' ? 'draftUnknown' : 'draftNeedsReload')),
+      h('strong', null, t(
+        draft.blocked === 'unknown' ? 'draftUnknown'
+          : isPromptBindingDraft(draft) && draft.blocked === 'unverified' ? 'noticeSavedDegraded'
+            : isPromptBindingDraft(draft) && draft.blocked === 'conflict' ? 'noticeConflict'
+              : 'draftNeedsReload',
+      )),
       h('p', null, t('draftPreservedHint')),
       h('div', { className: styles.actions },
         button(t('refresh'), refresh, running),
-        button(t('discardDraft'), () => actions.cancelDraft(), running),
+        button(t('discardDraft'), () => draft.blocked !== undefined
+          ? actions.discardBlockedDraft(draft.token) : actions.cancelDraft(draft.token),
+          running || draft.submitting === true),
       ),
     )
     : null
@@ -303,7 +375,7 @@ export function ContextManagerProfileDrawerContent(props: ContextManagerDrawerPr
     return h('div', { key: field, className: styles.field },
       h('div', { className: styles.fieldHeader },
         h('span', { className: styles.label }, label),
-        !active ? button(t('edit'), () => startEdit(row.id, field, value), !canStart) : null,
+        !active ? button(t('edit'), () => startEdit(row, field, value), !canStart || row.id === '__proto__') : null,
       ),
       active && draft?.kind === 'edit-field'
         ? h('form', {
@@ -315,11 +387,11 @@ export function ContextManagerProfileDrawerContent(props: ContextManagerDrawerPr
         },
         labelFor(fieldId, label),
         fieldInput(fieldId, draft.removeDescription ? '' : draft.value,
-          next => actions.updateField(next), !canSubmit,
+          next => actions.updateField(draft.token, next), !canSubmit,
           field === 'description',
           field === 'basePreset' && view.catalogAvailable ? 'cm-profile-preset-choices' : undefined),
         field === 'description'
-          ? button(t('removeDescription'), () => actions.markDescriptionRemoved(),
+          ? button(t('removeDescription'), () => actions.markDescriptionRemoved(draft.token),
             !canSubmit || draft.original === undefined)
           : null,
         draft.removeDescription
@@ -329,7 +401,7 @@ export function ContextManagerProfileDrawerContent(props: ContextManagerDrawerPr
           h('button', { type: 'submit', className: styles.primary,
             disabled: !canSubmit || !editValueChanged(draft),
           }, t('save')),
-          button(t('cancel'), () => actions.cancelDraft(), running),
+          button(t('cancel'), () => actions.cancelDraft(draft.token), running || draft.submitting === true),
         ),
         )
         : h('p', { className: styles.value }, value === undefined
@@ -377,6 +449,10 @@ export function ContextManagerProfileDrawerContent(props: ContextManagerDrawerPr
                   unverified: 'presetUnverified',
                 } as const)[resolveProfilePreset(snapshot, selected.id)])),
               ),
+              h(ContextManagerPromptBindingSection, {
+                ...props, profileId: selected.id, profile: selected.profile,
+                writable: view.writable,
+              }),
             ),
         draft?.kind === 'confirm-delete' && draft.profileId === selected.id
           ? h('section', { className: styles.warning, role: 'group', 'aria-label': t('deleteConfirmTitle') },
@@ -386,7 +462,7 @@ export function ContextManagerProfileDrawerContent(props: ContextManagerDrawerPr
               ? h('p', null, t('deleteDefaultHint')) : null,
             h('div', { className: styles.actions },
               button(t('confirmDelete'), () => { void commitDraft() }, !canSubmit, 'danger'),
-              button(t('cancel'), () => actions.cancelDraft(), running),
+              button(t('cancel'), () => actions.cancelDraft(draft.token), running || draft.submitting === true),
             ),
           )
           : h('div', { className: styles.actions },
@@ -396,19 +472,19 @@ export function ContextManagerProfileDrawerContent(props: ContextManagerDrawerPr
                 () => { void changeDefault(selected.configuredDefault ? null : selected.id) },
                 !canStart,
               ) : null,
-            button(t('deleteProfile'), () => startDelete(selected.id), !canStart, 'danger'),
+            button(t('deleteProfile'), () => startDelete(selected), !canStart || selected.id === '__proto__', 'danger'),
           ),
       )
 
-  const notices = notice !== null
+  const notices = displayedNotice !== null
     ? h('div', {
-      className: notice.kind === 'error' ? styles.error
-        : notice.kind === 'warning' ? styles.warning : styles.success,
-      role: notice.kind === 'error' ? 'alert' : 'status',
+      className: displayedNotice.kind === 'error' ? styles.error
+        : displayedNotice.kind === 'warning' ? styles.warning : styles.success,
+      role: displayedNotice.kind === 'error' ? 'alert' : 'status',
       'aria-live': 'polite',
     },
-    h('strong', null, t(notice.code)),
-    notice.detail ? h('p', null, notice.detail) : null,
+    h('strong', null, t(displayedNotice.code)),
+    displayedNotice.detail ? h('p', null, displayedNotice.detail) : null,
     ) : null
 
   return h('div', { className: styles.content, ref: contentRef },

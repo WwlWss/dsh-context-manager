@@ -113,9 +113,12 @@ function createLocale() {
 }
 
 function createWritableRemoteFixture() {
-  const instanceId = 'm7c-real-ui-host'
+  let instanceId = 'm7c-real-ui-host'
+  let resourceAuthorityId = 'm7c-fixture-resource'
   let revision = 7
   let change = 10
+  let profileCursor = 10
+  let failProfileReads = 0
   let defaultId = 'main'
   let unknownNextWrite = false
   let readOnly = false
@@ -163,7 +166,7 @@ function createWritableRemoteFixture() {
   const rejected = (code, message) => okRead({ ok: false, error: { code, message } })
   async function resourceWrite(kind, id, basis, update) {
     resourceWrites.push({ kind, id, basis })
-    if (basis.resourceAuthorityId !== 'm7c-fixture-resource') {
+    if (basis.resourceAuthorityId !== resourceAuthorityId) {
       return rejected('prompt-resource-authority-conflict', 'resource source changed')
     }
     const current = resources.get(id)
@@ -199,6 +202,7 @@ function createWritableRemoteFixture() {
     })
     update()
     revision += 1
+    profileCursor += 1
     change += 1
     if (unknownNextWrite) {
       unknownNextWrite = false
@@ -212,15 +216,24 @@ function createWritableRemoteFixture() {
     async changes() {
       return okRead({
         instanceId,
-        resourceAuthorityId: 'm7c-fixture-resource',
+        resourceAuthorityId,
         generation: change,
-        profiles: change,
+        profiles: profileCursor,
         promptResources: resourceCursor,
         presets: change,
         runtime: change,
       })
     },
-    async profiles() { return okRead(profileSnapshot()) },
+    async profiles() {
+      if (failProfileReads > 0) {
+        failProfileReads -= 1
+        // profiles() is a single-layer RemoteResult, unlike mutation RPCs.
+        // A rejected transport promise is the realistic read failure; a
+        // nested business result would corrupt the snapshot test fixture.
+        throw new Error('simulated Profile read-back transport failure')
+      }
+      return okRead(profileSnapshot())
+    },
     async presets() {
       const resolutions = Object.create(null)
       for (const [id, profile] of Object.entries(profiles)) {
@@ -324,6 +337,36 @@ function createWritableRemoteFixture() {
     setDefaultProfile(id, basis) {
       return write('default', basis, () => { defaultId = id })
     },
+    addPromptBinding(profileId, bindingId, input, basis) {
+      return write('binding-add', basis, () => {
+        profiles[profileId].prompts[bindingId] = structuredClone(input)
+      })
+    },
+    setPromptBindingResourceId(profileId, bindingId, resourceId, basis) {
+      return write('binding-resource', basis, () => {
+        profiles[profileId].prompts[bindingId].resourceId = resourceId
+      })
+    },
+    setPromptBindingEnabled(profileId, bindingId, enabled, basis) {
+      return write('binding-enabled', basis, () => {
+        profiles[profileId].prompts[bindingId].enabled = enabled
+      })
+    },
+    setPromptBindingPlacement(profileId, bindingId, placement, basis) {
+      return write('binding-placement', basis, () => {
+        profiles[profileId].prompts[bindingId].placement = placement
+      })
+    },
+    setPromptBindingOrder(profileId, bindingId, order, basis) {
+      return write('binding-order', basis, () => {
+        profiles[profileId].prompts[bindingId].order = order
+      })
+    },
+    removePromptBinding(profileId, bindingId, basis) {
+      return write('binding-delete', basis, () => {
+        delete profiles[profileId].prompts[bindingId]
+      })
+    },
   }
   return {
     face, profiles, writes, resources, resourceWrites,
@@ -332,8 +375,25 @@ function createWritableRemoteFixture() {
     failNextResourceListRead() { failNextResourceListRead = true },
     externalResourceReplacement(id, newName) {
       const old = resources.get(id)
-      resources.set(id, { ...old, name: newName, incarnationId: 'new-incarnation-' + id })
+      resources.set(id, {
+        ...old, name: newName,
+        // A *second* replacement must be another incarnation even when the
+        // Resource ID and numerical revision happen to be identical.
+        incarnationId: 'new-incarnation-' + id + '-' + String(resourceCursor + 1),
+      })
       resourceCursor += 1
+      change += 1
+    },
+    externalResourceRevision(id, newName) {
+      const old = resources.get(id)
+      resources.set(id, { ...old, name: newName, revision: old.revision + 1 })
+      resourceCursor += 1
+      change += 1
+    },
+    externalSetDefault(id) {
+      defaultId = id
+      revision += 1
+      profileCursor += 1
       change += 1
     },
     makeUnknownNextWrite() { unknownNextWrite = true },
@@ -342,6 +402,25 @@ function createWritableRemoteFixture() {
       // after the UI captured its immutable edit basis.
       profiles[id].name = name
       revision += 1
+      profileCursor += 1
+      change += 1
+    },
+    externalBindingResourceId(profileId, bindingId, resourceId) {
+      profiles[profileId].prompts[bindingId].resourceId = resourceId
+      revision += 1
+      profileCursor += 1
+      change += 1
+    },
+    failProfileReads(count = 8) { failProfileReads = count },
+    restoreProfileReads() { failProfileReads = 0 },
+    externalRotateResourceAuthority() {
+      resourceAuthorityId = 'm8a2-source-' + String(change)
+      resourceCursor += 1
+      change += 1
+      // The independent Profile cursor/revision is intentionally unchanged.
+    },
+    externalRotateHostInstance() {
+      instanceId = 'm8a2-host-' + String(change)
       change += 1
     },
     setReadOnly(value) { readOnly = value; change += 1 },
@@ -425,8 +504,34 @@ const disposeRoot = slots.register({
 const slotFace = createSlotsFace(slots)
 const register = slotFace.register
 let injectedBusiness
+let registeredOverlayStore
+let registeredSidebarStore
+let delayNextUiRefresh = false
+let rejectDelayedUiRefresh
 slotFace.register = (options, component) => {
-  if (options.name === 'shell.overlay') injectedBusiness = options.inject
+  if (options.name === 'shell.overlay') {
+    injectedBusiness = options.inject
+    registeredOverlayStore = options.store
+    const originalInject = options.inject
+    return register({
+      ...options,
+      inject: () => {
+        const face = originalInject()
+        return {
+          ...face,
+          // Test-only delayed UI read failure: Controller reads continue on
+          // their actual paths, so no invented Host/Remote mutation response.
+          refresh: () => delayNextUiRefresh
+            ? new Promise((_resolve, reject) => {
+              delayNextUiRefresh = false
+              rejectDelayedUiRefresh = reject
+            })
+            : face.refresh(),
+        }
+      },
+    }, component)
+  }
+  if (options.name === 'sidebar.footer.action') registeredSidebarStore = options.store
   return register(options, component)
 }
 const disposePlugin = await clientPlugin.apply(pluginCapableContext({
@@ -445,8 +550,22 @@ function trigger() {
 }
 await act(async () => { trigger().props.onClick() })
 await settleUI()
+assert.strictEqual(registeredOverlayStore, registeredSidebarStore,
+  'M8A2 live dispatch gate MUST use the same published DSH root StoreHandle')
+assert.equal(registeredOverlayStore.readLiveSnapshot()?.open, true,
+  'the native Renderer must have created an observable root StoreInstance')
+assert.equal(registeredOverlayStore.readLiveSnapshot()?.pane, 'profiles')
 assert.equal(tree.root.findAllByProps({ 'data-context-manager-new-profile': '' }).length, 1)
 assert.equal(remoteFixture.writes.length, 0)
+
+// M8A2 executable RED in the ACTUAL published DSH React Renderer:
+// the selected usable Profile must expose its PromptBindings section.
+// This is intentionally absent until the M8A2 production implementation.
+assert.equal(
+  tree.root.findAllByProps({ 'data-context-manager-prompt-bindings': '' }).length,
+  1,
+  'M8A2 RED: Profile PromptBindings editor is not yet mounted',
+)
 
 // Create with one explicit, basis-bearing Host write.
 await act(async () => {
@@ -458,8 +577,10 @@ await act(async () => {
   tree.root.findByProps({ id: 'cm-create-preset' }).props.onChange({ currentTarget: { value: 'native' } })
 })
 assert.equal(remoteFixture.writes.length, 0)
+const sameFrameProfileCancel = buttonByLabel(tree, 'Cancel').props.onClick
 await act(async () => {
   tree.root.findAllByType('form')[0].props.onSubmit({ preventDefault() {} })
+  sameFrameProfileCancel()
   for (let i = 0; i < 20; i += 1) await Promise.resolve()
 })
 await settleUI()
@@ -538,6 +659,13 @@ const invalidRow = tree.root.findAll(node =>
 assert.ok(invalidRow)
 await act(async () => { invalidRow.props.onClick() })
 assert.equal(tree.root.findAllByProps({ id: 'cm-edit-name' }).length, 0)
+// A malformed Profile has no normal field editor but remains explicitly
+// deletable via its original diagnostic row (no synthetic usable Profile).
+await act(async () => { buttonByLabel(tree, 'Delete profile').props.onClick() })
+assert.equal(registeredOverlayStore.readLiveSnapshot()?.draft?.kind, 'confirm-delete',
+  'M8A2 Fix4: invalid Profile diagnostic must still permit an explicit Delete draft')
+await act(async () => { buttonByLabel(tree, 'Cancel').props.onClick() })
+assert.equal(registeredOverlayStore.readLiveSnapshot()?.draft, null)
 
 // An uncertain write is attempted exactly once and retains a blocked draft through close/reopen.
 const mainRow = tree.root.findAll(node =>
@@ -560,6 +688,15 @@ await act(async () => {
 await settleUI()
 assert.equal(remoteFixture.writes.length, writeCount + 1)
 assert.equal(buttonByLabel(tree, 'Save').props.disabled, true)
+const legacyUnknownReceipt = registeredOverlayStore.readLiveSnapshot()?.notice
+assert.equal(legacyUnknownReceipt?.code, 'noticeOutcomeUnknown')
+assert.ok(legacyUnknownReceipt?.detail?.includes('simulated lost reply'))
+await act(async () => {
+  tree.root.findByProps({ 'data-context-manager-tab': 'resources' }).props.onClick()
+})
+assert.deepEqual(registeredOverlayStore.readLiveSnapshot()?.notice, legacyUnknownReceipt,
+  'legacy M7C Unknown receipt survives forbidden pane switch with exact detail')
+assert.equal(registeredOverlayStore.readLiveSnapshot()?.draft?.blocked, 'unknown')
 await act(async () => { trigger().props.onClick() })
 assert.equal(tree.root.findAllByProps({ 'data-context-manager-backdrop': '' }).length, 0)
 await act(async () => { trigger().props.onClick() })
@@ -588,10 +725,20 @@ assert.equal(remoteFixture.writes.length, conflictCount + 1)
 assert.equal(remoteFixture.profiles.main.name, 'External writer won')
 assert.equal(buttonByLabel(tree, 'Save').props.disabled, true)
 assert.ok(renderedText(tree.root).includes('Profile write conflict'))
+const legacyConflictReceipt = registeredOverlayStore.readLiveSnapshot()?.notice
+assert.equal(legacyConflictReceipt?.code, 'noticeConflict')
+await act(async () => {
+  tree.root.findByProps({ 'data-context-manager-tab': 'resources' }).props.onClick()
+})
+assert.deepEqual(registeredOverlayStore.readLiveSnapshot()?.notice, legacyConflictReceipt,
+  'legacy M7C Conflict receipt survives forbidden pane switch')
 await act(async () => { buttonByLabel(tree, 'Discard draft').props.onClick() })
 
 // M8A1: the same retained DSH Renderer opens the Resource library inside
 // the existing Drawer, without moving Profile drafts into the Resource lane.
+const obsoleteProfileBeginFromPreviousPane = tree.root.findByProps({
+  'data-context-manager-new-profile': '',
+}).props.onClick
 await act(async () => {
   tree.root.findByProps({ 'data-context-manager-tab': 'resources' }).props.onClick()
 })
@@ -603,6 +750,10 @@ assert.equal(remoteFixture.resourceWrites.length, 0)
 await act(async () => {
   tree.root.findByProps({ 'data-context-manager-new-resource': '' }).props.onClick()
 })
+await act(async () => { obsoleteProfileBeginFromPreviousPane() })
+assert.equal(registeredOverlayStore.readLiveSnapshot()?.draft, null,
+  'M8A2 Fix3: old Profile Begin cannot occupy Store while Resource draft owns pane')
+assert.equal(registeredOverlayStore.readLiveSnapshot()?.resourceDraft?.kind, 'create')
 await act(async () => {
   tree.root.findByProps({ id: 'cm-resource-create-id' }).props.onChange({ currentTarget: { value: 'res-ui' } })
   tree.root.findByProps({ id: 'cm-resource-create-name' }).props.onChange({ currentTarget: { value: 'New Resource' } })
@@ -611,10 +762,13 @@ await act(async () => {
 assert.equal(remoteFixture.resourceWrites.length, 0)
 // Two rapid form submits from the same render must not issue two writes or
 // publish an obsolete busy result that overwrites the successful outcome.
+const sameFrameResourceCancel = buttonByLabel(tree, 'Cancel').props.onClick
 await act(async () => {
   const form = tree.root.findAllByType('form')[0]
   form.props.onSubmit({ preventDefault() {} })
   form.props.onSubmit({ preventDefault() {} })
+  // Old Cancel from this render must not destroy the now-submitting draft.
+  sameFrameResourceCancel()
   for (let i = 0; i < 30; i += 1) await Promise.resolve()
 })
 await settleUI()
@@ -675,13 +829,19 @@ await act(async () => {
 await settleUI()
 assert.equal(remoteFixture.resourceWrites.length, beforeUnknown + 1)
 assert.equal(buttonByLabel(tree, 'Save').props.disabled, true)
+const uncertainResourceReceipt = registeredOverlayStore.readLiveSnapshot()?.resourceNotice
+assert.equal(uncertainResourceReceipt?.code, 'resourceNoticeUnknown')
+assert.ok(uncertainResourceReceipt?.detail?.includes('response was dropped'))
 await act(async () => { tree.root.findByProps({ 'data-context-manager-tab': 'profiles' }).props.onClick() })
+assert.deepEqual(registeredOverlayStore.readLiveSnapshot()?.resourceNotice, uncertainResourceReceipt,
+  'M8A2 Fix4: a blocked Resource tab-switch cannot replace the exact Unknown receipt')
 assert.equal(tree.root.findAllByProps({ 'data-context-manager-resource-editor': '' }).length, 1)
 await act(async () => { trigger().props.onClick() })
 await act(async () => { trigger().props.onClick() })
 assert.equal(tree.root.findAllByProps({ 'data-context-manager-resource-editor': '' }).length, 1)
 assert.equal(buttonByLabel(tree, 'Save').props.disabled, true)
 assert.equal(remoteFixture.resourceWrites.length, beforeUnknown + 1)
+assert.deepEqual(registeredOverlayStore.readLiveSnapshot()?.resourceNotice, uncertainResourceReceipt)
 await act(async () => { buttonByLabel(tree, 'Discard draft').props.onClick() })
 
 // An ABA replacement with the same ID/revision but new Incarnation must
@@ -726,6 +886,52 @@ await act(async () => { buttonByLabel(tree, 'Refresh').props.onClick() })
 await settleUI()
 assert.equal(remoteFixture.resourceWrites.length, beforeDegraded + 1)
 
+// M8A2 Fix4 GREEN: stale rendered Resource Edit/Delete callbacks must not
+// pair a previous List/Document with a newly captured valid Stamp.
+const staleResourceEdit = buttonByLabel(tree, 'Edit').props.onClick
+const staleResourceDelete = buttonByLabel(tree, 'Delete resource').props.onClick
+remoteFixture.externalResourceReplacement('res-ui', 'External new incarnation')
+await act(async () => {
+  await injectedBusiness?.()?.refresh()
+  await injectedBusiness?.()?.loadPromptResourceList()
+  await injectedBusiness?.()?.loadPromptResource('res-ui')
+})
+await settleUI()
+const beforeOldResourceBegin = remoteFixture.resourceWrites.length
+await act(async () => { staleResourceEdit() })
+assert.equal(registeredOverlayStore.readLiveSnapshot()?.resourceDraft, null,
+  'M8A2 Fix4 GREEN: old Resource Edit must not pair stale document with new incarnation Stamp')
+await act(async () => { staleResourceDelete() })
+assert.equal(registeredOverlayStore.readLiveSnapshot()?.resourceDraft, null,
+  'M8A2 Fix4 GREEN: old Resource Delete must not delete a replaced incarnation')
+assert.equal(remoteFixture.resourceWrites.length, beforeOldResourceBegin)
+assert.equal(remoteFixture.resources.get('res-ui').name, 'External new incarnation')
+
+// A revision-only change (same incarnation) also makes the old Edit invalid.
+const staleResourceRevisionEdit = buttonByLabel(tree, 'Edit').props.onClick
+remoteFixture.externalResourceRevision('res-ui', 'Another writer changed name')
+await act(async () => {
+  await injectedBusiness?.()?.refresh()
+  await injectedBusiness?.()?.loadPromptResourceList()
+  await injectedBusiness?.()?.loadPromptResource('res-ui')
+})
+await settleUI()
+await act(async () => { staleResourceRevisionEdit() })
+assert.equal(registeredOverlayStore.readLiveSnapshot()?.resourceDraft, null,
+  'M8A2 Fix4 GREEN: old Resource Edit must not pair stale document with latest revision')
+
+// By contrast, fresh reads of the SAME version may replace JS object identity.
+const sameVersionResourceEdit = buttonByLabel(tree, 'Edit').props.onClick
+await act(async () => {
+  await injectedBusiness?.()?.loadPromptResourceList()
+  await injectedBusiness?.()?.loadPromptResource('res-ui')
+})
+await settleUI()
+await act(async () => { sameVersionResourceEdit() })
+assert.equal(registeredOverlayStore.readLiveSnapshot()?.resourceDraft?.kind, 'edit',
+  'same-version rehydration should not reject the original Resource Edit')
+await act(async () => { buttonByLabel(tree, 'Cancel').props.onClick() })
+
 // The Resource deletion must not cascade to Profile PromptBinding intent.
 remoteFixture.profiles.main.prompts.dangling = {
   resourceId: 'res-ui', enabled: true, placement: 'before-persona', order: 1,
@@ -737,9 +943,470 @@ await settleUI()
 assert.equal(remoteFixture.resources.has('res-ui'), false)
 assert.equal(remoteFixture.profiles.main.prompts.dangling.resourceId, 'res-ui')
 assert.equal(remoteFixture.resourceWrites.at(-1).kind, 'resource-delete')
+
+// M8A2 Fix3 GREEN: Resource Controller has an independent authority, but an
+// obsolete Resource form closure must NOT write after Binding draft takeover.
+await act(async () => { tree.root.findByProps({ 'data-context-manager-new-resource': '' }).props.onClick() })
+await act(async () => {
+  tree.root.findByProps({ id: 'cm-resource-create-id' }).props.onChange({
+    currentTarget: { value: 'obsolete-resource-after-tab-switch' },
+  })
+  tree.root.findByProps({ id: 'cm-resource-create-name' }).props.onChange({
+    currentTarget: { value: 'should never be written' },
+  })
+})
+const obsoleteResourceSubmit = tree.root.findAllByType('form')[0].props.onSubmit
+const obsoleteResourceBeginFromPreviousPane = tree.root.findByProps({
+  'data-context-manager-new-resource': '',
+}).props.onClick
+await act(async () => { buttonByLabel(tree, 'Cancel').props.onClick() })
 await act(async () => { tree.root.findByProps({ 'data-context-manager-tab': 'profiles' }).props.onClick() })
 await settleUI()
+await act(async () => { tree.root.findByProps({ 'data-context-manager-new-binding': '' }).props.onClick() })
+await act(async () => { obsoleteResourceBeginFromPreviousPane() })
+assert.equal(registeredOverlayStore.readLiveSnapshot()?.resourceDraft, null,
+  'M8A2 Fix3: old Resource Begin cannot occupy Store while Binding draft owns pane')
+const beforeObsoleteResourceSave = remoteFixture.resourceWrites.length
+await act(async () => {
+  obsoleteResourceSubmit({ preventDefault() {} })
+  for (let i = 0; i < 25; i += 1) await Promise.resolve()
+})
+await settleUI()
+assert.equal(remoteFixture.resourceWrites.length, beforeObsoleteResourceSave,
+  'M8A2 Fix3 GREEN: old Resource Save cannot write while a Binding draft owns the Store')
+assert.equal(remoteFixture.resources.has('obsolete-resource-after-tab-switch'), false)
+await act(async () => { buttonByLabel(tree, 'Cancel').props.onClick() })
+
+
+await settleUI()
 assert.equal(tree.root.findAllByProps({ 'data-context-manager-new-profile': '' }).length, 1)
+
+// M8A2 GREEN: real published Renderer + Business Face + Profile Controller.
+// Each explicit Binding Save maps to one existing Profile RPC on its original
+// instanceId/Settings revision. Resources (including missing references) are not
+// looked up or mutated while authoring Profile-local Binding intent.
+assert.equal(tree.root.findAllByProps({ 'data-context-manager-prompt-bindings': '' }).length, 1)
+const bindingWritesStart = remoteFixture.writes.length
+const resourceWritesStart = remoteFixture.resourceWrites.length
+// A preceding Resource failure may retain a stale Profile baseline.
+// If stale, the Binding editor must remain read-only; explicitly refresh
+// authoritative Profile state before beginning a new Binding operation.
+// Resource-only increments do not themselves advance the Profile cursor.
+if (injectedBusiness?.()?.hooks.contextManager.getSnapshot().profiles.stale) {
+  assert.equal(tree.root.findByProps({ 'data-context-manager-new-binding': '' }).props.disabled, true)
+}
+await act(async () => { await injectedBusiness?.()?.refresh() })
+await settleUI()
+const bindingStartButton = tree.root.findByProps({ 'data-context-manager-new-binding': '' })
+assert.equal(bindingStartButton.props.disabled, false, 'fresh Profile basis should permit a new binding')
+
+// M8A2 Fix2 RED: a Profile default handler captured before a Binding draft
+// must not dispatch after the Store begins that draft, even *before React
+// re-renders*. The Controller does not own Presentation draft exclusivity.
+const oldDefaultOnClick = buttonByLabel(tree, 'Set as default').props.onClick
+const beforeStaleDefault = remoteFixture.writes.length
+await act(async () => {
+  bindingStartButton.props.onClick()
+  assert.equal(registeredOverlayStore.readLiveSnapshot()?.draft?.kind, 'prompt-binding-create',
+    'the store must publish the new draft before React rerenders')
+  oldDefaultOnClick()
+  for (let i = 0; i < 25; i += 1) await Promise.resolve()
+})
+await settleUI()
+assert.equal(remoteFixture.writes.length, beforeStaleDefault,
+  'M8A2 Fix2 RED: obsolete default callback must issue 0 Profile RPCs')
+assert.equal(tree.root.findAllByProps({ 'data-context-manager-binding-create-form': '' }).length, 1)
+await act(async () => { buttonByLabel(tree, 'Cancel').props.onClick() })
+await settleUI()
+
+// Old M7C submit closure cannot save after cancel and Binding draft takeover.
+await act(async () => { buttonByLabel(tree, 'Edit', 0).props.onClick() })
+await act(async () => {
+  tree.root.findByProps({ id: 'cm-edit-name' }).props.onChange({ currentTarget: { value: 'obsolete-profile-write' } })
+})
+const obsoleteProfileSubmit = tree.root.findAllByType('form')[0].props.onSubmit
+await act(async () => { buttonByLabel(tree, 'Cancel').props.onClick() })
+await act(async () => { tree.root.findByProps({ 'data-context-manager-new-binding': '' }).props.onClick() })
+const beforeStaleProfileSave = remoteFixture.writes.length
+await act(async () => {
+  obsoleteProfileSubmit({ preventDefault() {} })
+  for (let i = 0; i < 25; i += 1) await Promise.resolve()
+})
+await settleUI()
+assert.equal(remoteFixture.writes.length, beforeStaleProfileSave,
+  'M8A2 Fix2 RED: stale M7C form must not dispatch during Binding draft')
+await act(async () => { buttonByLabel(tree, 'Cancel').props.onClick() })
+
+// Old M8A2 Save closure cannot submit an abandoned Binding when a new
+// Binding draft owns the same shared Profile Store slot.
+await act(async () => { tree.root.findByProps({ 'data-context-manager-new-binding': '' }).props.onClick() })
+await act(async () => {
+  tree.root.findByProps({ id: 'cm-binding-create-id' }).props.onChange({ currentTarget: { value: 'abandoned-binding' } })
+})
+const obsoleteBindingSubmit = tree.root.findByProps({
+  'data-context-manager-binding-create-form': '',
+}).props.onSubmit
+await act(async () => { buttonByLabel(tree, 'Cancel').props.onClick() })
+await act(async () => { tree.root.findByProps({ 'data-context-manager-new-binding': '' }).props.onClick() })
+const beforeStaleBindingSave = remoteFixture.writes.length
+await act(async () => {
+  obsoleteBindingSubmit({ preventDefault() {} })
+  for (let i = 0; i < 25; i += 1) await Promise.resolve()
+})
+await settleUI()
+assert.equal(remoteFixture.writes.length, beforeStaleBindingSave,
+  'M8A2 Fix2 RED: abandoned Binding form must issue 0 Profile RPCs')
+assert.equal(Object.hasOwn(remoteFixture.profiles.main.prompts, 'abandoned-binding'), false)
+await act(async () => { buttonByLabel(tree, 'Cancel').props.onClick() })
+
+await act(async () => { tree.root.findByProps({ 'data-context-manager-new-binding': '' }).props.onClick() })
+assert.equal(tree.root.findAllByProps({ id: 'cm-binding-create-id' }).length, 1,
+  'M8A2 beginCreate must retain the bound selected usable Profile draft')
+await act(async () => {
+  tree.root.findByProps({ id: 'cm-binding-create-id' }).props.onChange({ currentTarget: { value: 'm8a2-ui' } })
+  tree.root.findByProps({ id: 'cm-binding-create-resource' }).props.onChange({ currentTarget: { value: 'missing/日本語' } })
+  tree.root.findByProps({ id: 'cm-binding-create-order' }).props.onChange({ currentTarget: { value: '-5' } })
+})
+assert.equal(remoteFixture.writes.length, bindingWritesStart)
+const sameFrameBindingCancel = buttonByLabel(tree, 'Cancel').props.onClick
+await act(async () => {
+  tree.root.findByProps({ 'data-context-manager-binding-create-form': '' }).props.onSubmit({ preventDefault() {} })
+  sameFrameBindingCancel()
+  for (let i = 0; i < 25; i += 1) await Promise.resolve()
+})
+await settleUI()
+assert.equal(remoteFixture.writes.length, bindingWritesStart + 1)
+assert.equal(remoteFixture.writes.at(-1).kind, 'binding-add')
+assert.equal(remoteFixture.profiles.main.prompts['m8a2-ui'].resourceId, 'missing/日本語')
+assert.equal(remoteFixture.profiles.main.prompts['m8a2-ui'].order, -5)
+assert.equal(remoteFixture.resourceWrites.length, resourceWritesStart)
+
+async function bindingLeaf(field, fieldId, value, expectedKind) {
+  const before = remoteFixture.writes.length
+  await act(async () => {
+    tree.root.findByProps({ ['data-context-manager-binding-edit-' + field]: 'm8a2-ui' }).props.onClick()
+  })
+  await act(async () => {
+    const change = field === 'enabled' || field === 'placement'
+      ? { currentTarget: { value } }
+      : { currentTarget: { value } }
+    tree.root.findByProps({ id: fieldId }).props.onChange(change)
+  })
+  const currentForm = tree.root.findByProps({ 'data-context-manager-binding-edit-form': '' })
+  await act(async () => {
+    // A second synchronous submission of one render must be single-flight.
+    currentForm.props.onSubmit({ preventDefault() {} })
+    currentForm.props.onSubmit({ preventDefault() {} })
+    for (let i = 0; i < 25; i += 1) await Promise.resolve()
+  })
+  await settleUI()
+  assert.equal(remoteFixture.writes.length, before + 1)
+  assert.equal(remoteFixture.writes.at(-1).kind, expectedKind)
+  assert.equal(remoteFixture.resourceWrites.length, resourceWritesStart)
+}
+await bindingLeaf('resourceId', 'cm-binding-edit-resourceId', '__proto__', 'binding-resource')
+assert.equal(remoteFixture.profiles.main.prompts['m8a2-ui'].resourceId, '__proto__')
+await bindingLeaf('enabled', 'cm-binding-edit-enabled', 'false', 'binding-enabled')
+assert.equal(remoteFixture.profiles.main.prompts['m8a2-ui'].enabled, false)
+await bindingLeaf('placement', 'cm-binding-edit-placement', 'runtime-context', 'binding-placement')
+assert.equal(remoteFixture.profiles.main.prompts['m8a2-ui'].placement, 'runtime-context')
+await bindingLeaf('order', 'cm-binding-edit-order', '-42', 'binding-order')
+assert.equal(remoteFixture.profiles.main.prompts['m8a2-ui'].order, -42)
+
+// Unknown is never reinterpreted as applied even when read-back matches.
+await act(async () => {
+  tree.root.findByProps({ 'data-context-manager-binding-edit-resourceId': 'm8a2-ui' }).props.onClick()
+})
+await act(async () => {
+  tree.root.findByProps({ id: 'cm-binding-edit-resourceId' }).props.onChange({
+    currentTarget: { value: 'unknown-response-but-committed' },
+  })
+})
+remoteFixture.makeUnknownNextWrite()
+const obsoletePreSubmitCancel = buttonByLabel(tree, 'Cancel').props.onClick
+// Start an unresolved UI-only refresh request before the uncertain write;
+// its rejected completion must not overwrite the later terminal outcome.
+delayNextUiRefresh = true
+await act(async () => { buttonByLabel(tree, 'Refresh').props.onClick() })
+assert.equal(typeof rejectDelayedUiRefresh, 'function')
+const beforeUnknownBinding = remoteFixture.writes.length
+await act(async () => {
+  tree.root.findByProps({ 'data-context-manager-binding-edit-form': '' }).props.onSubmit({ preventDefault() {} })
+  for (let i = 0; i < 30; i += 1) await Promise.resolve()
+})
+await settleUI()
+assert.equal(remoteFixture.writes.length, beforeUnknownBinding + 1)
+assert.equal(remoteFixture.profiles.main.prompts['m8a2-ui'].resourceId, 'unknown-response-but-committed')
+assert.equal(tree.root.findByProps({ 'data-context-manager-binding-save': '' }).props.disabled, true)
+assert.ok(renderedText(tree.root).includes('write outcome is unknown'))
+await act(async () => { obsoletePreSubmitCancel() })
+assert.ok(renderedText(tree.root).includes('write outcome is unknown'),
+  'old pre-submit Cancel must not discard a same-token terminal Unknown')
+await act(async () => {
+  rejectDelayedUiRefresh(new Error('late Profile refresh failure'))
+  for (let i = 0; i < 15; i += 1) await Promise.resolve()
+})
+await settleUI()
+assert.ok(renderedText(tree.root).includes('write outcome is unknown'),
+  'a late rejected UI refresh cannot relabel an uncertain Binding write')
+// An attempted tab switch must neither lose the uncertain result nor replay it.
+await act(async () => { tree.root.findByProps({ 'data-context-manager-tab': 'resources' }).props.onClick() })
+assert.equal(tree.root.findAllByProps({ 'data-context-manager-prompt-bindings': '' }).length, 1)
+assert.ok(renderedText(tree.root).includes('write outcome is unknown'))
+await act(async () => { trigger().props.onClick() })
+assert.equal(tree.root.findAllByProps({ 'data-context-manager-drawer': '' }).length, 0)
+await act(async () => { trigger().props.onClick() })
+await settleUI()
+assert.ok(renderedText(tree.root).includes('write outcome is unknown'))
+assert.equal(tree.root.findByProps({ 'data-context-manager-binding-save': '' }).props.disabled, true)
+assert.equal(remoteFixture.writes.length, beforeUnknownBinding + 1)
+await act(async () => { buttonByLabel(tree, 'Discard draft').props.onClick() })
+await settleUI()
+assert.equal(remoteFixture.writes.length, beforeUnknownBinding + 1)
+
+// M7C compatibility: a normal Profile refresh transport error is still
+// severity=error / role=alert; terminal Binding receipts are protected
+// separately and do not require downgrading ordinary refresh errors.
+delayNextUiRefresh = true
+rejectDelayedUiRefresh = undefined
+await act(async () => { buttonByLabel(tree, 'Refresh').props.onClick() })
+assert.equal(typeof rejectDelayedUiRefresh, 'function')
+await act(async () => {
+  rejectDelayedUiRefresh(new Error('ordinary Profile refresh transport failure'))
+  for (let i = 0; i < 15; i += 1) await Promise.resolve()
+})
+await settleUI()
+assert.ok(tree.root.findAll(node =>
+  node.type === 'div' && node.props.role === 'alert'
+  && renderedText(node).includes('Refresh request failed.')
+).length > 0, 'M7C refresh transport error must retain error/alert severity')
+
+await act(async () => {
+  tree.root.findByProps({ 'data-context-manager-binding-delete': 'm8a2-ui' }).props.onClick()
+})
+assert.ok(renderedText(tree.root).includes('Only this Profile binding will be deleted'))
+const beforeDeleteBinding = remoteFixture.writes.length
+await act(async () => {
+  tree.root.findByProps({ 'data-context-manager-binding-delete-confirm': '' })
+    .findAllByType('button').find(node => node.props.children === 'Confirm delete').props.onClick()
+  for (let i = 0; i < 25; i += 1) await Promise.resolve()
+})
+await settleUI()
+assert.equal(remoteFixture.writes.length, beforeDeleteBinding + 1)
+assert.equal(remoteFixture.writes.at(-1).kind, 'binding-delete')
+assert.equal(Object.hasOwn(remoteFixture.profiles.main.prompts, 'm8a2-ui'), false)
+assert.equal(remoteFixture.profiles.main.prompts.dangling.resourceId, 'res-ui')
+assert.equal(remoteFixture.resourceWrites.length, resourceWritesStart)
+
+// M8A2 Fix RED: old rendered callback MUST NOT capture a newer revision and
+// silently overwrite a Binding that changed between rendering and clicking.
+const obsoleteEditClick = tree.root.findByProps({
+  'data-context-manager-binding-edit-resourceId': 'dangling',
+}).props.onClick
+remoteFixture.externalBindingResourceId('main', 'dangling', 'concurrent-writer-won')
+await act(async () => { await injectedBusiness?.()?.refresh() })
+await settleUI()
+const beforeStaleBegin = remoteFixture.writes.length
+await act(async () => { obsoleteEditClick() })
+assert.equal(tree.root.findAllByProps({ 'data-context-manager-binding-edit-form': '' }).length, 0,
+  'M8A2 RED: obsolete rendered callback may not begin a draft with a new Profile basis')
+assert.equal(remoteFixture.writes.length, beforeStaleBegin)
+
+// M8A2 Fix RED: an externally stored unsafe key is readable, but each Host
+// structural write would be refused. No misleading editable button.
+Object.defineProperty(remoteFixture.profiles.main.prompts, '__proto__', {
+  value: { resourceId: '__proto__', enabled: true,
+    placement: 'before-persona', order: 0 },
+  enumerable: true, configurable: true, writable: true,
+})
+await act(async () => { await injectedBusiness?.()?.refresh() })
+await settleUI()
+const unsafeBindingRow = tree.root.findByProps({ 'data-context-manager-binding-row': '__proto__' })
+assert.ok(unsafeBindingRow.findAllByType('button').every(node => node.props.disabled === true),
+  'M8A2 RED: __proto__ Binding path is read-only and must not offer writes')
+assert.ok(renderedText(unsafeBindingRow).includes('read-only'))
+
+// Binding-specific Conflict: a concurrent Settings writer wins at the Host.
+// The old binding basis is never rebased; a forbidden tab switch cannot
+// overwrite the exact conflict notice and no implicit retry occurs.
+await act(async () => {
+  tree.root.findByProps({ 'data-context-manager-binding-edit-enabled': 'dangling' }).props.onClick()
+})
+await act(async () => {
+  tree.root.findByProps({ id: 'cm-binding-edit-enabled' }).props.onChange({
+    currentTarget: { value: 'false' },
+  })
+})
+remoteFixture.externalBindingResourceId('main', 'dangling', 'external-cas-winner')
+const beforeBindingConflict = remoteFixture.writes.length
+await act(async () => {
+  tree.root.findByProps({ 'data-context-manager-binding-edit-form': '' })
+    .props.onSubmit({ preventDefault() {} })
+  for (let i = 0; i < 30; i += 1) await Promise.resolve()
+})
+await settleUI()
+assert.equal(remoteFixture.writes.length, beforeBindingConflict + 1)
+assert.equal(remoteFixture.profiles.main.prompts.dangling.enabled, true)
+assert.equal(remoteFixture.profiles.main.prompts.dangling.resourceId, 'external-cas-winner')
+assert.ok(renderedText(tree.root).includes('Profile write conflict'))
+await act(async () => { tree.root.findByProps({ 'data-context-manager-tab': 'resources' }).props.onClick() })
+assert.ok(renderedText(tree.root).includes('Profile write conflict'))
+assert.equal(tree.root.findByProps({ 'data-context-manager-binding-save': '' }).props.disabled, true)
+await act(async () => { buttonByLabel(tree, 'Discard draft').props.onClick() })
+assert.equal(remoteFixture.writes.length, beforeBindingConflict + 1)
+
+// Confirmed applied + failed authoritative Profile rehydrate is NOT Conflict
+// or Unknown. The confirmed write remains permanently blocked from replay.
+await act(async () => {
+  tree.root.findByProps({ 'data-context-manager-binding-edit-placement': 'dangling' }).props.onClick()
+})
+await act(async () => {
+  tree.root.findByProps({ id: 'cm-binding-edit-placement' }).props.onChange({
+    currentTarget: { value: 'runtime-context' },
+  })
+})
+remoteFixture.failProfileReads()
+const beforeBindingDegraded = remoteFixture.writes.length
+await act(async () => {
+  tree.root.findByProps({ 'data-context-manager-binding-edit-form': '' })
+    .props.onSubmit({ preventDefault() {} })
+  for (let i = 0; i < 30; i += 1) await Promise.resolve()
+})
+await settleUI()
+assert.equal(remoteFixture.writes.length, beforeBindingDegraded + 1)
+assert.equal(remoteFixture.profiles.main.prompts.dangling.placement, 'runtime-context')
+assert.ok(renderedText(tree.root).includes('Write confirmed, but reconciliation is incomplete'))
+assert.equal(tree.root.findByProps({ 'data-context-manager-binding-save': '' }).props.disabled, true)
+await act(async () => { tree.root.findByProps({ 'data-context-manager-tab': 'resources' }).props.onClick() })
+assert.ok(renderedText(tree.root).includes('Write confirmed, but reconciliation is incomplete'))
+remoteFixture.restoreProfileReads()
+await act(async () => { buttonByLabel(tree, 'Refresh').props.onClick() })
+await settleUI()
+assert.ok(renderedText(tree.root).includes('Write confirmed, but reconciliation is incomplete'))
+assert.equal(remoteFixture.writes.length, beforeBindingDegraded + 1)
+await act(async () => { buttonByLabel(tree, 'Discard draft').props.onClick() })
+
+// A Resource-only Authority rotation WHILE a Binding draft holds its
+// immutable Profile basis must not invalidate a Profile write or rebase it.
+const beforeSourceRotation = injectedBusiness?.()?.hooks.contextManager.getSnapshot()
+const profileRevisionBefore = beforeSourceRotation?.profiles.data?.persistence.revision
+const beforeResourceIndependentWrite = remoteFixture.writes.length
+await act(async () => {
+  tree.root.findByProps({ 'data-context-manager-binding-edit-order': 'dangling' }).props.onClick()
+})
+await act(async () => {
+  tree.root.findByProps({ id: 'cm-binding-edit-order' }).props.onChange({
+    currentTarget: { value: '-7' },
+  })
+})
+const heldBindingDraft = registeredOverlayStore.readLiveSnapshot()?.draft
+assert.equal(heldBindingDraft?.kind, 'prompt-binding-edit-field')
+const heldBindingBasis = structuredClone(heldBindingDraft.basis)
+assert.equal(heldBindingBasis.revision, profileRevisionBefore)
+remoteFixture.externalRotateResourceAuthority()
+await act(async () => { await injectedBusiness?.()?.refresh() })
+await settleUI()
+const afterSourceRotation = injectedBusiness?.()?.hooks.contextManager.getSnapshot()
+assert.notEqual(afterSourceRotation.changes.resourceAuthorityId,
+  beforeSourceRotation.changes.resourceAuthorityId)
+assert.equal(afterSourceRotation.profiles.data.persistence.revision, profileRevisionBefore)
+assert.equal(afterSourceRotation.profiles.stale, false)
+assert.deepEqual(registeredOverlayStore.readLiveSnapshot()?.draft?.basis, heldBindingBasis)
+await act(async () => {
+  tree.root.findByProps({ 'data-context-manager-binding-edit-form': '' })
+    .props.onSubmit({ preventDefault() {} })
+  for (let i = 0; i < 30; i += 1) await Promise.resolve()
+})
+await settleUI()
+assert.equal(remoteFixture.writes.length, beforeResourceIndependentWrite + 1)
+assert.deepEqual(remoteFixture.writes.at(-1).basis, heldBindingBasis)
+assert.equal(remoteFixture.profiles.main.prompts.dangling.order, -7)
+assert.equal(remoteFixture.resourceWrites.length, resourceWritesStart)
+
+// An old React closure must also fail when the Host instance changes while
+// the Settings revision is numerically unchanged.
+const beforeHostSwitchCallback = tree.root.findByProps({
+  'data-context-manager-binding-edit-resourceId': 'dangling',
+}).props.onClick
+remoteFixture.externalRotateHostInstance()
+await act(async () => { await injectedBusiness?.()?.refresh() })
+await settleUI()
+const beforeHostSwitchWrite = remoteFixture.writes.length
+await act(async () => { beforeHostSwitchCallback() })
+assert.equal(tree.root.findAllByProps({ 'data-context-manager-binding-edit-form': '' }).length, 0)
+assert.equal(remoteFixture.writes.length, beforeHostSwitchWrite)
+
+// M8A2 Fix4 GREEN: M7C old Edit/Delete/Default callbacks must not pair
+// old rendered Profile/default intent with a new Settings revision.
+const staleProfileEdit = buttonByLabel(tree, 'Edit', 0).props.onClick
+const staleProfileDelete = buttonByLabel(tree, 'Delete profile').props.onClick
+const staleDefaultToggle = buttonByLabel(tree, 'Set as default').props.onClick
+remoteFixture.externalRename('main', 'External writer changed visible Profile')
+await act(async () => { await injectedBusiness?.()?.refresh() })
+await settleUI()
+const beforeOldProfileBegin = remoteFixture.writes.length
+await act(async () => { staleProfileEdit() })
+assert.equal(registeredOverlayStore.readLiveSnapshot()?.draft, null,
+  'M8A2 Fix4 GREEN: old M7C Edit may not reuse the latest Settings Basis')
+await act(async () => { staleProfileDelete() })
+assert.equal(registeredOverlayStore.readLiveSnapshot()?.draft, null,
+  'M8A2 Fix4 GREEN: old M7C Delete may not reuse the latest Settings Basis')
+assert.equal(remoteFixture.writes.length, beforeOldProfileBegin)
+remoteFixture.externalSetDefault('external-default')
+await act(async () => { await injectedBusiness?.()?.refresh() })
+await settleUI()
+await act(async () => {
+  staleDefaultToggle()
+  for (let i = 0; i < 20; i += 1) await Promise.resolve()
+})
+assert.equal(remoteFixture.writes.length, beforeOldProfileBegin,
+  'M8A2 Fix4 GREEN: old Default toggle must issue zero Profile writes')
+assert.equal(remoteFixture.getDefault(), 'external-default')
+
+// Fix5 RED: a historical Profile whose Settings path key is __proto__ is
+// readable but cannot enter an Edit/Delete flow that Host will always reject.
+// Ordinary special keys such as constructor remain valid authoring targets.
+for (const id of ['__proto__', 'constructor']) {
+  Object.defineProperty(remoteFixture.profiles, id, {
+    value: { name: 'Special profile ' + id, basePreset: 'native', skills: {}, prompts: {} },
+    enumerable: true, configurable: true, writable: true,
+  })
+}
+await act(async () => { await injectedBusiness?.()?.refresh() })
+await settleUI()
+const unsafeProfileRow = tree.root.findAll(node =>
+  node.type === 'button' && Object.hasOwn(node.props, 'aria-current')
+  && renderedText(node).includes('__proto__')
+)[0]
+assert.ok(unsafeProfileRow, 'historical __proto__ Profile remains readable')
+await act(async () => { unsafeProfileRow.props.onClick() })
+await settleUI()
+const unsafeProfileEdit = buttonByLabel(tree, 'Edit', 0)
+const unsafeProfileDelete = buttonByLabel(tree, 'Delete profile')
+assert.equal(unsafeProfileEdit.props.disabled, true,
+  'Host-unsafe Profile ID must have no editable field action')
+assert.equal(unsafeProfileDelete.props.disabled, true,
+  'Host-unsafe Profile ID must have no structural Delete action')
+const priorUnsafeWrites = remoteFixture.writes.length
+await act(async () => {
+  unsafeProfileEdit.props.onClick()
+  unsafeProfileDelete.props.onClick()
+})
+assert.equal(registeredOverlayStore.readLiveSnapshot()?.draft, null,
+  'a retained disabled unsafe Profile handler must not create a draft')
+assert.equal(remoteFixture.writes.length, priorUnsafeWrites)
+const safeSpecialProfileRow = tree.root.findAll(node =>
+  node.type === 'button' && Object.hasOwn(node.props, 'aria-current')
+  && renderedText(node).includes('constructor')
+)[0]
+assert.ok(safeSpecialProfileRow)
+await act(async () => { safeSpecialProfileRow.props.onClick() })
+await settleUI()
+assert.equal(buttonByLabel(tree, 'Delete profile').props.disabled, false,
+  'constructor is a valid Profile path key and must not be overblocked')
+await act(async () => { buttonByLabel(tree, 'Delete profile').props.onClick() })
+assert.equal(registeredOverlayStore.readLiveSnapshot()?.draft?.kind, 'confirm-delete')
+await act(async () => { buttonByLabel(tree, 'Cancel').props.onClick() })
 
 remoteFixture.setReadOnly(true)
 const overlayFace = injectedBusiness?.()
@@ -753,5 +1420,7 @@ assert.equal(tree.root.findByProps({ 'data-context-manager-new-profile': '' }).p
 await act(async () => { tree.unmount() })
 disposeRoot()
 await disposePlugin()
+assert.equal(registeredOverlayStore.readLiveSnapshot(), undefined,
+  'M8A2 live Store reader must be revoked on plugin disposal')
 await sessionFiber.dispose()
 await rendererFiber.dispose()

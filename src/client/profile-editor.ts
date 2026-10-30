@@ -1,5 +1,6 @@
 import type {
   ContextManagerRemoteProfileInput,
+  ContextManagerRemotePromptPlacement,
 } from '../remote/types.js'
 import type {
   ContextManagerClientProfileMutationBasis,
@@ -7,15 +8,52 @@ import type {
 } from './mutation-types.js'
 
 export type ProfileEditField = 'name' | 'description' | 'basePreset'
-export type ProfileDraftBlock = 'stale' | 'conflict' | 'unknown'
+export type ProfileDraftBlock = 'stale' | 'conflict' | 'unknown' | 'unverified'
 
 interface DraftBase {
   token: number
   readonly basis: ContextManagerClientProfileMutationBasis
   blocked?: ProfileDraftBlock
+  /** Presentation-only synchronous submission claim; never Host authority. */
+  submitting?: boolean
+  /** First confirmed/uncertain terminal receipt belongs to this exact Profile
+   * draft token, including legacy M7C and M8A2 Binding drafts. Never Host authority. */
+  terminalNotice?: ProfileNotice
 }
 
+type BindingDraftBase = DraftBase
+
+export type PromptBindingEditField = 'resourceId' | 'enabled' | 'placement' | 'order'
+
+export type PromptBindingFieldValue =
+  | { field: 'resourceId'; original: string; value: string }
+  | { field: 'enabled'; original: boolean; value: boolean }
+  | { field: 'placement'; original: ContextManagerRemotePromptPlacement; value: ContextManagerRemotePromptPlacement }
+  | { field: 'order'; original: number; value: string }
+
+export type PromptBindingDraft =
+  | (BindingDraftBase & {
+      kind: 'prompt-binding-create'
+      profileId: string
+      bindingId: string
+      resourceId: string
+      enabled: boolean
+      placement: ContextManagerRemotePromptPlacement
+      orderText: string
+    })
+  | (BindingDraftBase & {
+      kind: 'prompt-binding-edit-field'
+      profileId: string
+      bindingId: string
+    } & PromptBindingFieldValue)
+  | (BindingDraftBase & {
+      kind: 'prompt-binding-delete'
+      profileId: string
+      bindingId: string
+    })
+
 export type ProfileDraft =
+  | PromptBindingDraft
   | (DraftBase & {
       kind: 'create'
       id: string
@@ -51,6 +89,8 @@ export type ProfileNoticeCode =
   | 'noticeDraftActive'
   | 'noticeRefreshFailed'
   | 'noticeRefreshRequested'
+  | 'noticeBindingExists'
+  | 'noticeBindingMissing'
 
 export interface ProfileNotice {
   readonly code: ProfileNoticeCode

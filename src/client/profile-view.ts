@@ -4,6 +4,7 @@ import type {
   ContextManagerRemoteProfile,
 } from '../remote/types.js'
 import type { ContextManagerClientSnapshot } from './model-types.js'
+import type { ContextManagerClientProfileMutationBasis } from './mutation-types.js'
 import type { ProfileDraft } from './profile-editor.js'
 
 export interface ProfileListRow {
@@ -129,6 +130,45 @@ export function resolveProfilePreset(
   const data = snapshot.presets.data
   if (data === undefined || data.directory.status === 'unavailable') return 'unavailable'
   return data.profiles[profileId]?.basePreset.status ?? 'unverified'
+}
+
+/** M7C Begin fence: compare the authority actually rendered to the fresh
+ * Profile Basis captured by the Model. Never pair old visible originals with
+ * a new Settings revision. This is independent of Resource-only authority. */
+export function isProfileBeginCurrent(
+  snapshot: ContextManagerClientSnapshot,
+  basis: ContextManagerClientProfileMutationBasis | undefined,
+  renderedRow?: ProfileListRow,
+  field?: 'name' | 'description' | 'basePreset',
+  original?: string,
+): boolean {
+  const surface = snapshot.profiles
+  const data = surface.data
+  if (basis === undefined
+    || snapshot.attachment !== 'attached'
+    || snapshot.protocol.status !== 'compatible'
+    || snapshot.instanceId !== basis.instanceId
+    || snapshot.changes?.instanceId !== basis.instanceId
+    || surface.status !== 'ready' || surface.stale
+    || data?.schemaCompatible !== true
+    || !data.persistence.available || !data.persistence.registered
+    || !data.persistence.writable
+    || data.persistence.revision !== basis.revision) return false
+  if (renderedRow === undefined) return field === undefined
+  if (renderedRow.configuredDefault !== (data.configuredDefaultProfileId === renderedRow.id)) return false
+  if (renderedRow.kind === 'usable') {
+    if (renderedRow.profile === undefined
+      || !Object.hasOwn(data.profiles, renderedRow.id)
+      || data.profiles[renderedRow.id] !== renderedRow.profile) return false
+    return field === undefined || renderedRow.profile[field] === original
+  }
+  // A malformed persisted Profile remains deletable by its *rendered* invalid
+  // row. Do not turn an invalid diagnostic into a synthetic usable Profile.
+  if (field !== undefined || renderedRow.diagnostic === undefined
+    || renderedRow.diagnostic.code !== 'invalid-profile'
+    || renderedRow.diagnostic.profileId !== renderedRow.id
+    || Object.hasOwn(data.profiles, renderedRow.id)) return false
+  return data.diagnostics.includes(renderedRow.diagnostic)
 }
 
 export function isProfileDraftCurrent(

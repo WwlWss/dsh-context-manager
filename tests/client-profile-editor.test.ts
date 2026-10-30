@@ -11,6 +11,7 @@ import {
 } from '../src/client/profile-editor.js'
 import {
   deriveProfileView,
+  isProfileBeginCurrent,
   isProfileDraftCurrent,
   resolveProfilePreset,
 } from '../src/client/profile-view.js'
@@ -230,14 +231,14 @@ test('DSH presentation store retains drafts across overlay close/reopen and guar
   const draft = store.getSnapshot().draft
   assert.equal(draft?.kind, 'edit-field')
   assert.deepEqual(draft?.basis, BASIS)
-  store.actions.updateField('Changed')
+  store.actions.updateField(draft!.token, 'Changed')
   store.actions.close()
   store.actions.open()
   assert.equal(store.getSnapshot().draft?.kind, 'edit-field')
   store.actions.selectProfile('other')
   assert.equal(store.getSnapshot().selectedProfileId, 'main')
   assert.equal(store.getSnapshot().notice?.code, 'noticeDraftActive')
-  store.actions.cancelDraft()
+  store.actions.cancelDraft(draft!.token)
   store.actions.selectProfile('other')
   assert.equal(store.getSnapshot().selectedProfileId, 'other')
 })
@@ -247,16 +248,16 @@ test('DSH presentation store blocks uncertain replay, and older completions cann
   store.actions.beginCreate(BASIS)
   const firstToken = store.getSnapshot().draft?.token
   assert.ok(firstToken)
-  store.actions.updateCreate('id', 'new')
+  store.actions.updateCreate(firstToken, 'id', 'new')
   store.actions.blockDraft(firstToken, 'unknown', { code: 'noticeOutcomeUnknown', kind: 'warning' })
   assert.equal(store.getSnapshot().draft?.blocked, 'unknown')
-  store.actions.updateCreate('id', 'illegal-retry')
+  store.actions.updateCreate(firstToken, 'id', 'illegal-retry')
   assert.equal(store.getSnapshot().draft?.kind, 'create')
   const blockedDraft = store.getSnapshot().draft
   if (blockedDraft?.kind === 'create') {
     assert.equal(blockedDraft.id, 'new')
   }
-  store.actions.cancelDraft()
+  store.actions.discardBlockedDraft(firstToken)
   store.actions.beginCreate(BASIS)
   const second = store.getSnapshot().draft
   assert.ok(second && second.token !== firstToken)
@@ -265,4 +266,71 @@ test('DSH presentation store blocks uncertain replay, and older completions cann
   store.actions.completeDraft(second.token, { code: 'noticeSaved', kind: 'success' }, 'new')
   assert.equal(store.getSnapshot().draft, null)
   assert.equal(store.getSnapshot().selectedProfileId, 'new')
+})
+
+
+test('M7C final Strict GREEN: first blocked Profile terminal receipt survives late UI actions', () => {
+  for (const { reason, code } of [
+    { reason: 'unknown', code: 'noticeOutcomeUnknown' },
+    { reason: 'conflict', code: 'noticeConflict' },
+  ] as const) {
+    const store = createContextManagerPresentationStore().create()
+    const a = store.actions
+    a.open()
+    a.beginFieldEdit({ profileId: 'main', field: 'name', original: 'Original', basis: BASIS })
+    const first = store.getSnapshot().draft
+    assert.ok(first?.kind === 'edit-field')
+    const notice = { code, kind: 'warning', detail: 'immutable original receipt' } as const
+    a.blockDraft(first.token, reason, notice)
+    a.selectPane('resources')
+    a.selectProfile('other')
+    a.beginCreate(BASIS)
+    a.setNotice({ code: 'noticeUnavailable', kind: 'warning' })
+    a.blockDraft(first.token, 'stale', { code: 'noticeDraftStale', kind: 'warning' })
+    a.completeDraft(first.token, { code: 'noticeSaved', kind: 'success' }, 'wrong-profile')
+    const after = store.getSnapshot()
+    assert.equal(after.draft?.token, first.token, reason + ': blocked draft retained')
+    assert.equal(after.draft?.blocked, reason)
+    assert.deepEqual(after.notice, notice, reason + ': original detail must remain')
+    assert.equal(after.pane, 'profiles')
+    assert.equal(after.selectedProfileId, 'main')
+    a.discardBlockedDraft(first.token)
+    assert.equal(store.getSnapshot().draft, null)
+  }
+})
+
+test('M8A2 Fix4: Profile Begin compares rendered Settings revision and exact usable/invalid targets', () => {
+  const rendered = exampleSnapshot()
+  const main = deriveProfileView(rendered, 'main').selected
+  const invalid = deriveProfileView(rendered, 'broken').selected
+  assert.ok(main?.kind === 'usable')
+  assert.ok(invalid?.kind === 'invalid')
+  assert.equal(isProfileBeginCurrent(rendered, BASIS), true)
+  assert.equal(isProfileBeginCurrent(rendered, BASIS, main, 'name', 'Main'), true)
+  assert.equal(isProfileBeginCurrent(rendered, BASIS, main, 'name', 'stale original'), false)
+  assert.equal(isProfileBeginCurrent(rendered, BASIS, invalid), true,
+    'invalid Profile diagnostic must remain an eligible explicit Delete target')
+  assert.equal(isProfileBeginCurrent(rendered, BASIS, invalid, 'name', 'value'), false)
+  assert.equal(isProfileBeginCurrent(rendered, { ...BASIS, revision: BASIS.revision + 1 }, main), false)
+  assert.equal(isProfileBeginCurrent(rendered, { ...BASIS, instanceId: 'other-host' }, main), false)
+  assert.equal(isProfileBeginCurrent({
+    ...rendered,
+    changes: { ...rendered.changes!, resourceAuthorityId: 'unrelated-resource-rotation' },
+  }, BASIS, main), true, 'unrelated Resource authority cannot stale Profile Begin')
+  const data = rendered.profiles.data!
+  const rehydrated = {
+    ...rendered,
+    profiles: {
+      ...rendered.profiles, data: {
+        ...data, profiles: {
+          ...data.profiles, main: { ...data.profiles.main },
+        },
+      },
+    },
+  }
+  const newRow = deriveProfileView(rehydrated, 'main').selected
+  assert.ok(newRow?.kind === 'usable')
+  assert.equal(isProfileBeginCurrent(rehydrated, BASIS, newRow, 'name', 'Main'), true)
+  assert.equal(isProfileBeginCurrent(rehydrated, BASIS, main), false,
+    'a rendered row must come from the snapshot used in the Begin fence')
 })

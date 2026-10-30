@@ -6,6 +6,8 @@ import { createContextManagerPresentationStore } from '../src/client/presentatio
 import type { ResourceDraft } from '../src/client/resource-editor.js'
 import {
   deriveResourceView,
+  isResourceBeginCurrent,
+  isResourceCreateBeginCurrent,
   isResourceDraftCurrent,
   validateResourceCreateDraft,
   resourceEditChanges,
@@ -231,8 +233,10 @@ test('presentation store keeps Resource draft across close/reopen and prevents t
   const store = createContextManagerPresentationStore().create()
   store.actions.selectPane('resources')
   store.actions.beginResourceCreate(CREATE)
-  store.actions.updateResourceCreate('id', 'original')
-  store.actions.updateResourceCreate('content', 'exact\n')
+  const initialToken = store.getSnapshot().resourceDraft?.token
+  assert.ok(initialToken)
+  store.actions.updateResourceCreate(initialToken, 'id', 'original')
+  store.actions.updateResourceCreate(initialToken, 'content', 'exact\n')
   store.actions.close()
   store.actions.open()
   assert.equal(store.getSnapshot().pane, 'resources')
@@ -246,20 +250,21 @@ test('presentation store keeps Resource draft across close/reopen and prevents t
   const token = store.getSnapshot().resourceDraft?.token
   assert.ok(token)
   store.actions.blockResourceDraft(token, 'unknown', { code: 'resourceNoticeUnknown', kind: 'warning' })
-  store.actions.updateResourceCreate('id', 'not-allowed')
+  store.actions.updateResourceCreate(initialToken, 'id', 'not-allowed')
   const blockedDraft = store.getSnapshot().resourceDraft
   assert.equal(blockedDraft?.kind === 'create' ? blockedDraft.id : undefined, 'original')
-  store.actions.cancelResourceDraft()
+  store.actions.discardBlockedResourceDraft(initialToken)
   store.actions.selectPane('profiles')
   assert.equal(store.getSnapshot().pane, 'profiles')
 })
 
 test('resource presentation token prevents late completion from clearing a new draft', () => {
   const s = createContextManagerPresentationStore().create()
+  s.actions.selectPane('resources')
   s.actions.beginResourceCreate(CREATE)
   const old = s.getSnapshot().resourceDraft?.token
   assert.ok(old)
-  s.actions.cancelResourceDraft()
+  s.actions.cancelResourceDraft(old)
   s.actions.beginResourceCreate(CREATE)
   const fresh = s.getSnapshot().resourceDraft?.token
   assert.ok(fresh && fresh !== old)
@@ -268,4 +273,115 @@ test('resource presentation token prevents late completion from clearing a new d
   s.actions.completeResourceDraft(fresh, { code: 'resourceNoticeSaved', kind: 'success' }, 'fresh')
   assert.equal(s.getSnapshot().resourceDraft, null)
   assert.equal(s.getSnapshot().selectedResourceId, 'fresh')
+})
+
+test('M8A2 Fix3: obsolete Resource edit events cannot modify a different same-kind draft', () => {
+  const store = createContextManagerPresentationStore().create()
+  const a = store.actions
+  a.open()
+  a.selectPane('resources')
+  a.beginResourceEdit(DOCUMENT, STAMP)
+  const older = store.getSnapshot().resourceDraft
+  assert.ok(older?.kind === 'edit')
+  a.updateResourceEdit(older.token, 'name', 'first edit')
+  a.cancelResourceDraft(older.token)
+  a.beginResourceEdit(DOCUMENT, STAMP)
+  const newer = store.getSnapshot().resourceDraft
+  assert.ok(newer?.kind === 'edit')
+  assert.notEqual(newer.token, older.token)
+  a.updateResourceEdit(older.token, 'name', 'obsolete edit')
+  a.markResourceDescriptionRemoved(older.token)
+  a.markResourceDescriptionEmpty(older.token)
+  a.cancelResourceDraft(older.token)
+  const still = store.getSnapshot().resourceDraft
+  assert.ok(still?.kind === 'edit')
+  assert.equal(still.token, newer.token)
+  assert.equal(still.name, DOCUMENT.name)
+  assert.equal(still.descriptionTouched, false)
+  assert.equal(still.removeDescription, false)
+  a.updateResourceEdit(newer.token, 'name', 'current edit')
+  const updated = store.getSnapshot().resourceDraft
+  assert.equal(updated?.kind === 'edit' ? updated.name : undefined, 'current edit')
+})
+
+
+test('M8A2 Fix4 GREEN: all blocked Resource receipts survive ordinary Store actions and later blocks', () => {
+  const cases = [
+    { reason: 'unknown', code: 'resourceNoticeUnknown' },
+    { reason: 'conflict', code: 'resourceNoticeConflict' },
+    { reason: 'unverified', code: 'resourceNoticeDegraded' },
+  ] as const
+  for (const item of cases) {
+    const store = createContextManagerPresentationStore().create()
+    const actions = store.actions
+    actions.open()
+    actions.selectPane('resources')
+    actions.beginResourceCreate(CREATE)
+    const token = store.getSnapshot().resourceDraft?.token
+    assert.ok(token)
+    const original = { code: item.code, kind: 'warning', detail: 'exact first Host result' } as const
+    actions.blockResourceDraft(token, item.reason, original)
+    actions.selectPane('profiles')
+    actions.selectResource('unrelated')
+    actions.setResourceNotice({ code: 'resourceNoticeUnavailable', kind: 'warning' })
+    actions.blockResourceDraft(token, 'stale', {
+      code: 'resourceNoticeStale', kind: 'warning', detail: 'late obsolete result',
+    })
+    actions.completeResourceDraft(token, { code: 'resourceNoticeSaved', kind: 'success' })
+    assert.deepEqual(store.getSnapshot().resourceNotice, original,
+      item.reason + ': original Resource terminal receipt must remain visible')
+    assert.equal(store.getSnapshot().resourceDraft?.blocked, item.reason,
+      'a late block must not reinterpret the first terminal result')
+    actions.discardBlockedResourceDraft(token)
+    assert.equal(store.getSnapshot().resourceDraft, null)
+    assert.equal(store.getSnapshot().resourceNotice, null)
+    actions.selectPane('profiles')
+    assert.equal(store.getSnapshot().pane, 'profiles')
+  }
+})
+
+
+test('M8A2 Fix4: Resource Begin validates rendered version, source and incarnation without object-reuse requirement', () => {
+  const old = snapshot()
+  const selected = deriveResourceView(old, 'alpha').selected
+  const document = deriveResourceView(old, 'alpha').document
+  assert.equal(isResourceBeginCurrent(old, selected, STAMP, document), true)
+  assert.equal(isResourceBeginCurrent(old, selected, { ...STAMP, source: 'list' }), true)
+  assert.equal(isResourceBeginCurrent(old, selected, { ...STAMP, source: 'document' }), false)
+  assert.equal(isResourceBeginCurrent(old, selected, { ...STAMP, revision: 6 }, document), false)
+  assert.equal(isResourceBeginCurrent(old, selected, { ...STAMP, incarnationId: 'new-incarnation' }, document), false)
+  assert.equal(isResourceBeginCurrent(old, selected, { ...STAMP, resourceAuthorityId: 'another-authority' }, document), false)
+  assert.equal(isResourceCreateBeginCurrent(old, CREATE), true)
+  assert.equal(isResourceCreateBeginCurrent(old, { resourceAuthorityId: 'another-authority' }), false)
+  assert.equal(isResourceBeginCurrent(old, selected, { ...STAMP, instanceId: 'different-profile-instance' }, document), true,
+    'Resource Stamp does not borrow Profile instanceId as Resource authority')
+  const current = {
+    ...old,
+    resources: {
+      list: {
+        ...old.resources.list,
+        data: old.resources.list.data?.map(row => ({ ...row })),
+      },
+      documents: new Map([['alpha', {
+        status: 'ready' as const, stale: false, data: { ...DOCUMENT },
+      }]]),
+    },
+  }
+  const refreshed = deriveResourceView(current, 'alpha')
+  assert.equal(isResourceBeginCurrent(current, refreshed.selected, STAMP, refreshed.document), true,
+    'new JS objects from an unchanged authoritative Resource version remain editable')
+  assert.equal(isResourceBeginCurrent(current, selected, STAMP, document), false,
+    'one render cannot smuggle stale List/Document references into a different snapshot')
+  const shiftedAuthority = {
+    ...old,
+    changes: { ...old.changes!, resourceAuthorityId: 'new-resource-authority' },
+  }
+  assert.equal(isResourceBeginCurrent(shiftedAuthority, selected, STAMP, document), false)
+  assert.equal(isResourceCreateBeginCurrent(shiftedAuthority, CREATE), false)
+  const unrelatedProfile = {
+    ...old, instanceId: 'new-profile-instance',
+    changes: { ...old.changes!, instanceId: 'new-profile-instance' },
+  }
+  assert.equal(isResourceBeginCurrent(unrelatedProfile, selected, STAMP, document), true,
+    'Profile instance rotation is not by itself a Resource authority rotation')
 })

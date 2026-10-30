@@ -120,6 +120,41 @@ export type ContextManagerLocaleKey =
   | 'noticeDraftActive'
   | 'noticeRefreshFailed'
   | 'noticeRefreshRequested'
+  | 'bindingTitle'
+  | 'bindingNew'
+  | 'bindingNoItems'
+  | 'bindingCreateTitle'
+  | 'bindingId'
+  | 'bindingResourceId'
+  | 'bindingEnabled'
+  | 'bindingPlacement'
+  | 'bindingOrder'
+  | 'bindingEditResourceId'
+  | 'bindingEditEnabled'
+  | 'bindingEditPlacement'
+  | 'bindingEditOrder'
+  | 'bindingDelete'
+  | 'bindingConfirmDelete'
+  | 'bindingDeleteHint'
+  | 'bindingExactIdHint'
+  | 'bindingOneFieldHint'
+  | 'bindingLoadSuggestions'
+  | 'bindingResourceHealth'
+  | 'bindingPlacementHealth'
+  | 'bindingResourceUsable'
+  | 'bindingResourceInvalid'
+  | 'bindingResourceMissing'
+  | 'bindingResourceUnverified'
+  | 'bindingPlacementAvailable'
+  | 'bindingPlacementUnavailable'
+  | 'bindingPlacementUnverified'
+  | 'bindingEffectiveUnverified'
+  | 'bindingIdDuplicate'
+  | 'bindingOrderInvalid'
+  | 'bindingUnsafeId'
+  | 'bindingPathReadOnly'
+  | 'noticeBindingExists'
+  | 'noticeBindingMissing'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface LocaleNamespaceMap {
@@ -245,6 +280,41 @@ export const CONTEXT_MANAGER_LOCALES = Object.freeze({
     noticeDraftActive: "请先保存或取消当前草稿。",
     noticeRefreshFailed: "刷新请求失败。",
     noticeRefreshRequested: "已请求刷新。",
+    bindingTitle: "PromptBinding 绑定",
+    bindingNew: "新增绑定",
+    bindingNoItems: "此 Profile 尚无 PromptBinding。",
+    bindingCreateTitle: "创建 PromptBinding",
+    bindingId: "Binding ID（原样保存）",
+    bindingResourceId: "引用的 Resource ID",
+    bindingEnabled: "启用状态",
+    bindingPlacement: "Placement 注入位置",
+    bindingOrder: "Order 排序值",
+    bindingEditResourceId: "编辑资源引用",
+    bindingEditEnabled: "编辑启用状态",
+    bindingEditPlacement: "编辑 Placement",
+    bindingEditOrder: "编辑 Order",
+    bindingDelete: "删除绑定",
+    bindingConfirmDelete: "确认删除绑定",
+    bindingDeleteHint: "只删除该 Profile 中的此 Binding，保留 PromptResource 与其他绑定。",
+    bindingExactIdHint: "Binding ID 可以是空字符串或包含空格；仅特殊路径键 __proto__ 被禁止。",
+    bindingOneFieldHint: "每次只提交一个字段；多个字段需分别保存，并重新获取最新写入依据。",
+    bindingLoadSuggestions: "读取 Resource 目录建议",
+    bindingResourceHealth: "资源诊断",
+    bindingPlacementHealth: "Placement 能力",
+    bindingResourceUsable: "资源存在",
+    bindingResourceInvalid: "资源记录无效",
+    bindingResourceMissing: "资源缺失",
+    bindingResourceUnverified: "资源尚未核实",
+    bindingPlacementAvailable: "全局可用（不代表 Agent 已使用）",
+    bindingPlacementUnavailable: "全局能力不可用",
+    bindingPlacementUnverified: "能力尚未核实",
+    bindingEffectiveUnverified: "特定 Agent 的实际效果尚未核实。",
+    bindingIdDuplicate: "此 Profile 中已存在相同 Binding ID。",
+    bindingOrderInvalid: "Order 必须是安全范围内的十进制整数。",
+    bindingUnsafeId: "Binding ID __proto__ 不可安全写入 Settings 路径。",
+    bindingPathReadOnly: "此 Profile 或 Binding 使用 Settings 无法安全修改的 __proto__ 路径键；保留原样只读展示。",
+    noticeBindingExists: "Binding ID 已存在，请保留草稿核对。",
+    noticeBindingMissing: "绑定或 Profile 已不存在；请刷新并重新开始。",
   }),
   en: Object.freeze({
     title: "Context Manager",
@@ -361,5 +431,40 @@ export const CONTEXT_MANAGER_LOCALES = Object.freeze({
     noticeDraftActive: "Save or cancel the current draft first.",
     noticeRefreshFailed: "Refresh request failed.",
     noticeRefreshRequested: "Refresh requested.",
+    bindingTitle: "Prompt bindings",
+    bindingNew: "New binding",
+    bindingNoItems: "No PromptBindings in this profile.",
+    bindingCreateTitle: "Create PromptBinding",
+    bindingId: "Binding ID (exact)",
+    bindingResourceId: "Referenced Resource ID",
+    bindingEnabled: "Enabled",
+    bindingPlacement: "Placement",
+    bindingOrder: "Order",
+    bindingEditResourceId: "Edit resource reference",
+    bindingEditEnabled: "Edit enabled state",
+    bindingEditPlacement: "Edit placement",
+    bindingEditOrder: "Edit order",
+    bindingDelete: "Delete binding",
+    bindingConfirmDelete: "Confirm binding deletion",
+    bindingDeleteHint: "Only this Profile binding will be deleted; PromptResources and other references remain.",
+    bindingExactIdHint: "Binding IDs may be empty or contain whitespace; only the unsafe __proto__ path key is forbidden.",
+    bindingOneFieldHint: "Save one field at a time; separate saves must begin with a fresh Profile basis.",
+    bindingLoadSuggestions: "Load resource suggestions",
+    bindingResourceHealth: "Resource health",
+    bindingPlacementHealth: "Placement capability",
+    bindingResourceUsable: "Resource exists",
+    bindingResourceInvalid: "Resource record invalid",
+    bindingResourceMissing: "Resource missing",
+    bindingResourceUnverified: "Resource not verified",
+    bindingPlacementAvailable: "Globally available (not Agent-effective)",
+    bindingPlacementUnavailable: "Global capability unavailable",
+    bindingPlacementUnverified: "Capability unverified",
+    bindingEffectiveUnverified: "Actual effect for a specific Agent is unverified.",
+    bindingIdDuplicate: "This Binding ID already exists in the profile.",
+    bindingOrderInvalid: "Order must be a safe decimal integer.",
+    bindingUnsafeId: "The __proto__ Binding ID is unsafe as a Settings path key.",
+    bindingPathReadOnly: "This Profile or Binding has an unsafe __proto__ Settings path key. The stored record remains visible but read-only.",
+    noticeBindingExists: "Binding ID already exists; review the retained draft.",
+    noticeBindingMissing: "Binding or Profile no longer exists; refresh and begin again.",
   }),
 }) satisfies Readonly<Record<'zh' | 'en', LocaleDictOf<typeof CONTEXT_MANAGER_LOCALE>>>
