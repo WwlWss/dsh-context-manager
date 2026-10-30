@@ -146,7 +146,7 @@ jobs:
         run: node ./tests/client-profile-drawer-runtime.mjs
 
   b13-skill-renderer:
-    name: B1-3 ${{ matrix.probe }} / real Published Renderer RED (${{ matrix.version }})
+    name: F01-SR2 ${{ matrix.probe }} / real Published Renderer RED (${{ matrix.version }})
     needs: oldest-built-client
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -154,7 +154,7 @@ jobs:
       fail-fast: false
       matrix:
         version: [0.1.2-rc.1, 0.1.6-alpha.2]
-        probe: [R01, R02, R03, R04, R05, R06V, R06H, R07, R08, R08U, R09, R10]
+        probe: [R01, R02, R03, R04, R05, R06V, R06H, R07, R08, R08U, R09, R10, R11P, R11B, R11R, R11T, R11TR, R12S, R12P, R12B, R12R]
     steps:
       - uses: actions/checkout@v7
         with:

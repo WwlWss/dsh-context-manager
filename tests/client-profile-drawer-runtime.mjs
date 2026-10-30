@@ -1013,6 +1013,295 @@ if (process.env.M8B_SKILL_PROBE) {
       break
     }
 
+
+    // F01-SR2: independent real published Renderer old-event RED cases.
+    // Each old callback is captured from the OLD render. A valid callback
+    // captured after Reopen is the positive control against vacuous no-ops.
+    case 'R11P': {
+      await act(async () => {
+        tree.root.findByProps({ 'data-context-manager-new-profile': '' }).props.onClick()
+      })
+      const oldDraft = live()?.draft
+      assert.equal(oldDraft?.kind, 'create')
+      const oldCancel = buttonByLabel(tree, 'Cancel').props.onClick
+      await act(async () => { trigger().props.onClick() })
+      assert.equal(live()?.open, false)
+      await act(async () => { trigger().props.onClick() })
+      await settleUI()
+      assert.equal(live()?.draft?.token, oldDraft.token)
+      assert.deepEqual(live()?.draft?.basis, oldDraft.basis)
+      await act(async () => { oldCancel() })
+      assert.equal(live()?.draft?.token, oldDraft.token,
+        'F01-R11P RED: obsolete Profile Cancel cannot discard retained draft')
+      await act(async () => { buttonByLabel(tree, 'Cancel').props.onClick() })
+      assert.equal(live()?.draft, null,
+        'F01-R11P: fresh Profile Cancel must still work')
+      assert.equal(remoteFixture.writes.length, beforeWrites)
+      break
+    }
+
+    case 'R11B': {
+      await act(async () => {
+        tree.root.findByProps({ 'data-context-manager-new-binding': '' }).props.onClick()
+      })
+      const oldDraft = live()?.draft
+      assert.equal(oldDraft?.kind, 'prompt-binding-create')
+      const oldCancel = buttonByLabel(tree, 'Cancel').props.onClick
+      await act(async () => { trigger().props.onClick() })
+      await act(async () => { trigger().props.onClick() })
+      await settleUI()
+      assert.equal(live()?.draft?.token, oldDraft.token)
+      await act(async () => { oldCancel() })
+      assert.equal(live()?.draft?.token, oldDraft.token,
+        'F01-R11B RED: obsolete Binding Cancel cannot discard retained draft')
+      await act(async () => { buttonByLabel(tree, 'Cancel').props.onClick() })
+      assert.equal(live()?.draft, null,
+        'F01-R11B: fresh Binding Cancel must still work')
+      assert.equal(remoteFixture.writes.length, beforeWrites)
+      break
+    }
+
+    case 'R11R': {
+      await act(async () => {
+        tree.root.findByProps({ 'data-context-manager-tab': 'resources' }).props.onClick()
+      })
+      await settleUI()
+      await act(async () => {
+        tree.root.findByProps({ 'data-context-manager-new-resource': '' }).props.onClick()
+      })
+      const oldDraft = live()?.resourceDraft
+      assert.equal(oldDraft?.kind, 'create')
+      const oldCancel = buttonByLabel(tree, 'Cancel').props.onClick
+      await act(async () => { trigger().props.onClick() })
+      await act(async () => { trigger().props.onClick() })
+      await settleUI()
+      assert.equal(live()?.resourceDraft?.token, oldDraft.token)
+      assert.deepEqual(live()?.resourceDraft?.basis, oldDraft.basis)
+      await act(async () => { oldCancel() })
+      assert.equal(live()?.resourceDraft?.token, oldDraft.token,
+        'F01-R11R RED: obsolete Resource Cancel cannot discard retained draft')
+      await act(async () => { buttonByLabel(tree, 'Cancel').props.onClick() })
+      assert.equal(live()?.resourceDraft, null,
+        'F01-R11R: fresh Resource Cancel must still work')
+      assert.equal(remoteFixture.resourceWrites.length, 0)
+      break
+    }
+
+    case 'R11T': {
+      await act(async () => {
+        tree.root.findByProps({ 'data-context-manager-skill-edit': 'manual' }).props.onClick()
+      })
+      await act(async () => {
+        tree.root.findByProps({ id: 'cm-skill-mode-edit' })
+          .props.onChange({ currentTarget: { value: 'off' } })
+      })
+      remoteFixture.makeUnknownNextWrite()
+      await act(async () => {
+        tree.root.findByProps({ 'data-context-manager-skill-edit-form': '' })
+          .props.onSubmit({ preventDefault() {} })
+        for (let i = 0; i < 30; i += 1) await Promise.resolve()
+      })
+      await settleUI()
+      const first = live()?.notice
+      const original = live()?.draft
+      assert.equal(original?.blocked, 'unknown')
+      assert.equal(first?.code, 'noticeOutcomeUnknown')
+      assert.equal(remoteFixture.writes.length, beforeWrites + 1)
+      const oldDiscard = buttonByLabel(tree, 'Discard draft').props.onClick
+      await act(async () => { trigger().props.onClick() })
+      await act(async () => { trigger().props.onClick() })
+      await settleUI()
+      await act(async () => { oldDiscard() })
+      assert.equal(live()?.draft?.token, original.token,
+        'F01-R11T RED: obsolete Discard cannot erase retained Unknown Skill draft')
+      assert.deepEqual(live()?.notice, first,
+        'F01-R11T: old Discard cannot erase first terminal notice')
+      assert.equal(remoteFixture.writes.length, beforeWrites + 1)
+      await act(async () => { buttonByLabel(tree, 'Discard draft').props.onClick() })
+      assert.equal(live()?.draft, null, 'F01-R11T: new explicit Discard must work')
+      break
+    }
+
+    case 'R11TR': {
+      await act(async () => {
+        tree.root.findByProps({ 'data-context-manager-tab': 'resources' }).props.onClick()
+      })
+      await settleUI()
+      await act(async () => {
+        tree.root.findByProps({ 'data-context-manager-new-resource': '' }).props.onClick()
+      })
+      assert.equal(live()?.resourceDraft?.kind, 'create')
+      await act(async () => {
+        tree.root.findByProps({ id: 'cm-resource-create-id' })
+          .props.onChange({ currentTarget: { value: 'f01-sr2-unknown' } })
+        tree.root.findByProps({ id: 'cm-resource-create-name' })
+          .props.onChange({ currentTarget: { value: 'F01 SR2 Unknown' } })
+      })
+      remoteFixture.makeUnknownNextResourceWrite()
+      await act(async () => {
+        tree.root.findAllByType('form')[0].props.onSubmit({ preventDefault() {} })
+        for (let i = 0; i < 30; i += 1) await Promise.resolve()
+      })
+      await settleUI()
+      const original = live()?.resourceDraft
+      const first = live()?.resourceNotice
+      assert.equal(original?.blocked, 'unknown')
+      assert.equal(first?.code, 'resourceNoticeUnknown')
+      assert.equal(remoteFixture.resourceWrites.length, 1)
+      const oldDiscard = buttonByLabel(tree, 'Discard draft').props.onClick
+      await act(async () => { trigger().props.onClick() })
+      await act(async () => { trigger().props.onClick() })
+      await settleUI()
+      await act(async () => { oldDiscard() })
+      assert.equal(live()?.resourceDraft?.token, original.token,
+        'F01-R11TR RED: obsolete Resource Discard cannot remove Unknown')
+      assert.deepEqual(live()?.resourceNotice, first)
+      await act(async () => { buttonByLabel(tree, 'Discard draft').props.onClick() })
+      assert.equal(live()?.resourceDraft, null)
+      assert.equal(remoteFixture.resourceWrites.length, 1)
+      break
+    }
+
+    case 'R12S': {
+      await act(async () => {
+        tree.root.findByProps({ 'data-context-manager-skill-new': '' }).props.onClick()
+      })
+      assert.equal(live()?.draft?.kind, 'skill-mode-create')
+      const oldInput = tree.root.findByProps({ id: 'cm-skill-create-name' }).props.onChange
+      await act(async () => { oldInput({ currentTarget: { value: 'before' } }) })
+      const original = live()?.draft
+      const epochBefore = live()?.openSessionEpoch
+      await act(async () => { trigger().props.onClick() })
+      assert.equal(live()?.open, false)
+      await act(async () => { oldInput({ currentTarget: { value: 'closed-overwrite' } }) })
+      assert.equal(live()?.draft?.skillName, 'before',
+        'F01-R12S RED: old Skill Create input during closed Drawer must be inert')
+      await act(async () => { trigger().props.onClick() })
+      await settleUI()
+      assert.equal(live()?.openSessionEpoch, epochBefore + 1)
+      assert.equal(live()?.draft?.token, original.token)
+      await act(async () => { oldInput({ currentTarget: { value: 'reopened-overwrite' } }) })
+      assert.equal(live()?.draft?.skillName, 'before',
+        'F01-R12S: obsolete Skill Create input cannot overwrite reopened name')
+      await act(async () => {
+        tree.root.findByProps({ id: 'cm-skill-create-name' })
+          .props.onChange({ currentTarget: { value: 'fresh' } })
+      })
+      assert.equal(live()?.draft?.skillName, 'fresh')
+      await act(async () => { buttonByLabel(tree, 'Cancel').props.onClick() })
+
+      await act(async () => {
+        tree.root.findByProps({ 'data-context-manager-skill-edit': 'manual' }).props.onClick()
+      })
+      await act(async () => {
+        tree.root.findByProps({ id: 'cm-skill-mode-edit' })
+          .props.onChange({ currentTarget: { value: 'pinned' } })
+      })
+      const oldMode = tree.root.findByProps({ id: 'cm-skill-mode-edit' }).props.onChange
+      const beforeMode = live()?.draft
+      await act(async () => { trigger().props.onClick() })
+      await act(async () => { trigger().props.onClick() })
+      await settleUI()
+      assert.equal(live()?.draft?.token, beforeMode.token)
+      await act(async () => { oldMode({ currentTarget: { value: 'off' } }) })
+      assert.equal(live()?.draft?.mode, 'pinned',
+        'F01-R12S: obsolete Skill Edit mode cannot overwrite new session')
+      await act(async () => {
+        tree.root.findByProps({ id: 'cm-skill-mode-edit' })
+          .props.onChange({ currentTarget: { value: 'off' } })
+      })
+      assert.equal(live()?.draft?.mode, 'off',
+        'F01-R12S: fresh mode onChange must remain editable')
+      assert.equal(remoteFixture.writes.length, beforeWrites)
+      break
+    }
+
+    case 'R12P': {
+      await act(async () => {
+        tree.root.findByProps({ 'data-context-manager-new-profile': '' }).props.onClick()
+      })
+      assert.equal(live()?.draft?.kind, 'create')
+      const oldInput = tree.root.findByProps({ id: 'cm-create-name' }).props.onChange
+      await act(async () => { oldInput({ currentTarget: { value: 'original' } }) })
+      const original = live()?.draft
+      await act(async () => { trigger().props.onClick() })
+      await act(async () => { trigger().props.onClick() })
+      await settleUI()
+      await act(async () => {
+        oldInput({ currentTarget: { value: 'obsolete-profile-name' } })
+      })
+      assert.equal(live()?.draft?.name, 'original',
+        'F01-R12P RED: old Profile input cannot rewrite reopened draft')
+      assert.equal(live()?.draft?.token, original.token)
+      await act(async () => {
+        tree.root.findByProps({ id: 'cm-create-name' })
+          .props.onChange({ currentTarget: { value: 'current' } })
+      })
+      assert.equal(live()?.draft?.name, 'current')
+      assert.equal(remoteFixture.writes.length, beforeWrites)
+      break
+    }
+
+    case 'R12B': {
+      await act(async () => {
+        tree.root.findByProps({ 'data-context-manager-new-binding': '' }).props.onClick()
+      })
+      assert.equal(live()?.draft?.kind, 'prompt-binding-create')
+      const oldInput = tree.root.findByProps({ id: 'cm-binding-create-resource' }).props.onChange
+      await act(async () => {
+        oldInput({ currentTarget: { value: 'original-resource' } })
+      })
+      const original = live()?.draft
+      await act(async () => { trigger().props.onClick() })
+      await act(async () => { trigger().props.onClick() })
+      await settleUI()
+      await act(async () => {
+        oldInput({ currentTarget: { value: 'obsolete-binding-resource' } })
+      })
+      assert.equal(live()?.draft?.resourceId, 'original-resource',
+        'F01-R12B RED: old Binding input cannot rewrite reopened draft')
+      assert.equal(live()?.draft?.token, original.token)
+      await act(async () => {
+        tree.root.findByProps({ id: 'cm-binding-create-resource' })
+          .props.onChange({ currentTarget: { value: 'current-resource' } })
+      })
+      assert.equal(live()?.draft?.resourceId, 'current-resource')
+      assert.equal(remoteFixture.writes.length, beforeWrites)
+      break
+    }
+
+    case 'R12R': {
+      await act(async () => {
+        tree.root.findByProps({ 'data-context-manager-tab': 'resources' }).props.onClick()
+      })
+      await settleUI()
+      await act(async () => {
+        tree.root.findByProps({ 'data-context-manager-new-resource': '' }).props.onClick()
+      })
+      assert.equal(live()?.resourceDraft?.kind, 'create')
+      const oldInput = tree.root.findByProps({ id: 'cm-resource-create-content' }).props.onChange
+      await act(async () => {
+        oldInput({ currentTarget: { value: 'original content' } })
+      })
+      const original = live()?.resourceDraft
+      await act(async () => { trigger().props.onClick() })
+      await act(async () => { trigger().props.onClick() })
+      await settleUI()
+      await act(async () => {
+        oldInput({ currentTarget: { value: 'obsolete resource content' } })
+      })
+      assert.equal(live()?.resourceDraft?.content, 'original content',
+        'F01-R12R RED: old Resource input cannot rewrite reopened draft')
+      assert.equal(live()?.resourceDraft?.token, original.token)
+      await act(async () => {
+        tree.root.findByProps({ id: 'cm-resource-create-content' })
+          .props.onChange({ currentTarget: { value: 'current content' } })
+      })
+      assert.equal(live()?.resourceDraft?.content, 'current content')
+      assert.equal(remoteFixture.resourceWrites.length, 0)
+      break
+    }
+
     default:
       throw new Error('Unknown B1-3 real Renderer probe: ' + probe)
   }
