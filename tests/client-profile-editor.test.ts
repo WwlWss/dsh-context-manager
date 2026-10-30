@@ -473,3 +473,36 @@ test('M8B B1-2a control: closing an existing Profile or Resource draft keeps tok
   resource.actions.beginResourceCreate({ resourceAuthorityId: 'm8b-library' })
   assert.equal(resource.getSnapshot().resourceDraft?.kind, 'create')
 })
+
+
+test('M8B F01-SR1 RED: real root Store advances only on a newly opened Drawer session', () => {
+  const store = createContextManagerPresentationStore().create()
+  // Read as an optional test observation so B1 RED is a behavioral assertion,
+  // not a missing-field or TypeScript compile failure before the production fix.
+  const getEpoch = () => (store.getSnapshot() as unknown as { openSessionEpoch?: number }).openSessionEpoch
+  assert.equal(getEpoch(), 0, 'the first closed session starts at epoch zero')
+  store.actions.open()
+  assert.equal(getEpoch(), 1, 'closed-to-open is a new visible session')
+  store.actions.open()
+  assert.equal(getEpoch(), 1, 'idempotent open must not invalidate live callbacks')
+  store.actions.selectProfile('main')
+  store.actions.beginFieldEdit({
+    profileId: 'main', field: 'name', original: 'Main', basis: BASIS,
+  })
+  const original = store.getSnapshot().draft
+  assert.ok(original)
+  store.actions.close()
+  assert.equal(getEpoch(), 1, 'close retains epoch and original draft')
+  assert.strictEqual(store.getSnapshot().draft, original)
+  store.actions.close()
+  assert.equal(getEpoch(), 1)
+  store.actions.open()
+  assert.equal(getEpoch(), 2, 'reopened callbacks need a new epoch')
+  assert.strictEqual(store.getSnapshot().draft, original)
+  assert.deepEqual(store.getSnapshot().draft?.basis, BASIS)
+  store.actions.toggle()
+  assert.equal(getEpoch(), 2, 'open-to-closed toggle does not advance session')
+  store.actions.toggle()
+  assert.equal(getEpoch(), 3, 'closed-to-open toggle must advance session')
+  assert.strictEqual(store.getSnapshot().draft, original)
+})
