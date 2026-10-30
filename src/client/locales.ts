@@ -129,6 +129,8 @@ export type ContextManagerLocaleKey =
   | 'skillDelete'
   | 'skillUnsafePath'
   | 'skillRedProbe'
+  | 'skillExactIdHint'
+  | 'skillDeleteWholeHint'
   | 'bindingTitle'
   | 'bindingNew'
   | 'bindingNoItems'
@@ -297,7 +299,9 @@ export const CONTEXT_MANAGER_LOCALES = Object.freeze({
     skillEdit: "编辑模式",
     skillDelete: "移除绑定",
     skillUnsafePath: "__proto__ 是无法安全修改的 Settings 路径键；保留现有配置只读展示。",
-    skillRedProbe: "B1-3 测试入口：尚未实现编辑或保存，不会提交 Skill 写入。",
+    skillRedProbe: "B2-A2 测试阶段：草稿与表单已可用，保存仍待独立验证，当前不会写入 Skill。",
+    skillExactIdHint: "Skill ID 精确保留空字符串、空白和 Unicode；只有 __proto__ 不可写入。",
+    skillDeleteWholeHint: "确认后将删除整个 Skill 绑定，包括未知的 Stored 扩展字段；不等于改为 Auto。",
     bindingTitle: "PromptBinding 绑定",
     bindingNew: "新增绑定",
     bindingNoItems: "此 Profile 尚无 PromptBinding。",
@@ -457,7 +461,9 @@ export const CONTEXT_MANAGER_LOCALES = Object.freeze({
     skillEdit: "Edit mode",
     skillDelete: "Remove binding",
     skillUnsafePath: "The __proto__ Settings path key cannot be safely edited; existing configuration stays visible read-only.",
-    skillRedProbe: "B1-3 test entrypoint: edit and save are not implemented and cannot issue Skill writes.",
+    skillRedProbe: "B2-A2 staged validation: drafts and forms are live, but Save remains inert until independently qualified.",
+    skillExactIdHint: "Skill IDs preserve empty strings, whitespace and Unicode exactly; only __proto__ is unsafe.",
+    skillDeleteWholeHint: "Confirmation removes the entire Skill binding, including unknown Stored extension fields; it is not Auto.",
     bindingTitle: "Prompt bindings",
     bindingNew: "New binding",
     bindingNoItems: "No PromptBindings in this profile.",
