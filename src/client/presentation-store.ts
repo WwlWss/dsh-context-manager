@@ -57,20 +57,21 @@ export function terminalResourceNotice(
 }
 
 function notifyOccupiedProfileDraft(state: ContextManagerPresentationState): void {
-  if (terminalProfileNotice(state) !== undefined) return
+  // An obsolete Begin after Drawer Close must not leave a phantom warning on Reopen.
+  if (!state.open || terminalProfileNotice(state) !== undefined) return
   state.notice = { code: 'noticeDraftActive', kind: 'warning' }
 }
 
 function canBeginProfileDraft(state: ContextManagerPresentationState): boolean {
-  return state.pane === 'profiles' && state.draft === null && state.resourceDraft === null
+  return state.open && state.pane === 'profiles' && state.draft === null && state.resourceDraft === null
 }
 
 function canBeginResourceDraft(state: ContextManagerPresentationState): boolean {
-  return state.pane === 'resources' && state.resourceDraft === null && state.draft === null
+  return state.open && state.pane === 'resources' && state.resourceDraft === null && state.draft === null
 }
 
 function notifyOccupiedResourceDraft(state: ContextManagerPresentationState): void {
-  if (state.resourceDraft?.blocked !== undefined) return
+  if (!state.open || state.resourceDraft?.blocked !== undefined) return
   state.resourceNotice = { code: 'resourceNoticeDraftActive', kind: 'warning' }
 }
 
