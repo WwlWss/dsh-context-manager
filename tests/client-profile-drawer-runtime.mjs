@@ -567,6 +567,74 @@ assert.equal(
   'M8A2 RED: Profile PromptBindings editor is not yet mounted',
 )
 
+// M8B B1-2a real published Renderer control: capture live, enabled React
+// Begin callbacks while open, then invoke them *after* the Drawer is closed,
+// in the same act() batch before the old mounted tree has rerendered.
+// They must not create a hidden draft, consume a token or dispatch an RPC.
+const b1OldProfileBegin = tree.root.findByProps({
+  'data-context-manager-new-profile': '',
+}).props.onClick
+const b1OldBindingBegin = tree.root.findByProps({
+  'data-context-manager-new-binding': '',
+}).props.onClick
+const b1ProfileCallsBefore = remoteFixture.writes.length
+const b1ResourceCallsBefore = remoteFixture.resourceWrites.length
+const b1TokenBefore = registeredOverlayStore.readLiveSnapshot()?.nextDraftToken
+await act(async () => {
+  trigger().props.onClick()
+  b1OldProfileBegin()
+  b1OldBindingBegin()
+})
+await settleUI()
+assert.equal(registeredOverlayStore.readLiveSnapshot()?.open, false)
+assert.equal(registeredOverlayStore.readLiveSnapshot()?.draft, null,
+  'B1-2a: retained Profile/Binding Begin must create no hidden closed draft')
+assert.equal(registeredOverlayStore.readLiveSnapshot()?.resourceDraft, null)
+assert.equal(registeredOverlayStore.readLiveSnapshot()?.nextDraftToken, b1TokenBefore)
+assert.equal(registeredOverlayStore.readLiveSnapshot()?.notice, null,
+  'B1-2a: stale closed Begin may not inject a phantom Draft Active notice')
+assert.equal(remoteFixture.writes.length, b1ProfileCallsBefore,
+  'B1-2a: no Profile RPC after closed Begin callback')
+assert.equal(remoteFixture.resourceWrites.length, b1ResourceCallsBefore,
+  'B1-2a: no Resource RPC after closed Profile/Binding Begin')
+await act(async () => { trigger().props.onClick() })
+await settleUI()
+assert.equal(registeredOverlayStore.readLiveSnapshot()?.open, true)
+
+// Resource's real tab initializes its read-only list asynchronously, so
+// require a truly enabled Create handler before retaining it across Close.
+await act(async () => {
+  tree.root.findByProps({ 'data-context-manager-tab': 'resources' }).props.onClick()
+})
+await settleUI()
+const b1ResourceStart = tree.root.findByProps({ 'data-context-manager-new-resource': '' })
+assert.equal(b1ResourceStart.props.disabled, false,
+  'B1-2a: genuine published Resource Begin must be enabled before this race test')
+const b1OldResourceBegin = b1ResourceStart.props.onClick
+const b1ResourceTokenBefore = registeredOverlayStore.readLiveSnapshot()?.nextResourceDraftToken
+const b1ResourceWritesBefore = remoteFixture.resourceWrites.length
+await act(async () => {
+  trigger().props.onClick()
+  b1OldResourceBegin()
+})
+await settleUI()
+assert.equal(registeredOverlayStore.readLiveSnapshot()?.open, false)
+assert.equal(registeredOverlayStore.readLiveSnapshot()?.resourceDraft, null,
+  'B1-2a: retained Resource Begin must create no hidden closed draft')
+assert.equal(registeredOverlayStore.readLiveSnapshot()?.nextResourceDraftToken, b1ResourceTokenBefore)
+assert.equal(registeredOverlayStore.readLiveSnapshot()?.resourceNotice, null,
+  'B1-2a: stale closed Resource Begin may not leave a phantom notice')
+assert.equal(remoteFixture.resourceWrites.length, b1ResourceWritesBefore)
+await act(async () => { trigger().props.onClick() })
+await settleUI()
+await act(async () => {
+  tree.root.findByProps({ 'data-context-manager-tab': 'profiles' }).props.onClick()
+})
+await settleUI()
+assert.equal(registeredOverlayStore.readLiveSnapshot()?.open, true)
+assert.equal(registeredOverlayStore.readLiveSnapshot()?.pane, 'profiles')
+assert.equal(remoteFixture.writes.length, 0)
+
 // Create with one explicit, basis-bearing Host write.
 await act(async () => {
   tree.root.findByProps({ 'data-context-manager-new-profile': '' }).props.onClick()
