@@ -267,5 +267,24 @@ test('M8B B0 H12: Host local repair does not make invalid Profiles writable in o
   )
   assert.equal(manager.snapshot().persistence.revision, before)
   assert.equal(manager.getStoredProfile('scalar-skills').skills, 'opaque')
+
+  // An actual own scalar binding must STILL fail. The inherited Object.prototype
+  // function collision addressed by H10 is not permission to overwrite malformed
+  // Stored entries. JSON.parse guarantees that "constructor"/"toString" are OWN.
+  const ownScalars = JSON.parse('{"constructor": "opaque", "toString": 42, "docker": false}')
+  await manager.setRawProfile('own-scalar-binding', {
+    name: 'Own malformed bindings', basePreset: 'standard',
+    skills: ownScalars, prompts: {}, future: { keep: true },
+  }, manager.snapshot().persistence.revision)
+  for (const name of ['constructor', 'toString', 'docker']) {
+    const old = manager.snapshot().persistence.revision
+    const beforeStored = structuredClone(manager.getStoredProfile('own-scalar-binding'))
+    await assert.rejects(
+      manager.setSkillMode('own-scalar-binding', name, 'manual', old),
+      error => error instanceof ContextManagerError && error.code === 'profile-path-not-editable',
+    )
+    assert.equal(manager.snapshot().persistence.revision, old)
+    assert.deepEqual(manager.getStoredProfile('own-scalar-binding'), beforeStored)
+  }
   proof('H12')
 })
