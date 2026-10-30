@@ -1,6 +1,6 @@
 # M8B — Profile Skill Policy Editor (Capability & Implementation Contract)
 
-**Status:** B0 capability preflight completed at source-contract level; this is the **design-only Draft**. No M8B production code, executable RED, published-host proof or M8B GREEN qualification has been claimed.
+**Status:** **B0 executable tests implemented; published five-version Host RED, four-version Client GREEN; qualification blocked** (see §12). M8B production code remains unchanged and the PR stays Draft. The genuine inherited Skill-name collision is not waived, and no B0 nine-lane PASS, M8B editor GREEN, Ready Full or merge has been claimed.
 **Baseline:** merged M8A2 PR #41, main commit `5a21df1b5f27fbcc22cdb389de3c1d765b96a95d`; independent main Full [#41009808239](https://github.com/WwlWss/dsh-context-manager/actions/runs/41009808239), 86/86 SUCCESS, 0 failed/skipped.
 **Branch:** `feat/m8b-skill-policy-editor`. This branch is separate from qualified main. Keep PR Draft until B0 preflight + RED + GREEN + independent strict review closeout.
 **Purpose:** edit explicit Profile-local Skill policy configuration with the existing Profile Settings authority; explain known native/Agent effectiveness separately, never infer an Agent's behavior from a reusable Profile record alone.
@@ -173,9 +173,10 @@ This section specifies **what to implement next**; none of its proposed tests, t
 | Artifact | Purpose | Retention |
 |---|---|---|
 | `tests/m8b-published-host-preflight.test.mjs` | Real `Context` + published `SettingsProvider` + `ContextManagerService` + `ContextManagerChangeTracker` + `ContextManagerRemoteService`, exact leaf mode/set/delete behavior, Settings CAS, path matrix, malformed diagnostics | **Permanent**, automatically included by existing `node --test ./tests/*.test.mjs` |
-| `tests/m8b-published-gateway-preflight.test.mjs` | Actual `TypertRegistry` + `TypertGatewayService` + generated `TYPERT` + real Profile Host, and explicit fake Skill/Pinned read-only ports solely for poisoned projection/strict schema safety | **Permanent**, glob-included |
+| `tests/m8b-published-gateway-preflight.mjs` | Actual `TypertRegistry` + `TypertGatewayService` + generated `TYPERT` + real Profile Host, and explicit fake Skill/Pinned read-only ports solely for poisoned projection/strict schema safety | **Permanent**; run explicitly in published matrix (Gateway is an optional published package absent from the pinned ordinary Draft Quick install) |
 | `tests/m8b-client-contract-preflight.ts` | Typed, compile-only proof of frozen Profile `setSkillMode` / `removeSkillBinding` facade, explicit Profile Basis, lazy Agent read model interfaces, with existing `tests/client-upstream-contract.ts` and generated Remote declarations | **Permanent**, invoked under 4-generation strict TypeScript preflight; does not claim new UI |
 | `scripts/verify-m8b-b0-evidence.mjs` | Parse structured per-version results and fail closed on missing, duplicate, wrong HEAD, skipped or non-PASS H/R/C proof; never print secrets | **Permanent** evidence verifier, not a replacement for official Full |
+| `tests/m8b-b0-evidence.test.mjs` | Standalone synthetic manifest tests: exactly nine good inputs accepted; missing/duplicate/wrong-Head/partial/skipped rejected | **Permanent**; automatically included by ordinary Node test glob |
 | `.github/workflows/m8b-b0-published-preflight.yml` | **Temporary Draft-only** published package test matrix and evidence collection; independent from unchanged official 86-job CI | Delete **after** immutable GREEN links and machine-readable manifest hashes are archived in `docs/m8b-plan.md` |
 | `docs/m8b-plan.md` | This implementation contract, subsequent actual cases/versions/CI links, B0 decision & remaining capability gaps | **Permanent** |
 
@@ -257,3 +258,43 @@ B0's pass does **not** qualify M8B Skill editor buttons, submission state, or it
 - **Misleading claim:** distinguish real Settings-backed H result, real Gateway R result, real published Client C result and existing M5 native-runtime N results in every PR note. Do not call Draft Quick or nine-lane B0 an 86-job Ready Full.
 
 **Proposed checkpoint:** after implementing the H/R/C tests but before temporary-workflow launch, perform a small contract-only review of the test fixture, exact published package overlay and evidence schema. Only then run the published B0 preflight and decide whether B1 RED may begin.
+
+
+## 12. B0 executable implementation and reproducible first RED (2026-10-30)
+
+### 12.1 Added code, provenance and qualification honesty
+
+- **H:** `tests/m8b-published-host-preflight.test.mjs` implements H01–H13 using a real published `SettingsProvider` (not FakeProfiles), real Host `ContextManagerService` and Remote, with explicit exact Stored fields, revision/instance Basis and path cases.
+- **R:** `tests/m8b-published-gateway-preflight.mjs` implements R01–R06 through real generated strict `TYPERT`/`TYPERT_REMOTE`, `TypertRegistry` and `TypertGatewayService`, backed by the **real** Profile Host. Only the two **read-only runtime Inspector ports** are synthetic poisoned fixtures, so they prove privacy projection and wire honesty, not native runtime SkillRegistry operations. It is deliberately excluded from ordinary `*.test.mjs` auto-discovery because optional Gateway packages are absent in the oldest pinned Draft Quick installation; published CI installs them explicitly and runs this file via `node --test`.
+- **C:** `tests/m8b-client-contract-preflight.ts` and the existing real `client-renderer-bridge-runtime.mjs` and `client-profile-drawer-runtime.mjs` prove current mutation interface, captured original Profile Basis, lazy Agent read model, published Slot/React and legacy UI compatibility. No Skill editor UI exists yet.
+- **Evidence:** `scripts/verify-m8b-b0-evidence.mjs` emits one actual-package-version/Head/ID manifest per successful lane, and refuses missing, duplicate, stale-HEAD, failed/skipped or partial proof. `tests/m8b-b0-evidence.test.mjs` exercises positive and negative synthetic manifest validation; synthetic evidence unit tests are not a substitute for live published matrix evidence.
+- **Temporary workflow:** `.github/workflows/m8b-b0-published-preflight.yml` runs the one oldest-built artifact producer, five Host/Remote and four Client/Renderer versions, and a final `if:always()` aggregator. The unchanged official `.github/workflows/ci.yml` remains separate. The workflow must remain until a genuine B0 GREEN is archived, then be removed under exact-head Draft qualification.
+
+### 12.2 Actual first published matrix and observed RED
+
+**Published B0 run:** [`#41066479868`](https://github.com/WwlWss/dsh-context-manager/actions/runs/41066479868), source HEAD `1730759a7193d03efff57675bab3cb12e530091f`.
+
+| Evidence | Actual result | Interpretation |
+|---|---|---|
+| Oldest-built producer | **SUCCESS** | One pinned package artifact built |
+| Four Client lanes (0.1.2-rc.1, 0.1.5-rc.1, 0.1.5-rc.2, 0.1.6-alpha.2) | **4/4 SUCCESS** | Real published strict TS / Slot / M7C+M8A1+M8A2 Renderer C01–C03 |
+| Five Host/Remote lanes | **5/5 FAILED** on H10 | R01–R06 all passed via actual Gateway in **every** generation. Host H01–H09 and H12–H13 assertions passed or were separately logged; H10 failed on inherited JS object keys and blocked per-lane H manifest issuance |
+| Final nine-lane B0 aggregator | **FAILED** | Correct fail-closed behavior: missing 5 H manifests and upstream Host results not all success. Do not count 4/9 as GREEN |
+
+Real per-version log: `M8B_B0_PATH_RESULTS` has `constructor`, `toString` and `valueOf` rejected with `profile-path-not-editable`, while `prototype`, `'  exact  '`, Unicode/tab, `' '` and `''` were accepted; `__proto__` correctly rejected as `unsafe-path-key`. This is a **reproducible product defect**, not an upstream package absence, flaky test, or unsupported identity policy. H10 deliberately refuses success until every legally safe key behaves correctly. A subsequent test-only commit moves H11's independent unsafe Profile guard assertion before the expected H10 RED so its proof is not lost.
+
+**Identified root source:** `src/service/context-manager.ts` around line 280:
+`const binding = skills?.[skillName]`.
+For a normal JSON-shaped `skills` object without an own `constructor`/`toString`/`valueOf` binding, JS prototype lookup yields a Function inherited from `Object.prototype`. The subsequent `binding !== undefined && !isPlainObject(binding)` incorrectly treats this inherited Function as a malformed *Stored* Skill Binding and refuses the write. This contradicts the existing Settings path policy, which disallows `__proto__` specifically while allowing other literal names; `removeSkillBinding` already uses `Object.hasOwn` correctly.
+
+**Original intent:** prohibit replacement of malformed **own** Stored bindings with scalar or non-object values and preserve unknown siblings. The code conflated inherited prototype members with own Stored entries. Retaining that structural safety is essential.
+
+**Minimal repair candidate (NOT implemented during B0 test implementation):**
+
+`const binding = skills !== undefined && Object.hasOwn(skills, skillName) ? skills[skillName] : undefined`
+
+Require a separately scoped focused RED→GREEN code review before applying it: re-check scalar own-binding rejection, legitimate special keys, untouched non-mode Stored siblings, `__proto__` refusal, valid Profile CAS, concurrent writers, and all five published Host generations. The Host implementation is still **unchanged** in this B0 test-implementation iteration.
+
+### 12.3 Remaining B0 gate before B1
+
+The B0 result currently is **RED / blocked**. The next engineering decision is to isolate the one-line Host inherited-key defect into a minimal reviewed fix with its own RED/GREEN, rather than weakening H10 or arbitrarily forbidding `constructor`/`toString`/`valueOf` in the UI. Then rerun all nine lanes on an exact new PR Head, archive a **real** B0 nine-lane aggregator PASS, remove the temporary workflow, and confirm exact final Draft Quick. Until then, **do not begin B1 Skill UI RED**, promote PR #42 to Ready or claim any new 86-job Full.
