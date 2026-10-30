@@ -1476,6 +1476,52 @@ await act(async () => { buttonByLabel(tree, 'Delete profile').props.onClick() })
 assert.equal(registeredOverlayStore.readLiveSnapshot()?.draft?.kind, 'confirm-delete')
 await act(async () => { buttonByLabel(tree, 'Cancel').props.onClick() })
 
+// M8B B1-2b independent REAL published Renderer behavioral RED:
+// A Save handler captured during a previous Drawer open session must not
+// authorize a write after Close -> Reopen, even when the same Profile draft
+// and original Settings Basis are deliberately retained. A new visible
+// handler from the reopened session may still commit the preserved draft.
+// This intentionally exercises existing M7C UI, before Skill UI exists.
+await act(async () => { buttonByLabel(tree, 'Edit', 0).props.onClick() })
+assert.equal(registeredOverlayStore.readLiveSnapshot()?.draft?.kind, 'edit-field')
+await act(async () => {
+  tree.root.findByProps({ id: 'cm-edit-name' }).props.onChange({
+    currentTarget: { value: 'Fresh reopened edit' },
+  })
+})
+const b12bOldSessionSave = tree.root.findAllByType('form')[0].props.onSubmit
+const b12bOriginalToken = registeredOverlayStore.readLiveSnapshot()?.draft?.token
+const b12bOriginalBasis = registeredOverlayStore.readLiveSnapshot()?.draft?.basis
+const b12bWritesBefore = remoteFixture.writes.length
+await act(async () => { trigger().props.onClick() })
+assert.equal(registeredOverlayStore.readLiveSnapshot()?.open, false)
+assert.equal(registeredOverlayStore.readLiveSnapshot()?.draft?.token, b12bOriginalToken,
+  'B1-2b control: Close preserves the active Profile draft')
+await act(async () => { trigger().props.onClick() })
+await settleUI()
+assert.equal(registeredOverlayStore.readLiveSnapshot()?.open, true)
+assert.equal(registeredOverlayStore.readLiveSnapshot()?.draft?.token, b12bOriginalToken)
+assert.deepEqual(registeredOverlayStore.readLiveSnapshot()?.draft?.basis, b12bOriginalBasis,
+  'B1-2b control: Reopen does not recapture Settings revision')
+await act(async () => {
+  b12bOldSessionSave({ preventDefault() {} })
+  for (let i = 0; i < 20; i += 1) await Promise.resolve()
+})
+assert.equal(remoteFixture.writes.length, b12bWritesBefore,
+  'B1-2b RED: pre-Close Save callback must not write through reopened session')
+assert.equal(registeredOverlayStore.readLiveSnapshot()?.draft?.token, b12bOriginalToken,
+  'B1-2b RED: obsolete Save cannot consume the preserved draft')
+// Positive continuation is executed once a later GREEN blocks the stale Save:
+await act(async () => {
+  tree.root.findAllByType('form')[0].props.onSubmit({ preventDefault() {} })
+  for (let i = 0; i < 20; i += 1) await Promise.resolve()
+})
+await settleUI()
+assert.equal(remoteFixture.writes.length, b12bWritesBefore + 1,
+  'B1-2b control: a freshly rendered reopened Save may commit once')
+assert.equal(remoteFixture.writes.at(-1)?.kind, 'name')
+assert.equal(registeredOverlayStore.readLiveSnapshot()?.draft, null)
+
 remoteFixture.setReadOnly(true)
 const overlayFace = injectedBusiness?.()
 assert.ok(overlayFace)
