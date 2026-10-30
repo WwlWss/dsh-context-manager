@@ -42,12 +42,14 @@ function newStore(selected: string | null = 'main'): Store {
   return store
 }
 
-function requireSkillDraft(store: Store, kind: SkillDraft['kind']): SkillDraft {
+function requireSkillDraft<K extends SkillDraft['kind']>(
+  store: Store, kind: K,
+): Extract<SkillDraft, { kind: K }> {
   const current = store.getSnapshot().draft
   assert.ok(current !== null, 'real Store must contain an active Skill draft')
-  assert.equal(current.kind, kind)
+  assert.equal(current.kind, kind, 'the actual Store draft must match the tested Skill action')
   assert.ok(isSkillDraft(current), 'active draft must be recognized as a Skill draft')
-  return current
+  return current as Extract<SkillDraft, { kind: K }>
 }
 
 function fixtureCreate(
@@ -138,13 +140,12 @@ for (const mode of MODES) {
     assert.equal(draft.token, 1)
     assert.deepEqual(draft.basis, BASIS)
     assert.equal(draft.kind, 'skill-mode-create')
-    if (draft.kind !== 'skill-mode-create') return
     assert.equal(draft.skillName, '')
     assert.equal(draft.mode, 'auto')
     assert.equal(Object.isFrozen(draft.observedSkillNames), true)
     store.actions.updateSkillMode(draft.token, mode)
     const updated = requireSkillDraft(store, 'skill-mode-create')
-    if (updated.kind === 'skill-mode-create') assert.equal(updated.mode, mode)
+    assert.equal(updated.mode, mode)
     assert.equal(store.getSnapshot().resourceDraft, null)
   })
 }
@@ -177,14 +178,20 @@ test('B1-S03 RED: Configure refuses existing exact own key, not empty or Unicode
   assert.equal(validateSkillCreate({ ...fixtureCreate('safe'), profileId: '__proto__' }), 'unsafe-id')
   const store = newStore()
   const observed = ['present']
+  const mutableBasis = { instanceId: BASIS.instanceId, revision: BASIS.revision }
   store.actions.beginSkillModeCreate({
-    profileId: 'main', basis: BASIS, observedSkillNames: observed,
+    profileId: 'main', basis: mutableBasis, observedSkillNames: observed,
   })
   const current = requireSkillDraft(store, 'skill-mode-create')
-  if (current.kind !== 'skill-mode-create') return
+  // Mutate the CALLER'S inputs, not the frozen fixture BASIS.
+  mutableBasis.instanceId = 'mutated-after-begin'
+  mutableBasis.revision = 99
   observed.push('later')
+  assert.deepEqual(current.basis, BASIS, 'captured Basis must be independent of caller object')
+  assert.notStrictEqual(current.basis, mutableBasis, 'captured Basis must be copied, not aliased')
   assert.deepEqual(current.observedSkillNames, ['present'],
     'original rendered Skill keys are immutable Begin evidence')
+  assert.notStrictEqual(current.observedSkillNames, observed)
   assert.equal(Object.isFrozen(current.basis), true)
   assert.equal(Object.isFrozen(current.observedSkillNames), true)
 })
@@ -197,7 +204,6 @@ test('B1-S04 RED: mode Edit keeps original identity and only changes one leaf', 
   const first = requireSkillDraft(store, 'skill-mode-edit')
   store.actions.updateSkillMode(first.token, 'pinned')
   const updated = requireSkillDraft(store, 'skill-mode-edit')
-  if (updated.kind !== 'skill-mode-edit') return
   assert.equal(updated.skillName, 'present')
   assert.equal(updated.originalMode, 'manual')
   assert.equal(updated.mode, 'pinned')
@@ -277,16 +283,13 @@ test('B1-S06 RED: old Token Input/Cancel/Discard cannot mutate a newer Skill dra
   store.actions.cancelDraft(first.token)
   store.actions.discardBlockedDraft(first.token)
   const unchanged = requireSkillDraft(store, 'skill-mode-create')
-  if (unchanged.kind !== 'skill-mode-create') return
   assert.equal(unchanged.skillName, '')
   assert.equal(unchanged.mode, 'auto')
   store.actions.updateSkillCreateName(second.token, 'same-token')
   store.actions.updateSkillMode(second.token, 'off')
   const current = requireSkillDraft(store, 'skill-mode-create')
-  if (current.kind === 'skill-mode-create') {
-    assert.equal(current.skillName, 'same-token')
-    assert.equal(current.mode, 'off')
-  }
+  assert.equal(current.skillName, 'same-token')
+  assert.equal(current.mode, 'off')
 })
 
 test('B1-S07 RED: synchronous same-frame submit claim forbids double dispatch or Cancel', () => {
@@ -515,4 +518,96 @@ test('B1-T04 RED: unseen external Settings writer causes one original-basis CAS 
     kind: 'set', basis: BASIS, profileId: 'main', skillName: 'present', mode: 'off',
   }], 'one attempted RPC, original Settings Basis and no hidden retry')
   assert.equal(blockForSkillResult(reply), 'conflict')
+})
+
+test('B1-S02 independent RED: recognize all three Skill draft kinds, not legacy Profile kinds', () => {
+  for (const draft of [fixtureCreate('', 'auto'), fixtureEdit('off'), fixtureDelete()]) {
+    assert.equal(isSkillDraft(draft), true, draft.kind)
+  }
+  assert.equal(isSkillDraft(null), false)
+  assert.equal(isSkillDraft({
+    kind: 'confirm-delete', token: 7, basis: BASIS, profileId: 'main',
+  }), false)
+})
+
+test('B1-S02 independent RED: inherited Skill keys never masquerade as own stored bindings', () => {
+  const inherited = Object.create(null) as Record<string, ContextManagerRemoteSkillBinding>
+  Object.defineProperty(inherited, 'constructor', {
+    enumerable: true, value: { mode: 'manual' }, configurable: true,
+  })
+  const skills = Object.create(inherited) as Record<string, ContextManagerRemoteSkillBinding>
+  Object.defineProperty(skills, 'toString', {
+    enumerable: true, value: { mode: 'off' }, configurable: true,
+  })
+  Object.defineProperty(skills, '__proto__', {
+    enumerable: true, value: { mode: 'pinned' }, configurable: true,
+  })
+  const profile: ContextManagerRemoteProfile = {
+    name: 'Exact', basePreset: 'native', skills, prompts: {},
+  }
+  assert.deepEqual(sortedSkillBindings(profile).map(([name]) => name),
+    ['__proto__', 'toString'])
+  assert.equal(isWritableSkillPath('main', '__proto__'), false,
+    'historical unsafe own key is viewable but never editable')
+  assert.equal(isWritableSkillPath('main', 'constructor'), true)
+})
+
+test('B1-S03 independent RED: observed duplicate cannot silently become explicit Auto', () => {
+  const duplicate = fixtureCreate('present', 'auto')
+  assert.equal(validateSkillCreate(duplicate), 'exists')
+  const { calls, api } = spyProfileMutations()
+  assert.equal(commitSkillDraft(duplicate, api), undefined,
+    'invalid duplicate must not call existing setSkillMode')
+  assert.equal(calls.length, 0)
+})
+
+test('B1-S04 independent RED: mode mutation keeps exact original Basis and name', async () => {
+  const { calls, api } = spyProfileMutations()
+  const draft = fixtureEdit('pinned')
+  assert.equal(skillModeEditChanged(draft), true)
+  const outcome = commitSkillDraft(draft, api)
+  assert.ok(outcome)
+  await outcome
+  assert.deepEqual(calls, [
+    { kind: 'set', basis: BASIS, profileId: 'main', skillName: 'present', mode: 'pinned' },
+  ])
+  assert.strictEqual(calls[0]?.basis, BASIS,
+    'helper must not silently recapture a fresh Settings revision')
+})
+
+test('B1-S05 positive control: a real Resource draft excludes Skill Begin and preserves pane', () => {
+  const store = newStore()
+  store.actions.selectPane('resources')
+  store.actions.beginResourceCreate({ resourceAuthorityId: 'independent-resource-source' })
+  const resource = store.getSnapshot().resourceDraft
+  assert.ok(resource !== null)
+  const beforeToken = store.getSnapshot().nextDraftToken
+  store.actions.beginSkillModeCreate({
+    profileId: 'main', basis: BASIS, observedSkillNames: [],
+  })
+  assert.strictEqual(store.getSnapshot().resourceDraft, resource)
+  assert.equal(store.getSnapshot().draft, null)
+  assert.equal(store.getSnapshot().nextDraftToken, beforeToken)
+  assert.equal(store.getSnapshot().pane, 'resources')
+})
+
+test('B1-T01 independent RED: missing Skill/invalid mode/unsafe path are not outcome Unknown', () => {
+  const missing: ContextManagerClientProfileMutationResult = {
+    status: 'rejected', refresh: 'fresh',
+    error: { kind: 'business', code: 'skill-binding-not-found', message: 'own Skill key missing' },
+  }
+  const invalid: ContextManagerClientProfileMutationResult = {
+    status: 'rejected', refresh: 'not-requested',
+    error: { kind: 'business', code: 'invalid-skill-mode', message: 'unsupported mode' },
+  }
+  const unsafe: ContextManagerClientProfileMutationResult = {
+    status: 'rejected', refresh: 'not-requested',
+    error: { kind: 'business', code: 'unsafe-path-key', message: 'unsafe Settings segment' },
+  }
+  assert.equal(blockForSkillResult(missing), 'stale')
+  assert.equal(noticeForSkillResult(missing)?.detail, 'own Skill key missing')
+  assert.equal(blockForSkillResult(invalid), undefined)
+  assert.equal(noticeForSkillResult(invalid)?.code, 'noticeInvalidInput')
+  assert.equal(blockForSkillResult(unsafe), undefined)
+  assert.equal(noticeForSkillResult(unsafe)?.detail, 'unsafe Settings segment')
 })
