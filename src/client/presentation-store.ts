@@ -14,6 +14,8 @@ import type {
 
 export interface ContextManagerPresentationState {
   open: boolean
+  /** Monotonic UI-only session, not a Profile/Resource Host authority or CAS. */
+  openSessionEpoch: number
   pane: 'profiles' | 'resources'
   selectedProfileId: string | null
   selectedResourceId: string | null
@@ -78,6 +80,18 @@ function notifyOccupiedResourceDraft(state: ContextManagerPresentationState): vo
 /** Never use the previous render's draft flag to authorize a Host RPC. Both
  * selectors read from the existing root DSH Store instance, not a shadow
  * state machine. React rerenders may lag one synchronous Store action. */
+/** A retained React handler must belong to this exact Drawer opening. Closing
+ * preserves an active draft, but Close -> Reopen revokes pre-Close handlers.
+ * Use together with the existing object-identity/token/Host CAS fences. */
+export function isLiveDrawerOpenSession(
+  current: ContextManagerPresentationState | undefined,
+  renderedOpenSessionEpoch: number,
+): boolean {
+  return current !== undefined
+    && current.open
+    && current.openSessionEpoch === renderedOpenSessionEpoch
+}
+
 export function mayDispatchImmediateProfileWrite(
   current: ContextManagerPresentationState | undefined,
   selectedProfileId: string | null,
@@ -121,6 +135,7 @@ export function createContextManagerPresentationStore() {
   const handle = defineStore({
     init: (): ContextManagerPresentationState => ({
       open: false,
+      openSessionEpoch: 0,
       pane: 'profiles',
       selectedProfileId: null,
       selectedResourceId: null,
@@ -133,13 +148,17 @@ export function createContextManagerPresentationStore() {
     }),
     actions: {
       open(state) {
-        state.open = true
+        if (!state.open) {
+          state.openSessionEpoch += 1
+          state.open = true
+        }
       },
       close(state) {
         // Closing does not silently discard a pending draft.
         state.open = false
       },
       toggle(state) {
+        if (!state.open) state.openSessionEpoch += 1
         state.open = !state.open
       },
       selectPane(state, pane: 'profiles' | 'resources') {

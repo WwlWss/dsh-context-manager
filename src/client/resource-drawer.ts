@@ -12,7 +12,7 @@ import {
   resourceEditChanges,
   validateResourceCreateDraft,
 } from './resource-editor.js'
-import { ownsLiveResourceDraft, readLivePresentationForActions, terminalResourceNotice } from './presentation-store.js'
+import { isLiveDrawerOpenSession, ownsLiveResourceDraft, readLivePresentationForActions, terminalResourceNotice } from './presentation-store.js'
 import styles from './plugin.module.css'
 
 function button(
@@ -51,6 +51,7 @@ export function ContextManagerResourceDrawerContent(props: ContextManagerDrawerP
   const { useStore, actions, t } = props
   const snapshot = props.useContextManager(s => s)
   const operation = props.useResourceMutation(s => s.resource)
+  const renderedOpenSessionEpoch = useStore(s => s.openSessionEpoch)
   const requestedId = useStore(s => s.selectedResourceId)
   const draft = useStore(s => s.resourceDraft)
   const profileDraft = useStore(s => s.draft)
@@ -132,11 +133,15 @@ export function ContextManagerResourceDrawerContent(props: ContextManagerDrawerP
   const unavailable = () => {
     actions.setResourceNotice({ code: 'resourceNoticeUnavailable', kind: 'warning' })
   }
+  const ownsRenderSession = () => isLiveDrawerOpenSession(
+    readLivePresentationForActions(actions), renderedOpenSessionEpoch,
+  )
   const staleBegin = () => {
     actions.setResourceNotice({ code: 'resourceNoticeStale', kind: 'warning' })
   }
 
   const startCreate = () => {
+    if (!ownsRenderSession()) return
     if (!canStart) return unavailable()
     const basis = props.capturePromptResourceCreateBasis()
     if (!basis) return unavailable()
@@ -145,6 +150,7 @@ export function ContextManagerResourceDrawerContent(props: ContextManagerDrawerP
   }
 
   const startEdit = () => {
+    if (!ownsRenderSession()) return
     const selected = view.selected
     const document = view.document
     if (!canStart || !view.canEditSelected || selected?.status !== 'usable' || !document) {
@@ -157,6 +163,7 @@ export function ContextManagerResourceDrawerContent(props: ContextManagerDrawerP
   }
 
   const startDelete = () => {
+    if (!ownsRenderSession()) return
     const selected = view.selected
     if (!canStart || selected?.status !== 'usable') return unavailable()
     const stamp = props.capturePromptResourceReadStamp(selected.id, 'list')
@@ -186,8 +193,10 @@ export function ContextManagerResourceDrawerContent(props: ContextManagerDrawerP
   }
 
   const commit = async () => {
+    const live = readLivePresentationForActions(actions)
     if (!canSubmit || draft === null || committing.current !== null
-      || !ownsLiveResourceDraft(readLivePresentationForActions(actions), draft)) return
+      || !isLiveDrawerOpenSession(live, renderedOpenSessionEpoch)
+      || !ownsLiveResourceDraft(live, draft)) return
     if (draft.kind === 'create') {
       const validation = validateResourceCreateDraft(draft, new Set(view.rows.map(row => row.id)))
       if (validation !== 'valid') {

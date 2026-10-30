@@ -20,7 +20,7 @@ import {
   sortedPromptBindings,
   validatePromptBindingCreate,
 } from './prompt-binding-editor.js'
-import { ownsLiveProfileDraft, readLivePresentationForActions } from './presentation-store.js'
+import { isLiveDrawerOpenSession, ownsLiveProfileDraft, readLivePresentationForActions } from './presentation-store.js'
 import styles from './plugin.module.css'
 
 interface PromptBindingSectionProps extends ContextManagerDrawerProps {
@@ -84,6 +84,7 @@ export function ContextManagerPromptBindingSection(props: PromptBindingSectionPr
   const { profileId, profile, t, actions, writable } = props
   const snapshot = props.useContextManager(s => s)
   const operation = props.useProfileMutation(s => s.profile)
+  const renderedOpenSessionEpoch = props.useStore(s => s.openSessionEpoch)
   const draft = props.useStore(s => s.draft)
   const resourceDraft = props.useStore(s => s.resourceDraft)
   const running = operation.status === 'running'
@@ -106,6 +107,8 @@ export function ContextManagerPromptBindingSection(props: PromptBindingSectionPr
   const unavailable = () =>
     actions.setNotice({ code: 'noticeUnavailable', kind: 'warning' })
   const begin = (bindingId?: string, renderedBinding?: ContextManagerRemotePromptBinding) => {
+    if (!isLiveDrawerOpenSession(readLivePresentationForActions(actions),
+      renderedOpenSessionEpoch)) return undefined
     if (!isWritablePromptBindingPath(profileId, bindingId)) {
       actions.setNotice({ code: 'noticeNotEditable', kind: 'warning' })
       return undefined
@@ -170,8 +173,10 @@ export function ContextManagerPromptBindingSection(props: PromptBindingSectionPr
 
   const commit = async () => {
     const original = active
+    const live = readLivePresentationForActions(actions)
     if (!canSubmit || original === null || committing.current !== null
-      || !ownsLiveProfileDraft(readLivePresentationForActions(actions), original)) return
+      || !isLiveDrawerOpenSession(live, renderedOpenSessionEpoch)
+      || !ownsLiveProfileDraft(live, original)) return
     if (!isWritablePromptBindingPath(original.profileId, original.bindingId)) {
       actions.blockDraft(original.token, 'stale', {
         code: 'noticeNotEditable', kind: 'warning',

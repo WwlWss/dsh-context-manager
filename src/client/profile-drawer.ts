@@ -7,6 +7,7 @@ import {
 import {
   mayDispatchImmediateProfileWrite,
   ownsLiveProfileDraft,
+  isLiveDrawerOpenSession,
   readLivePresentationForActions,
   terminalProfileNotice,
   type ContextManagerPresentationStoreHandle,
@@ -87,6 +88,7 @@ export function ContextManagerProfileDrawerContent(props: ContextManagerDrawerPr
   const { useStore, actions, t } = props
   const snapshot = props.useContextManager(s => s)
   const operation = props.useProfileMutation(s => s.profile)
+  const renderedOpenSessionEpoch = useStore(s => s.openSessionEpoch)
   const requestedId = useStore(s => s.selectedProfileId)
   const draft = useStore(s => s.draft)
   const resourceDraft = useStore(s => s.resourceDraft)
@@ -125,6 +127,11 @@ export function ContextManagerProfileDrawerContent(props: ContextManagerDrawerPr
     }
   }, [])
 
+  // This value is captured by each render's callbacks, not read afresh when
+  // a pre-Close handler is invoked after a different Drawer opening.
+  const ownsRenderSession = () => isLiveDrawerOpenSession(
+    readLivePresentationForActions(actions), renderedOpenSessionEpoch,
+  )
   const notifyUnavailable = (): void => {
     actions.setNotice({ code: 'noticeUnavailable', kind: 'warning' })
   }
@@ -141,6 +148,7 @@ export function ContextManagerProfileDrawerContent(props: ContextManagerDrawerPr
     actions.setNotice({ code: 'noticeDraftStale', kind: 'warning' })
   }
   const startCreate = () => {
+    if (!ownsRenderSession()) return
     if (draft !== null) {
       actions.setNotice({ code: 'noticeDraftActive', kind: 'warning' })
       return
@@ -151,6 +159,7 @@ export function ContextManagerProfileDrawerContent(props: ContextManagerDrawerPr
     actions.beginCreate(basis)
   }
   const startEdit = (row: ProfileListRow, field: ProfileEditField, original: string | undefined) => {
+    if (!ownsRenderSession()) return
     if (row.id === '__proto__') return actions.setNotice({ code: 'noticeNotEditable', kind: 'warning' })
     if (draft !== null) {
       actions.setNotice({ code: 'noticeDraftActive', kind: 'warning' })
@@ -162,6 +171,7 @@ export function ContextManagerProfileDrawerContent(props: ContextManagerDrawerPr
     actions.beginFieldEdit({ profileId: row.id, field, original, basis })
   }
   const startDelete = (row: ProfileListRow) => {
+    if (!ownsRenderSession()) return
     if (row.id === '__proto__') return actions.setNotice({ code: 'noticeNotEditable', kind: 'warning' })
     if (draft !== null) {
       actions.setNotice({ code: 'noticeDraftActive', kind: 'warning' })
@@ -200,8 +210,10 @@ export function ContextManagerProfileDrawerContent(props: ContextManagerDrawerPr
   }
   const commitDraft = async () => {
     const original = draft
+    const live = readLivePresentationForActions(actions)
     if (!canSubmit || original === null
-      || !ownsLiveProfileDraft(readLivePresentationForActions(actions), original)) return
+      || !isLiveDrawerOpenSession(live, renderedOpenSessionEpoch)
+      || !ownsLiveProfileDraft(live, original)) return
     if (original.kind === 'create') {
       const validation = validateCreateDraft(original, new Set(view.rows.map(row => row.id)))
       if (validation !== 'valid') {
@@ -255,9 +267,9 @@ export function ContextManagerProfileDrawerContent(props: ContextManagerDrawerPr
     }
   }
   const changeDefault = async (id: string | null) => {
-    if (!canStart || !mayDispatchImmediateProfileWrite(
-      readLivePresentationForActions(actions), requestedId,
-    )) return
+    const live = readLivePresentationForActions(actions)
+    if (!canStart || !isLiveDrawerOpenSession(live, renderedOpenSessionEpoch)
+      || !mayDispatchImmediateProfileWrite(live, requestedId)) return
     const basis = captureBasis()
     if (!basis) return
     // Even an immediate default toggle carries an intent from this render.
