@@ -5,6 +5,9 @@ on:
     types: [opened, synchronize, reopened]
     paths:
       - '.github/workflows/m8b-b12b-renderer-red.yml'
+      - '.github/workflows/ci.yml'
+      - 'tests/m8b/run-skill-renderer-probes.mjs'
+      - 'tests/m8b-full-skill-gate.test.mjs'
       - 'src/client/profile-editor.ts'
       - 'docs/m8b-plan.md'
       - 'src/client/presentation-store.ts'
@@ -146,7 +149,7 @@ jobs:
         run: node ./tests/client-profile-drawer-runtime.mjs
 
   b13-skill-renderer:
-    name: F01-SR2 ${{ matrix.probe }} / real Published Renderer RED (${{ matrix.version }})
+    name: F01-SR2 full Skill Renderer regression (${{ matrix.version }})
     needs: oldest-built-client
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -154,7 +157,6 @@ jobs:
       fail-fast: false
       matrix:
         version: [0.1.2-rc.1, 0.1.6-alpha.2]
-        probe: [R01, R02, R03, R04, R05, R06V, R06H, R07, R08, R08U, R09, R10, R11P, R11B, R11R, R11T, R11TR, R12S, R12P, R12B, R12R]
     steps:
       - uses: actions/checkout@v7
         with:
@@ -198,6 +200,6 @@ jobs:
             src/client/model-types.ts src/client/mutation-types.ts src/client/remote-port.ts \
             src/client/mutation-controller.ts src/client/model.ts src/client/business-face.ts src/client/plugin.ts \
             tests/client-upstream-contract.ts tests/client-generated-remote-contract.ts
-      - name: B1-3 published React Skill interaction frontier
-        run: M8B_SKILL_PROBE=${{ matrix.probe }} node ./tests/client-profile-drawer-runtime.mjs
+      - name: Execute same complete 21-case published Skill Renderer suite as official Full
+        run: node ./tests/m8b/run-skill-renderer-probes.mjs
 
