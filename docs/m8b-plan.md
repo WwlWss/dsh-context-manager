@@ -1,6 +1,6 @@
 # M8B — Profile Skill Policy Editor (Capability & Implementation Contract)
 
-**Status:** **B0 executable Published Contract Preflight PASS on code HEAD `26a6d13c22bf04c81af0cdc6e4cd180a44ec5f86`** — five Host/Remote and four Client/Renderer generations, 107/107 assertions, fail-closed aggregation [#41072313964](https://github.com/WwlWss/dsh-context-manager/actions/runs/41072313964); exact-code Draft Quick [#41072313972](https://github.com/WwlWss/dsh-context-manager/actions/runs/41072313972) SUCCESS. The narrow existing Host inherited-binding bug was repaired with `Object.hasOwn`; RED remains archived in §12, GREEN in §13. **Draft PR #42 remains unmerged; no M8B editor/B1 tests or Ready 86-job Full are claimed.** Documentation/workflow cleanup commits after this run require an independent final Draft Quick.
+**Status:** **B0 Complete; B1-1 source-level RED contract drafted (design only).** Published nine-lane B0 [#41072313964](https://github.com/WwlWss/dsh-context-manager/actions/runs/41072313964) passed **5 Host + 4 Client lanes / 107 assertions** on exact B0 code HEAD `26a6d13c22bf04c81af0cdc6e4cd180a44ec5f86`; the cleanup HEAD `9d978283abf5eff440e47be466f5f77ff1c2a966` independently passed Draft Quick [#41073592201](https://github.com/WwlWss/dsh-context-manager/actions/runs/41073592201). RED history is archived in §12, narrow Host `Object.hasOwn` repair/GREEN in §13. **PR #42 remains Draft/unmerged. B1 executable RED, Skill editor UI, Ready 86-job Full and merge have not occurred.**
 **Baseline:** merged M8A2 PR #41, main commit `5a21df1b5f27fbcc22cdb389de3c1d765b96a95d`; independent main Full [#41009808239](https://github.com/WwlWss/dsh-context-manager/actions/runs/41009808239), 86/86 SUCCESS, 0 failed/skipped.
 **Branch:** `feat/m8b-skill-policy-editor`. This branch is separate from qualified main. Keep PR Draft until B0 preflight + RED + GREEN + independent strict review closeout.
 **Purpose:** edit explicit Profile-local Skill policy configuration with the existing Profile Settings authority; explain known native/Agent effectiveness separately, never infer an Agent's behavior from a reusable Profile record alone.
@@ -357,3 +357,203 @@ The unchanged ordinary Draft Quick completed **SUCCESS** on exactly the **same c
 **Permanent Client typecheck retention:** after the temporary published workflow was removed, test-only `tsconfig.client-model-test.json` was extended in commit `d321e8be0978b11fa800513316f62f47ef60d18e` to include `tests/m8b-client-contract-preflight.ts` in every ordinary `pnpm run typecheck:client-tests` / `pnpm check`. This preserves original Profile Basis and lazy Agent read declaration checks without changing `package.json`, generated Remote declarations, publication settings or the official CI matrix. The Gateway preflight remains intentionally explicit and archived because the oldest default installation does not contain the optional published Gateway packages. A fresh Draft Quick must be run on the **final** documentation + test-wiring cleanup HEAD, not inferred from the earlier 9-lane published GREEN.
 
 **B1 remains unimplemented.** PR #42 must remain Draft through B1 RED, later B2/B3 GREEN and independent Strict Review. No Ready/full, merge or post-merge main qualification has occurred.
+
+
+## 14. B1-1 source-level executable RED test contract (design-only; 2026-10-30 CST)
+
+**Review baseline:** PR #42 Draft `feat/m8b-skill-policy-editor` at `9d978283abf5eff440e47be466f5f77ff1c2a966`, based on unchanged merged main `5a21df1b5f27fbcc22cdb389de3c1d765b96a95d`. B0 nine-version Published Contract Preflight and the cleanup-head Draft Quick are already proven in ``12–13. **B1-1 authorizes documentation/planning only:** no production UI, new Host RPC, test-code RED, Published B1 run or Ready Full has been performed by this section.
+
+### 14.1 Exact source seams and constraints from prior qualified work
+
+| Existing source | Existing authority/behavior | B1 reuse or required new RED |
+|---|---|---|
+| `src/client/profile-editor.ts:13–75` | `DraftBase` owns `token`, captured Profile `basis`, `blocked`, `submitting`, first `terminalNotice`. `ProfileDraft` already includes M7C and M8A2 Binding kinds | Extend this **one** discriminated union with 3 Skill kinds; no Skill Store or Skill Controller |
+| `src/client/presentation-store.ts:15–122` | Published actual DSH `StoreInstance.actions` resolves one live Presentation snapshot; `ownsLiveProfileDraft` checks open, pane, original draft **object identity**, not only token | Reuse existing root Store/Token/ownership; add Skill actions and preserve revocation, never a second cache |
+| `presentation-store.ts:64–69` | `canBeginProfileDraft` / `canBeginResourceDraft` check pane and mutual draft occupancy, **but not `state.open`** | First independent B1 RED: a retained Begin callback invoked after close must create **zero** drafts, change no selection/token and dispatch zero RPC |
+| `presentation-store.ts:374–407` | Synchronous Profile submit claim, first-block-wins, same-token late Complete denial, token-scoped Cancel vs terminal Discard | Reuse, do not reimplement per-Skill terminal state |
+| `src/client/profile-view.ts:138–188` | Published snapshot / captured Profile Basis uses `instanceId + Settings revision`; original Profile reference is observed intent; invalid Profile cannot be edited | Compose existing authority check with Skill's own rendered target check; never compare Resource-only authority/cursor |
+| `src/client/prompt-binding-editor.ts:33–62` | One useful pattern for comparing rendered Profile / child object identity | Reuse principle, not a copy of Prompt Resource ID validation |
+| `src/client/prompt-binding-section.ts:100–246` | Actual hook-driven Begin fence, retained DSH live Store Save claim, one RPC, first-terminal receipts | Follow same caller order; explicitly cover same-frame double Save/Cancel, stale selection and unmounted old callbacks |
+| `src/client/mutation-types.ts:119–129` and `mutation-controller.ts:411–412` | Original Profile Basis and **exactly two existing** Skill-related RPC methods | No new RPC, Remote v4, new mutation lane or automatic retry |
+| `src/service/context-manager.ts:263–330` | `setSkillMode` writes only the mode leaf and preserves unknown Stored siblings; `removeSkillBinding` unsets whole Binding | Auto remains an explicit Stored Binding; Remove is destructive, not Auto; `__proto__` unsafe and ordinary prototype-derived keys now supported by B0 |
+| `tests/client-profile-drawer-runtime.mjs` | Actual published Renderer+Slot+Business Face+Profile Controller, with write counters, external Settings changes and dropped Host reply fixtures | Extend **this real Renderer script**, not a fake standalone UI approximation |
+
+**Critical fixture compatibility:** `ContextManagerPresentationState.open` initially equals `false`. Several historical M7C/M8A2 tests call a Begin Action on a newly `create()`d Store **without** `actions.open()` (e.g. `tests/client-profile-editor.test.ts` and `tests/client-prompt-binding-editor.test.ts`). Once the new closed-Begin gate is made GREEN, make those tests establish an explicitly open Drawer *before* legitimately Beginning a draft. Never omit the close gate merely to retain a legacy test's unrealistic precondition. Keep a separate negative test for closed Begin. Verify all nine prior Begin entrypoints and Resource pane behavior, not just Skill.
+
+### 14.2 Frozen Skill draft discriminants and immutable observed inputs
+
+Extend `ProfileDraft` in `profile-editor.ts` (shared DraftBase; not a new Store) with a named `SkillDraft` union:
+
+```ts
+type SkillDraft =
+  | (DraftBase & {
+      kind: 'skill-mode-create'
+      profileId: string
+      skillName: string                 // authorable, exact; may be ''
+      mode: ContextManagerRemoteSkillMode
+      readonly observedSkillNames: readonly string[] // frozen at Begin
+    })
+  | (DraftBase & {
+      kind: 'skill-mode-edit'
+      profileId: string
+      readonly skillName: string       // immutable identity
+      readonly originalMode: ContextManagerRemoteSkillMode
+      mode: ContextManagerRemoteSkillMode
+    })
+  | (DraftBase & {
+      kind: 'skill-binding-delete'
+      profileId: string
+      readonly skillName: string
+      readonly originalMode: ContextManagerRemoteSkillMode
+    })
+```
+
+**Intent evidence vs authority:** `basis = Object.freeze({instanceId, revision})` is captured **once at Begin**. `observedSkillNames = Object.freeze([...Object.keys(renderedProfile.skills)])` is immutable evidence of the list the user saw when opening Create, **not an authoritative cached Skill registry** and not a substitute for Host CAS; at Save, check with an exact set/`includes` against the author's entered name. A Create binding with `skillName === ''` is valid when absent, as proven in B0; an explicit Auto Create must issue one `setSkillMode` RPC even though the mode matches the native default.
+
+For Edit and Delete, capture exact `profileId`, `skillName` and `originalMode` from a rendered, usable **own** Skill Binding. A field edit may mutate only `mode`; no rename and no hidden sibling modifications. The Delete confirmation must display both identities verbatim (escaped/quoted) and warn that **all** Stored extension fields within the Binding will be deleted, even though typed Remote projection intentionally omits them.
+
+**No additional authority fields:** do not put change generation, Agent ID, Resource Authority, native SkillRegistry state, original full Profile JSON or Skill instruction bodies into these drafts. A minimal UI-visible open-session epoch may be added only after a separate stale-reopen callback RED (see `14.4); it is presentation-only, not Host authorization.
+
+### 14.3 Exact Begin fence — two different currentness proofs
+
+Proposed pure `src/client/skill-policy-editor.ts` seam:
+
+```ts
+isSkillBeginCurrent(
+  snapshot: ContextManagerClientSnapshot,
+  profileId: string,
+  renderedProfile: ContextManagerRemoteProfile,
+  basis: ContextManagerClientProfileMutationBasis | undefined,
+  target?: {
+    skillName: string
+    renderedBinding: ContextManagerRemoteSkillBinding
+  },
+): boolean
+```
+
+Check in this **fixed order**:
+
+1. Attached + compatible protocol, ready/nonstale/schema-compatible Profile surface, available/registered/writable Settings, valid matching `snapshot.instanceId === snapshot.changes.instanceId === basis.instanceId` and exact Settings revision. Reuse `isProfileBeginCurrent(snapshot,basis)` if possible.
+2. `Object.hasOwn(snapshot.profiles.data.profiles, profileId)` and `snapshot.profiles.data.profiles[profileId] === renderedProfile`. Malformed Profile diagnostic rows **never** qualify, even though a Host-level local repair method exists.
+3. For Edit/Delete only (`target !== undefined`, **not** `!!skillName`, because empty ID is valid), require `Object.hasOwn(renderedProfile.skills,target.skillName)` **and** `renderedProfile.skills[target.skillName] === target.renderedBinding` and equal original mode. For Create, no Skill name is known at Begin; capture the immutable observed Skill-key list, then reject duplicate names **before** Save with zero RPC.
+4. Check actual live Presentation Store `open===true`, `pane==='profiles'`, no Profile or Resource draft, current selected Profile intent. A null `selectedProfileId` is valid on first opening **only** if current derived default selection is exactly the rendered Profile; do not blindly require `current.selectedProfileId === profileId` because the current Drawer displays its default row while that Store field can still be null.
+5. A Resource-only `resourceAuthorityId` / resource cursor change **never** invalidates Profile Settings Basis. A Settings revision or Profile instance change invalidates the old displayed original. Same-version rehydration should be retested against the actual observed/rendered Profile object; do not either accept a mismatched original or reject all valid refreshed renders by comparing unrelated global generations.
+
+**Important:** a stale old tab callback may retain an otherwise *still-valid* Settings snapshot while the user switches selected Profile locally. That callback must **not** silently reselect the old Profile and start a Skill draft. The live selected-Profile check is independent of the Settings revision fence. Test it separately.
+
+### 14.4 Presentation actions, live ownership and closed-Drawer lifecycle
+
+Proposed action surface (exact names to freeze for B1 RED; implementation remains pending):
+
+| Action | Inputs | Allowed effects |
+|---|---|---|
+| `beginSkillModeCreate` | `{profileId,basis,observedSkillNames}` | One new Profile Token, frozen Basis/name snapshot, default mode Auto, exact empty initial editable name |
+| `updateSkillCreateName` | `(token,string)` | Only same-token Create; no trim/normalization; never mutate original observed list |
+| `beginSkillModeEdit` | `{profileId,skillName,originalMode,basis}` | One new Profile Token, originalMode and skillName fixed |
+| `updateSkillMode` | `(token,ContextManagerRemoteSkillMode)` | Only same-token Create/Edit; allow only four known modes; reject while blocked/submitting |
+| `beginSkillBindingDelete` | `{profileId,skillName,originalMode,basis}` | One new Profile Token; no deletion or Host RPC at Begin |
+| `setSkillDraftNotice` | `(token,ProfileNotice)` | Nonterminal notice only for the current unblocked, unsubmitting Skill draft; no old result may overwrite another token |
+
+Do **not** add Skill-specific `cancelSkillDraft`, `completeSkillDraft`, `blockSkillDraft` or another `running` state: existing Profile `cancelDraft`, `discardBlockedDraft`, `beginProfileSubmission`, `finishProfileSubmission`, `blockDraft` and `completeDraft` already express these token-owned operations. The existing first-terminal-notice priority stays shared for all M7C/M8A2/M8B Profile kinds; Resource remains independent in Host authority and presenter pane.
+
+**Closed Begin RED:** with `open=false`, invoke all existing M7C Begin actions, all M8A2 Binding Begin actions, all three Resource Begin actions on their respective panes, and proposed Skill Begin actions. Verify no draft, no new token, no selection change and no Host RPC. The minimum GREEN should adjust both shared `canBeginProfileDraft` and `canBeginResourceDraft`, plus silent/no-terminal-clobber handling of rejected closed Begin; do not change ordinary `close()` or `toggle()` semantics. If an active draft existed before Close, it must survive Close and be available after an explicit Reopen, including its original Basis and terminal receipt.
+
+**Old Save closure after Close→Reopen:** existing root `StoreInstance.actions` is retained across ordinary Drawer toggles, so `ownsLiveProfileDraft(current,original)` alone does not necessarily invalidate an obsolete event callback captured **before** a Close/Reopen when the *same* draft is still present. B1 RED must prove whether this exact case sends an unauthorized RPC. If reproduced, the narrowly scoped option is a monotonic **presentation-only Drawer open-session epoch**, advanced on each transition to a newly opened session. Capture it in the *rendered* callback and compare with the actual live root Store epoch at Begin/Save. New callback from reopened, still-visible draft may continue the same intended operation; older callbacks may not. Keep token and original Settings Basis unchanged. Do **not** use Host change generation or resource authority as a UI lifecycle epoch, and do not introduce a new Store instance merely to fix stale closures.
+
+**Baseline test migrations:** first count historical tests that begin on a closed Store and add `actions.open()` only where the scenario actually intends an open Drawer. Preserve separate assertions that a Resource Begin while Profile pane is active fails and vice versa. Tests for explicit Close retaining a current draft must still PASS; make a second Close-before-Begin RED to prove the difference.
+
+### 14.5 Save dispatch, validation and terminal-result classification
+
+Pure `skill-policy-editor.ts` helper candidates:
+
+- `sortedSkillBindings(profile)`: sort own `Object.entries(profile.skills)` by exact UTF-16 code-unit comparator `a < b ? -1 : a > b ? 1 : 0`, **never** localeCompare or trimming.
+- `isWritableSkillPath(profileId,skillName?)`: refuse exactly `'__proto__'` at any Settings **path** position; `constructor`, `toString`, `valueOf`, `prototype`, empty, whitespace and Unicode are lawful, per B0 H10. Names are path keys; native catalog membership is *not* a creation prerequisite.
+- `validateSkillCreate(draft)`: refuse unsafe Profile/Skill names and an **exact existing own** Skill name in frozen `observedSkillNames`. Empty string means a real Skill key, not “missing user input.” Reject a `Create` that would overwrite a currently configured Skill mode.
+- `skillModeEditChanged(draft)`: return false for unchanged originalMode, including Auto→Auto; no RPC on no-op.
+- `commitSkillDraft(draft,profileMutations)`: yield exactly one `Promise<ContextManagerClientProfileMutationResult>` or `undefined` for invalid/no-op; `skill-mode-create/edit` -> `setSkillMode(originalBasis, profileId, skillName, mode)`; `skill-binding-delete` -> `removeSkillBinding(originalBasis, profileId, skillName)`. The pure helper itself is never a bypass for the UI/Store gate.
+- `blockForSkillResult` and `noticeForSkillResult`: preserve existing Profile/Binding status semantics; map `skill-binding-not-found`, `profile-not-found`, `profile-conflict`, `host-instance-conflict`, `invalid-skill-mode` and `unsafe-path-key` deliberately, preserving original returned detail.
+
+**Mandatory caller order at Save:**
+
+1. Current rendered draft and Profile are usable/writable and fresh; `isProfileDraftCurrent(snapshot,draft)` holds. For Create, check exact key against **captured Begin** name list; for Edit/Delete, check original target presence; for Edit require changed mode. Invalid/no-op -> 0 RPC, do not claim submission.
+2. Read the **actual published** `readLivePresentationForActions(actions)`. Require `ownsLiveProfileDraft(current,originalDraft)` by original **draft object** identity, correct visible pane and selected Profile intent; if the close/reopen epoch RED proves necessary, require exact current presentation epoch. No stale closure may reuse only its old Token to claim a new draft.
+3. Synchronously `beginProfileSubmission(token)` and then check the **live claimed** draft is still this exact original draft and `submitting===true`; no second Save/Cancel of the same frame may pass.
+4. Dispatch **exactly one** existing Profile Mutation Controller RPC with unchanged captured Basis. Do not capture a newer Basis at Save or convert Resource-only changes into a Profile CAS conflict.
+5. Interpret result by exact original Token, never by currently selected row alone:
+
+| Result | Draft/notice rule |
+|---|---|
+| `applied + fresh` | `completeDraft`, success; one RPC, no second leaf write |
+| `applied + degraded` | **confirmed Host applied**, block `unverified` with first `noticeSavedDegraded`; **not** Unknown; explicit Discard required |
+| `unknown` / rejected promise | Block `unknown` with exact safe error detail, never auto retry |
+| Business `profile-conflict` / `host-instance-conflict` | Block `conflict`; retain exact receipt and original Basis |
+| Obsolete `superseded` | Never overwrite the current newer draft/notice; any old-token block/complete is refused; no auto retry |
+| `detached` / `disposed` / `incompatible` / stale Basis | Fail closed with correct stale/unavailable status; no invented success |
+| `skill-binding-not-found` / `profile-not-found` | No silent repair/recreate; keep stale/missing boundary with literal Host detail |
+| Safe precondition busy / known recoverable denial | Preserve current token, show a token-owned nonterminal notice; no automatic re-dispatch |
+
+**CAS accounting distinction:** When the UI sees a newly refreshed Settings revision *before Begin*, reject Begin with **zero Store draft/zero Host RPC**. When external Settings changes *after Begin and is already reflected in the Model*, Save must reject locally with **zero RPC**. But if the Host changes after Begin **without any Client visibility**, exactly **one attempted RPC may be rejected by Host CAS**; the required invariant is **zero unauthorized Stored changes and zero automatic retry**, not a false blanket “zero RPC for every conflict.”
+
+### 14.6 B1-2 typed pure/Store RED matrix (planned, no test executed yet)
+
+Add `tests/client-skill-policy-editor.test.ts` to `tsconfig.client-model-test.json` and `tsdown.client-model-test.config.ts`, and its compiled `.artifacts/client-model-tests/client-skill-policy-editor.test.mjs` to existing `package.json` `test:client-model` **without removing any old entry**.
+
+| RED ID | Scenario | Required observable assertion |
+|---|---|---|
+| `B1-S01` | Four modes and Auto vs absence vs Remove | Explicit Auto creation has one set RPC, no automatic deletion; unchanged edit zero RPC |
+| `B1-S02` | Exact Skill keys `'', ' ', Unicode, constructor, toString, valueOf, prototype` | Exact own-key read and code-unit sort; `__proto__` blocked; no trim |
+| `B1-S03` | Create with existing exact key | Duplicate refused with zero RPC; the existing mode/Stored sibling data unchanged |
+| `B1-S04` | Edit/Delete original target | Immutable originalMode/skillName; Edit changes only one mode leaf; Delete requires explicit confirm |
+| `B1-S05` | Real one Profile Draft slot across M7C/M8A2/Skill and M8A1 Resource | Forbidden Begin cannot create a second draft or change pane/selection |
+| `B1-S06` | Token identity and old Input/Cancel/Discard | Old token cannot mutate/clear newer Skill draft; same token successive valid inputs permitted |
+| `B1-S07` | Same-render double Save and Save→Cancel | One synchronous claim; at most one RPC; Cancel cannot erase in-flight draft |
+| `B1-S08` | Close before any Begin, old callbacks across pane and Reopen | Zero new drafts/tokens/Host RPC while closed; Close of an *existing* draft preserves it |
+| `B1-S09` | Obsolete callbacks after root Store remount/teardown | Revoked old action identity produces zero RPC |
+| `B1-B01` | Old rendered Profile vs fresh Settings Basis | Begin rejected for stale revision/instance even if target Skill ID is same |
+| `B1-B02` | Old rendered Skill ref vs fresh target; binding missing/invalid | Edit/Delete rejected; no synthetic repair |
+| `B1-B03` | Resource-only authority/generation rotation | Does **not** invalidate Profile Begin/Save while Settings Basis remains valid |
+| `B1-B04` | User changed selected Profile but Settings revision unchanged | Old Skill Begin cannot reselect wrong Profile or create a draft |
+| `B1-B05` | Unavailable/read-only/error/stale Profiles and invalid diagnostic row | Readable if cached, but no Skill mutation/draft/RPC |
+| `B1-T01` | Unknown, Conflict, Applied+Degraded | Distinct blocked states and exact first terminal receipt retained |
+| `B1-T02` | Late Complete, repeated Block, tab/profile switch, refresh warning | Cannot erase/change a blocked Skill token or its first notice |
+| `B1-T03` | Wrong-token Discard, no-token notice, stale result | No mutation of active token; only explicit matching Discard releases it |
+| `B1-T04` | Host CAS conflict after unseen external writer | At most one attempted RPC and zero unauthorized Stored mutation/retry |
+
+For typed tests, use `createContextManagerPresentationStore().create()` and its **real** actions/root `getSnapshot()`; instantiate real `ContextManagerClientProfileMutations` spies for exact call argument and count assertions. Retain actual existing Profile and Resource tests as independent controls, never replace them with a mock Store.
+
+**Executable RED criterion:** a file-not-found import, TypeScript error, absent React section or undefined function is **not a sufficient B1 behavioral RED**. First, add one standalone executable RED against the **currently present** closed-Drawer Begin vulnerability, which should fail on an observable illicit draft/token transition. Then introduce the minimal typed new Skill kind/action signatures and **inert/no-op scaffolding only as needed** to let dedicated tests compile; assert the real Store fails a concrete state-transition, exact-identity or RPC-count expectation. Separate intentional REDs from unrelated compilation/fixture failures. Do not mistake test scaffolding for Skill Editor GREEN or count a test-only synthetic adapter as production behavior.
+
+### 14.7 B1-3 real published Renderer RED matrix (planned)
+
+Extend the existing `tests/client-profile-drawer-runtime.mjs` *after* its established M7C/M8A1/M8A2 controls and keep all historical assertions. Use real published `@deepseek-ai/dsh-client-ui-renderer`, the existing `lib/client.js` bundle, actual `StoreInstance.actions` and the existing `createWritableRemoteFixture` CAS/write counters; add exactly two test-only Remote Profile calls `setSkillMode` and `removeSkillBinding` and deterministic fixture methods for external Skill mutation/revision, dropped write reply and optional deferred write resolution. Do not claim that a fake Renderer alone proves Stored sibling preservation: **B0 H03 already proves that in real Settings**.
+
+| RED ID | Actual user path | Proof |
+|---|---|---|
+| `B1-R01` | Selected usable Profile displays Skill section and deterministic own-key rows | Exact configured modes, no fabricated complete native inventory or Agent-effective verdict |
+| `B1-R02` | New Skill `''`/Unicode/constructor with explicit Auto | One existing Profile `setSkillMode` RPC with original Basis; no hidden resource/Agent requests |
+| `B1-R03` | Edit Manual→Pinned, then same-mode Save | First is one setter RPC; second is zero RPC |
+| `B1-R04` | Remove with exact quoted Profile/Skill and destructive warning | No call before confirmation; one `removeSkillBinding` on explicit Confirm |
+| `B1-R05` | Hold old Edit/Create/Delete callback; external Settings revision or Host rotation before Begin | Zero draft/zero RPC; old rendered original never paired with new Basis |
+| `B1-R06` | Begin valid; external revision before Save, with vs without Client refresh | Visible change -> zero RPC; invisible change -> one CAS-rejected attempt, no write/retry |
+| `B1-R07` | Old Save after Cancel, another Profile draft, Resource draft, tab/selection change or root teardown | Zero unauthorized RPC; no second draft or notice overwrite |
+| `B1-R08` | Same-render duplicate Save, Save+Cancel, lost Host reply after write | At most one RPC, retained Unknown and exact original receipt until explicit Discard |
+| `B1-R09` | Applied+Degraded read-back, or conflict, then late refresh and stale completion | Confirmed-degraded is not Unknown; first token-owned notice is never clobbered |
+| `B1-R10` | Close with an active Skill draft; re-open and operate through a **new** visible handler; call **old** retained handlers | Draft preserved, new handler works, closed/obsolete callback cannot mutate, rebase or double-submit |
+
+**Instrumentation:** use `tree.root.findByProps({ 'data-context-manager-skill-*': ... })` or other explicit `data-` hooks that do not depend on English locale or translated button ordering. Capture actual `onClick`/`onSubmit` functions **before** changing state; invoke stale callbacks in the same `act()` turn before rerender to test the genuine React batching race. Assert actual `remoteFixture.writes.length` and recorded wire Basis/Skill mode, plus `registeredOverlayStore.readLiveSnapshot()` and actual Remote Profile projection after rehydration. Keep the unchanged Published Slot identity/teardown test.
+
+**Renderer RED honesty:** adding only a test that fails because the Skill section is absent is a superficial mount RED, **not** evidence for R02–R10. The B1 staging must ensure later tests reach their targeted interaction boundaries with minimally available/inert typed UI seams before claiming each regression is independently reproduced. B2 must not silently omit deeper tests once the first RED is satisfied.
+
+### 14.8 B1-1 → B1-2 → B1-3 qualification and code-change gates
+
+1. **B1-1 (this commit): documentation only.** Review and freeze exact draft discriminants, Begin fences, live Store selection, optional session epoch, Save outcome table and RED case IDs; keep PR #42 Draft and all B0 evidence intact. A successful Draft Quick from a documentation-only change is **not** a B1 RED.
+2. **B1-2a: standalone inherited closed-Begin RED** written against existing production Store *before* changing its `open` gate. It must be executable and fail with a concrete new-draft/token transition; record CI run and exact HEAD. Then add the minimal common open check and migrate old tests' unrealistic closed-Draft setup, preserving new closed/no-op negatives and valid re-opened draft positives.
+3. **B1-2b: typed Skill state-machine RED**: add test suite and typed inert interfaces to compile, plus immutable capture and Result classification test fixtures. Require failure of concrete Store transitions and one-RPC contract rather than missing module/TS declarations. The intended B2 GREEN is a subsequent, separately reviewed implementation. The existing M7C/M8A1/M8A2 tests must not be deleted or excluded.
+4. **B1-3: real Published Renderer RED**, with new fixture methods and observable Skill UI event paths. If only DOM absence fails first, record as *mount RED* then expose typed/inert UI entrypoints to reach actual race/RPC assertions; archive independently meaningful failures without weakening negative safety checks.
+5. **B1 exit and B2 entry:** source/tests wired to `pnpm run typecheck:client-tests`, `tsdown.client-model-test.config.ts` and `pnpm test`; actual targeted RED failures are traceable to missing Skill behavior, with prior unrelated checks stable; strict independent review of the RED assertions and compatibility (published React at least one old generation) done. PR stays Draft. **Only then** authorize B2 GREEN implementation; later four-version Renderer/Client and unchanged 86-job Ready Full remain separate gates.
+
+**Forbidden shortcuts:** no unused Skill RPC wrappers or secondary Store to make tests green, no per-Save Basis recapture, no global change cursor as Skill authority, no ID trimming or overblocking `constructor`, no fake native Skill catalog/Agent selection, no copy of Agent full SkillDefinition into UI, no disabling of existing tests/official CI, and no assertion that B1-1 design documentation is already executable RED.
+
+### 14.9 Source-level review disposition / handoff
+
+The B1-1 plan is **ready for targeted implementation review**, with the following decisions frozen: three Skill kinds in the existing `ProfileDraft`; Profile-only original `instanceId+revision` and own-key target evidence; one existing setter or remove RPC per confirmed Save; Profile/Resource pane exclusivity; fail-closed closed Begin; exact-token first result; separate visible-selection currentness; no second controller/store. The potential **close/reopen stale handler** requires its own RED to choose whether a monotonic presentation-only epoch is necessary. All test IDs above are **planned**, not executed, and B1-2/B1-3 remain pending.
