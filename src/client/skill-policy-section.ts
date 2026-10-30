@@ -1,7 +1,8 @@
 import { createElement as h } from 'react'
-import type { ContextManagerRemoteProfile } from '../remote/types.js'
+import type { ContextManagerRemoteProfile, ContextManagerRemoteSkillBinding } from '../remote/types.js'
 import type { ContextManagerDrawerProps } from './profile-drawer.js'
-import { deriveProfileView, isProfileBeginCurrent } from './profile-view.js'
+import { deriveProfileView } from './profile-view.js'
+import { isSkillBeginCurrent, sortedSkillBindings } from './skill-policy-editor.js'
 import {
   isLiveDrawerOpenSession, readLivePresentationForActions,
 } from './presentation-store.js'
@@ -47,23 +48,20 @@ export function ContextManagerSkillPolicySection(props: SkillPolicySectionProps)
 
   // This is an own-key *read-only projection*, not a discovered native Skill
   // inventory. A code-unit comparison preserves exact configured IDs.
-  const rows = Object.entries(profile.skills).sort(([left], [right]) =>
-    left < right ? -1 : left > right ? 1 : 0
-  )
+  const rows = sortedSkillBindings(profile)
 
-  const capture = (skillName?: string) => {
+  const capture = (target?: {
+    skillName: string
+    renderedBinding: ContextManagerRemoteSkillBinding
+    originalMode: ContextManagerRemoteSkillBinding['mode']
+  }) => {
     const live = readLivePresentationForActions(actions)
     if (!canStart || !isLiveDrawerOpenSession(live, renderedOpenSessionEpoch)
-      || live?.pane !== 'profiles'
-      || (skillName !== undefined && skillName === '__proto__')) return undefined
+      || live?.pane !== 'profiles') return undefined
     const view = deriveProfileView(snapshot, live.selectedProfileId)
     if (view.selectedId !== profileId) return undefined
     const basis = props.captureProfileMutationBasis()
-    const liveProfiles = snapshot.profiles.data?.profiles
-    if (!isProfileBeginCurrent(snapshot, basis)
-      || liveProfiles === undefined
-      || !Object.hasOwn(liveProfiles, profileId)
-      || liveProfiles[profileId] !== profile) return undefined
+    if (!isSkillBeginCurrent(snapshot, profileId, profile, basis, target)) return undefined
     return basis
   }
 
@@ -75,19 +73,19 @@ export function ContextManagerSkillPolicySection(props: SkillPolicySectionProps)
     })
   }
 
-  const startEdit = (name: string) => {
-    const basis = capture(name)
-    if (!basis || !Object.hasOwn(profile.skills, name)) return
+  const startEdit = (name: string, renderedBinding: ContextManagerRemoteSkillBinding) => {
+    const basis = capture({ skillName: name, renderedBinding, originalMode: renderedBinding.mode })
+    if (!basis) return
     actions.beginSkillModeEdit({
-      profileId, skillName: name, originalMode: profile.skills[name].mode, basis,
+      profileId, skillName: name, originalMode: renderedBinding.mode, basis,
     })
   }
 
-  const startDelete = (name: string) => {
-    const basis = capture(name)
-    if (!basis || !Object.hasOwn(profile.skills, name)) return
+  const startDelete = (name: string, renderedBinding: ContextManagerRemoteSkillBinding) => {
+    const basis = capture({ skillName: name, renderedBinding, originalMode: renderedBinding.mode })
+    if (!basis) return
     actions.beginSkillBindingDelete({
-      profileId, skillName: name, originalMode: profile.skills[name].mode, basis,
+      profileId, skillName: name, originalMode: renderedBinding.mode, basis,
     })
   }
 
@@ -121,9 +119,9 @@ export function ContextManagerSkillPolicySection(props: SkillPolicySectionProps)
         pathReadOnly
           ? h('p', { className: styles.warning }, t('skillUnsafePath')) : null,
         h('div', { className: styles.actions },
-          button(t('skillEdit'), () => startEdit(name), !canStart || pathReadOnly,
+          button(t('skillEdit'), () => startEdit(name, binding), !canStart || pathReadOnly,
             { 'data-context-manager-skill-edit': name }),
-          button(t('skillDelete'), () => startDelete(name), !canStart || pathReadOnly,
+          button(t('skillDelete'), () => startDelete(name, binding), !canStart || pathReadOnly,
             { 'data-context-manager-skill-delete': name }),
         ))
       }),

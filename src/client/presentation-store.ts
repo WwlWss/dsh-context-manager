@@ -234,29 +234,106 @@ export function createContextManagerPresentationStore() {
         }
         state.notice = null
       },
-      /** B1-2b RED-only typed action seams. Deliberately inert until B2 GREEN.
-       * Old M7C/M8A2/M8A1 behavior is unchanged. Neither Host nor UI calls
-       * can be accidentally dispatched through these placeholders. */
-      beginSkillModeCreate(_state, _input: {
+      /** B2-A1 GREEN: Skill drafts share the one Profile lane and Profile
+       * Token. Their inputs are immutable Begin evidence, not Host authority.
+       * The rendered Profile/Binding + fresh Model basis are checked by the
+       * React caller; this Store alone enforces live pane/selection/occupancy. */
+      beginSkillModeCreate(state, input: {
         profileId: string
         basis: ContextManagerClientProfileMutationBasis
         observedSkillNames: readonly string[]
-      }) {},
-      updateSkillCreateName(_state, _token: number, _value: string) {},
-      beginSkillModeEdit(_state, _input: {
+      }) {
+        if (!canBeginProfileDraft(state)) {
+          notifyOccupiedProfileDraft(state)
+          return
+        }
+        if (input.profileId === '__proto__'
+          || (state.selectedProfileId !== null
+            && state.selectedProfileId !== input.profileId)) return
+        state.nextDraftToken += 1
+        if (state.selectedProfileId === null) state.selectedProfileId = input.profileId
+        state.draft = {
+          kind: 'skill-mode-create', token: state.nextDraftToken,
+          profileId: input.profileId,
+          basis: Object.freeze({ ...input.basis }),
+          observedSkillNames: Object.freeze([...input.observedSkillNames]),
+          skillName: '', mode: 'auto',
+        }
+        state.notice = null
+      },
+      updateSkillCreateName(state, token: number, value: string) {
+        const draft = state.draft
+        if (draft?.kind !== 'skill-mode-create'
+          || draft.token !== token || draft.blocked !== undefined
+          || draft.submitting) return
+        draft.skillName = value
+        state.notice = null
+      },
+      beginSkillModeEdit(state, input: {
         profileId: string
         skillName: string
         originalMode: ContextManagerRemoteSkillMode
         basis: ContextManagerClientProfileMutationBasis
-      }) {},
-      updateSkillMode(_state, _token: number, _mode: ContextManagerRemoteSkillMode) {},
-      beginSkillBindingDelete(_state, _input: {
+      }) {
+        if (!canBeginProfileDraft(state)) {
+          notifyOccupiedProfileDraft(state)
+          return
+        }
+        if (input.profileId === '__proto__' || input.skillName === '__proto__'
+          || (state.selectedProfileId !== null
+            && state.selectedProfileId !== input.profileId)) return
+        state.nextDraftToken += 1
+        if (state.selectedProfileId === null) state.selectedProfileId = input.profileId
+        state.draft = {
+          kind: 'skill-mode-edit', token: state.nextDraftToken,
+          profileId: input.profileId, skillName: input.skillName,
+          originalMode: input.originalMode, mode: input.originalMode,
+          basis: Object.freeze({ ...input.basis }),
+        }
+        state.notice = null
+      },
+      updateSkillMode(state, token: number, mode: ContextManagerRemoteSkillMode) {
+        const draft = state.draft
+        if ((draft?.kind !== 'skill-mode-create' && draft?.kind !== 'skill-mode-edit')
+          || draft.token !== token || draft.blocked !== undefined
+          || draft.submitting
+          || !(['auto', 'manual', 'off', 'pinned'] as string[]).includes(mode)) return
+        draft.mode = mode
+        state.notice = null
+      },
+      beginSkillBindingDelete(state, input: {
         profileId: string
         skillName: string
         originalMode: ContextManagerRemoteSkillMode
         basis: ContextManagerClientProfileMutationBasis
-      }) {},
-      setSkillDraftNotice(_state, _token: number, _notice: ProfileNotice) {},
+      }) {
+        if (!canBeginProfileDraft(state)) {
+          notifyOccupiedProfileDraft(state)
+          return
+        }
+        if (input.profileId === '__proto__' || input.skillName === '__proto__'
+          || (state.selectedProfileId !== null
+            && state.selectedProfileId !== input.profileId)) return
+        state.nextDraftToken += 1
+        if (state.selectedProfileId === null) state.selectedProfileId = input.profileId
+        state.draft = {
+          kind: 'skill-binding-delete', token: state.nextDraftToken,
+          profileId: input.profileId, skillName: input.skillName,
+          originalMode: input.originalMode,
+          basis: Object.freeze({ ...input.basis }),
+        }
+        state.notice = null
+      },
+      setSkillDraftNotice(state, token: number, notice: ProfileNotice) {
+        const draft = state.draft
+        if (draft === null || !(
+          draft.kind === 'skill-mode-create'
+          || draft.kind === 'skill-mode-edit'
+          || draft.kind === 'skill-binding-delete'
+        ) || draft.token !== token || draft.terminalNotice !== undefined
+          || draft.blocked !== undefined || draft.submitting) return
+        state.notice = notice
+      },
       beginPromptBindingCreate(state, input: {
         profileId: string
         basis: ContextManagerClientProfileMutationBasis
