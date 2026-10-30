@@ -15,7 +15,7 @@ import {
   isProfileDraftCurrent,
   resolveProfilePreset,
 } from '../src/client/profile-view.js'
-import { createContextManagerPresentationStore } from '../src/client/presentation-store.js'
+import { createContextManagerPresentationStore, isLiveDrawerOpenSession, ownsLiveProfileDraft, readLivePresentationForActions } from '../src/client/presentation-store.js'
 import type { ContextManagerClientSnapshot } from '../src/client/model-types.js'
 import type {
   ContextManagerClientProfileMutationBasis,
@@ -505,4 +505,33 @@ test('M8B F01-SR1 RED: real root Store advances only on a newly opened Drawer se
   store.actions.toggle()
   assert.equal(getEpoch(), 3, 'closed-to-open toggle must advance session')
   assert.strictEqual(store.getSnapshot().draft, original)
+})
+
+test('M8B F01-SR1 GREEN: original draft identity is not sufficient across Drawer sessions', () => {
+  const owner = createContextManagerPresentationStore()
+  const instance = owner.create()
+  instance.actions.open()
+  instance.actions.selectProfile('main')
+  instance.actions.beginFieldEdit({
+    profileId: 'main', field: 'name', original: 'Main', basis: BASIS,
+  })
+  const original = instance.getSnapshot().draft
+  assert.ok(original)
+  const epochBefore = instance.getSnapshot().openSessionEpoch
+  const liveBefore = readLivePresentationForActions(instance.actions)
+  assert.equal(isLiveDrawerOpenSession(liveBefore, epochBefore), true)
+  assert.equal(ownsLiveProfileDraft(liveBefore, original), true)
+  instance.actions.close()
+  assert.equal(isLiveDrawerOpenSession(readLivePresentationForActions(instance.actions), epochBefore), false)
+  instance.actions.open()
+  const liveAfter = readLivePresentationForActions(instance.actions)
+  assert.equal(isLiveDrawerOpenSession(liveAfter, epochBefore), false,
+    'a matching original Store draft does not authorize the old rendered closure')
+  assert.equal(ownsLiveProfileDraft(liveAfter, original), true,
+    'the existing ownership check alone proves why the historical callback was unsafe')
+  assert.equal(isLiveDrawerOpenSession(liveAfter, liveAfter!.openSessionEpoch), true,
+    'a freshly rendered callback may operate on the preserved draft')
+  owner.revokeSnapshotReader()
+  assert.equal(isLiveDrawerOpenSession(readLivePresentationForActions(instance.actions),
+    liveAfter!.openSessionEpoch), false)
 })

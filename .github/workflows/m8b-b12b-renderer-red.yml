@@ -1,4 +1,4 @@
-name: M8B B1-2b Draft Published Renderer RED
+name: M8B F01-SR1 Draft Published Renderer qualification
 
 on:
   pull_request:
@@ -9,6 +9,10 @@ on:
       - 'src/client/presentation-store.ts'
       - 'src/client/skill-policy-editor.ts'
       - 'tests/client-skill-policy-editor.test.ts'
+      - 'tests/client-profile-editor.test.ts'
+      - 'src/client/profile-drawer.ts'
+      - 'src/client/prompt-binding-section.ts'
+      - 'src/client/resource-drawer.ts'
       - 'tests/client-profile-drawer-runtime.mjs'
       - 'tsconfig.client-model-test.json'
       - 'tsdown.client-model-test.config.ts'
@@ -46,15 +50,52 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+  scoped-client:
+    name: F01-SR1 / pinned-oldest Store + Node + Slot controls
+    needs: oldest-built-client
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22.20.0
+      - name: Enable pinned pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.7.0 --activate
+      - run: pnpm install --frozen-lockfile
+      - run: rm -rf lib
+      - uses: actions/download-artifact@v4
+        with:
+          name: m8b-b12b-oldest-lib
+          path: lib
+      - name: Strict compile of all Client test sources including B1-2b RED seams
+        run: pnpm run typecheck:client-tests
+      - name: Build real Client test bundles (without running unrelated Skill RED)
+        run: pnpm exec tsdown --config tsdown.client-model-test.config.ts
+      - name: F01-SR1 + legacy Profile/Binding/Resource Client regression
+        run: |
+          node --test \
+            ./.artifacts/client-model-tests/client-profile-editor.test.mjs \
+            ./.artifacts/client-model-tests/client-prompt-binding-editor.test.mjs \
+            ./.artifacts/client-model-tests/client-resource-editor.test.mjs
+      - name: Existing Host/Node regression
+        run: node --test ./tests/*.test.mjs
+      - name: Existing Client Slot regression
+        run: node ./tests/client-upstream-runtime.mjs
+
   retained-renderer:
-    name: B1-2b / actual Published Renderer (${{ matrix.version }})
+    name: F01-SR1 / actual Published Renderer (${{ matrix.version }})
     needs: oldest-built-client
     runs-on: ubuntu-latest
     timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
-        version: [0.1.2-rc.1, 0.1.6-alpha.2]
+        version: [0.1.2-rc.1, 0.1.5-rc.1, 0.1.5-rc.2, 0.1.6-alpha.2]
     steps:
       - uses: actions/checkout@v7
         with:
@@ -98,5 +139,5 @@ jobs:
             src/client/model-types.ts src/client/mutation-types.ts src/client/remote-port.ts \
             src/client/mutation-controller.ts src/client/model.ts src/client/business-face.ts src/client/plugin.ts \
             tests/client-upstream-contract.ts tests/client-generated-remote-contract.ts
-      - name: Actual published DSH React Renderer / stale Save behavioral RED
+      - name: Actual published DSH React Renderer / F01-SR1 old-callback regression
         run: node ./tests/client-profile-drawer-runtime.mjs

@@ -1522,6 +1522,141 @@ assert.equal(remoteFixture.writes.length, b12bWritesBefore + 1,
 assert.equal(remoteFixture.writes.at(-1)?.kind, 'name')
 assert.equal(registeredOverlayStore.readLiveSnapshot()?.draft, null)
 
+// M8B F01-SR1 regression: a pre-Close Profile Begin and immediate default
+// handler must not act after Reopen, even though Settings is unchanged.
+const f01OldProfileBegin = tree.root.findByProps({
+  'data-context-manager-new-profile': '',
+}).props.onClick
+const f01OldDefault = buttonByLabel(tree, 'Set as default').props.onClick
+const f01ProfileTokenBefore = registeredOverlayStore.readLiveSnapshot()?.nextDraftToken
+const f01ProfileWritesBefore = remoteFixture.writes.length
+await act(async () => { trigger().props.onClick() })
+await act(async () => { trigger().props.onClick() })
+await settleUI()
+await act(async () => {
+  f01OldProfileBegin()
+  f01OldDefault()
+  for (let i = 0; i < 20; i += 1) await Promise.resolve()
+})
+assert.equal(registeredOverlayStore.readLiveSnapshot()?.draft, null,
+  'F01-SR1: old Profile Begin must not occupy a reopened Drawer')
+assert.equal(registeredOverlayStore.readLiveSnapshot()?.nextDraftToken, f01ProfileTokenBefore)
+assert.equal(remoteFixture.writes.length, f01ProfileWritesBefore,
+  'F01-SR1: old immediate default callback must issue zero Profile RPCs')
+
+// M8A2 Profile PromptBinding Save shares the same opening-session safety as
+// M7C Profile, but still permits the fresh reopened handler to Save once.
+await act(async () => {
+  tree.root.findByProps({ 'data-context-manager-new-binding': '' }).props.onClick()
+})
+await act(async () => {
+  tree.root.findByProps({ id: 'cm-binding-create-id' }).props.onChange({
+    currentTarget: { value: 'f01-reopen-binding' },
+  })
+  tree.root.findByProps({ id: 'cm-binding-create-resource' }).props.onChange({
+    currentTarget: { value: 'not-a-required-resource' },
+  })
+})
+const f01BindingDraft = registeredOverlayStore.readLiveSnapshot()?.draft
+assert.equal(f01BindingDraft?.kind, 'prompt-binding-create')
+const f01OldBindingSave = tree.root.findByProps({
+  'data-context-manager-binding-create-form': '',
+}).props.onSubmit
+const f01BindingWritesBefore = remoteFixture.writes.length
+await act(async () => { trigger().props.onClick() })
+await act(async () => { trigger().props.onClick() })
+await settleUI()
+assert.strictEqual(registeredOverlayStore.readLiveSnapshot()?.draft, f01BindingDraft,
+  'F01-SR1: Binding Token and original Basis must survive Close/Reopen')
+await act(async () => {
+  f01OldBindingSave({ preventDefault() {} })
+  for (let i = 0; i < 20; i += 1) await Promise.resolve()
+})
+assert.equal(remoteFixture.writes.length, f01BindingWritesBefore,
+  'F01-SR1: an obsolete Binding Save cannot reuse the retained Profile draft')
+assert.strictEqual(registeredOverlayStore.readLiveSnapshot()?.draft, f01BindingDraft)
+await act(async () => {
+  tree.root.findByProps({ 'data-context-manager-binding-create-form': '' })
+    .props.onSubmit({ preventDefault() {} })
+  for (let i = 0; i < 25; i += 1) await Promise.resolve()
+})
+await settleUI()
+assert.equal(remoteFixture.writes.length, f01BindingWritesBefore + 1)
+assert.equal(remoteFixture.writes.at(-1)?.kind, 'binding-add')
+assert.equal(registeredOverlayStore.readLiveSnapshot()?.draft, null)
+
+// Resource Controller retains its independent authority and Stamp. The
+// old Resource form callback must not submit across a Drawer reopen either.
+await act(async () => {
+  tree.root.findByProps({ 'data-context-manager-tab': 'resources' }).props.onClick()
+})
+await settleUI()
+const f01ResourceStart = tree.root.findByProps({ 'data-context-manager-new-resource': '' })
+assert.equal(f01ResourceStart.props.disabled, false,
+  'F01-SR1 control: real Resource Create must be available in reopened Drawer')
+await act(async () => { f01ResourceStart.props.onClick() })
+await act(async () => {
+  tree.root.findByProps({ id: 'cm-resource-create-id' }).props.onChange({
+    currentTarget: { value: 'f01-reopen-resource' },
+  })
+  tree.root.findByProps({ id: 'cm-resource-create-name' }).props.onChange({
+    currentTarget: { value: 'F01 retained Resource' },
+  })
+  tree.root.findByProps({ id: 'cm-resource-create-content' }).props.onChange({
+    currentTarget: { value: 'exact\\ncontent' },
+  })
+})
+const f01ResourceDraft = registeredOverlayStore.readLiveSnapshot()?.resourceDraft
+assert.equal(f01ResourceDraft?.kind, 'create')
+const f01OldResourceSave = tree.root.findAllByType('form')[0].props.onSubmit
+const f01ResourceWritesBefore = remoteFixture.resourceWrites.length
+await act(async () => { trigger().props.onClick() })
+await act(async () => { trigger().props.onClick() })
+await settleUI()
+assert.strictEqual(registeredOverlayStore.readLiveSnapshot()?.resourceDraft, f01ResourceDraft)
+await act(async () => {
+  f01OldResourceSave({ preventDefault() {} })
+  for (let i = 0; i < 20; i += 1) await Promise.resolve()
+})
+assert.equal(remoteFixture.resourceWrites.length, f01ResourceWritesBefore,
+  'F01-SR1: obsolete Resource Save cannot write after a new open session')
+await act(async () => {
+  tree.root.findAllByType('form')[0].props.onSubmit({ preventDefault() {} })
+  for (let i = 0; i < 25; i += 1) await Promise.resolve()
+})
+await settleUI()
+assert.equal(remoteFixture.resourceWrites.length, f01ResourceWritesBefore + 1)
+assert.equal(remoteFixture.resourceWrites.at(-1)?.kind, 'resource-create')
+assert.equal(remoteFixture.resources.get('f01-reopen-resource')?.content, 'exact\\ncontent')
+assert.equal(registeredOverlayStore.readLiveSnapshot()?.resourceDraft, null)
+
+const f01OldResourceBegin = tree.root.findByProps({
+  'data-context-manager-new-resource': '',
+}).props.onClick
+const f01ResourceTokenBefore = registeredOverlayStore.readLiveSnapshot()?.nextResourceDraftToken
+await act(async () => { trigger().props.onClick() })
+await act(async () => { trigger().props.onClick() })
+await settleUI()
+await act(async () => { f01OldResourceBegin() })
+assert.equal(registeredOverlayStore.readLiveSnapshot()?.resourceDraft, null)
+assert.equal(registeredOverlayStore.readLiveSnapshot()?.nextResourceDraftToken, f01ResourceTokenBefore,
+  'F01-SR1: old Resource Begin is not authorized by a later Drawer session')
+await act(async () => {
+  tree.root.findByProps({ 'data-context-manager-tab': 'profiles' }).props.onClick()
+})
+await settleUI()
+const f01OldBindingBegin = tree.root.findByProps({
+  'data-context-manager-new-binding': '',
+}).props.onClick
+const f01BindingTokenBefore = registeredOverlayStore.readLiveSnapshot()?.nextDraftToken
+await act(async () => { trigger().props.onClick() })
+await act(async () => { trigger().props.onClick() })
+await settleUI()
+await act(async () => { f01OldBindingBegin() })
+assert.equal(registeredOverlayStore.readLiveSnapshot()?.draft, null)
+assert.equal(registeredOverlayStore.readLiveSnapshot()?.nextDraftToken, f01BindingTokenBefore,
+  'F01-SR1: old Binding Begin cannot start a draft after Reopen')
+
 remoteFixture.setReadOnly(true)
 const overlayFace = injectedBusiness?.()
 assert.ok(overlayFace)
