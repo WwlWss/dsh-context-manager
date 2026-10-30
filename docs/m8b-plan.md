@@ -1,6 +1,6 @@
 # M8B — Profile Skill Policy Editor (Capability & Implementation Contract)
 
-**Status:** **B0 executable tests implemented; published five-version Host RED, four-version Client GREEN; qualification blocked** (see §12). M8B production code remains unchanged and the PR stays Draft. The genuine inherited Skill-name collision is not waived, and no B0 nine-lane PASS, M8B editor GREEN, Ready Full or merge has been claimed.
+**Status:** **B0 executable Published Contract Preflight PASS on code HEAD `26a6d13c22bf04c81af0cdc6e4cd180a44ec5f86`** — five Host/Remote and four Client/Renderer generations, 107/107 assertions, fail-closed aggregation [#41072313964](https://github.com/WwlWss/dsh-context-manager/actions/runs/41072313964); exact-code Draft Quick [#41072313972](https://github.com/WwlWss/dsh-context-manager/actions/runs/41072313972) SUCCESS. The narrow existing Host inherited-binding bug was repaired with `Object.hasOwn`; RED remains archived in §12, GREEN in §13. **Draft PR #42 remains unmerged; no M8B editor/B1 tests or Ready 86-job Full are claimed.** Documentation/workflow cleanup commits after this run require an independent final Draft Quick.
 **Baseline:** merged M8A2 PR #41, main commit `5a21df1b5f27fbcc22cdb389de3c1d765b96a95d`; independent main Full [#41009808239](https://github.com/WwlWss/dsh-context-manager/actions/runs/41009808239), 86/86 SUCCESS, 0 failed/skipped.
 **Branch:** `feat/m8b-skill-policy-editor`. This branch is separate from qualified main. Keep PR Draft until B0 preflight + RED + GREEN + independent strict review closeout.
 **Purpose:** edit explicit Profile-local Skill policy configuration with the existing Profile Settings authority; explain known native/Agent effectiveness separately, never infer an Agent's behavior from a reusable Profile record alone.
@@ -297,4 +297,61 @@ Require a separately scoped focused RED→GREEN code review before applying it: 
 
 ### 12.3 Remaining B0 gate before B1
 
-The B0 result currently is **RED / blocked**. The next engineering decision is to isolate the one-line Host inherited-key defect into a minimal reviewed fix with its own RED/GREEN, rather than weakening H10 or arbitrarily forbidding `constructor`/`toString`/`valueOf` in the UI. Then rerun all nine lanes on an exact new PR Head, archive a **real** B0 nine-lane aggregator PASS, remove the temporary workflow, and confirm exact final Draft Quick. Until then, **do not begin B1 Skill UI RED**, promote PR #42 to Ready or claim any new 86-job Full.
+**Historical status at the time of the first RED:** B0 was blocked and the one-line Host own-property guard was not yet applied. This remains an immutable failure record. The later minimal Host fix, fully published GREEN, and remaining documentation/workflow cleanup are recorded in §13; do not reinterpret this first RED as a passing run.
+
+
+## 13. B0 inherited Skill-key minimal Host repair and independent published GREEN (2026-10-30)
+
+### 13.1 Scope of actual product repair
+
+After the five-version reproduced H10 RED in `12, a separate test-only commit `d03269a4cc4f30d21aa60be9520367e7c8249191` expanded H12: a **genuine own** malformed Stored binding for `constructor`, `toString` or `docker` must still fail `profile-path-not-editable` without a revision increment or sibling mutation. The original prior H10 RED for **absent** inherited keys remains intact.
+
+One narrow Host change was then committed as `e3b82e726c0815469b2879c48b256a52f17e523b` in `src/service/context-manager.ts`, inside existing `setSkillMode`:
+
+Before: `const binding = skills?.[skillName]`.
+
+After:
+
+```ts
+// An absent stored binding must not resolve to an inherited Object.prototype
+// member (constructor, toString, valueOf). Keep rejecting malformed OWN
+// scalar bindings; only __proto__ remains forbidden as a Settings path key.
+const binding = skills !== undefined && Object.hasOwn(skills, skillName)
+  ? skills[skillName]
+  : undefined
+```
+
+This changes only the **preflight lookup** used to distinguish absent/own-malformed Skill entries, not the path of the eventual Settings `set`, Remote v3 signature, Host CAS, `removeSkillBinding`, mutation controllers, native Skill runtime, profile write lane or published Client/Slot ABI. The existing `assertSafePathKey` still rejects `__proto__` only. No automatic retry or data repair is introduced. The temporary workflow trigger was extended to include the affected production source and the evidence regression unit test in commit `26a6d13c22bf04c81af0cdc6e4cd180a44ec5f86`.
+
+### 13.2 Formal published GREEN — frozen **code HEAD**
+
+**Run:** [B0 Published Contract Preflight #41072313964](https://github.com/WwlWss/dsh-context-manager/actions/runs/41072313964).
+
+**Source HEAD:** `26a6d13c22bf04c81af0cdc6e4cd180a44ec5f86`; **baseline merged main:** `5a21df1b5f27fbcc22cdb389de3c1d765b96a95d`. Both source and baseline are embedded in each fail-closed manifest and verified by the aggregator. A single oldest-built `lib` artifact was reused after per-generation package overlays; it was not rebuilt for each version.
+
+| Job family | Version(s) | Verified result |
+|---|---|---|
+| Oldest-built producer | Pinned source/build artifact | **SUCCESS** |
+| Published Host / Remote | `0.1.1-rc.2`, `0.1.2-rc.1`, `0.1.5-rc.1`, `0.1.5-rc.2`, `0.1.6-alpha.2` | **5/5 SUCCESS**, each H01–H13 and R01–R06, **19 assertions/lane** |
+| Published Client / Renderer | `0.1.2-rc.1`, `0.1.5-rc.1`, `0.1.5-rc.2`, `0.1.6-alpha.2` | **4/4 SUCCESS**, each C01–C03, **3 assertions/lane** |
+| Fail-closed aggregator | All upstream jobs plus full per-version JSON evidence | **SUCCESS**, **107 assertions / 9 lanes / 11 of 11 jobs successful; none skipped** |
+
+The aggregator emitted `M8B_B0_FULL_PREFLIGHT_PASS`, asserting `lanes:9`, `hostLanes:5`, `clientLanes:4`, `assertions:107`, the identical `testHeadSha` in all nine manifests, exact installed published dependency versions, expected lane identities and strictly non-skipped assertions. Failure-mode tests in `tests/m8b-b0-evidence.test.mjs` independently demonstrate that incomplete/wrong-Head/duplicate/failed or skipped evidence is not accepted.
+
+All five Host job logs now independently report:
+
+- `constructor`, `toString`, `valueOf`, `prototype`, Unicode/tab, whitespace and empty Skill IDs: **accepted**, own field recorded literally and in typed projection.
+- `__proto__`: **rejected**, `unsafe-path-key`, with no persisted mutation.
+- Present **own scalar** Bindings (including own `constructor` / `toString`): **rejected** `profile-path-not-editable` under H12, no mutation/revision bump.
+- Unknown stored sibling fields and unrelated Skill Bindings preserved under H03. Whole-binding Remove under H04 deletes only the selected Binding. H07–H09 invalid mode and Profile/Host CAS remain fail-closed.
+- Same-mode `setSkillMode` call H05 succeeds with an observed **Settings revision delta 0** for every retained version, i.e. a native no-op. B1 should still disable submitting an unchanged mode to avoid inventing a user change; this observation is not a guarantee for untested DSH generations.
+
+**Real Remote projection scope:** R01–R03 use actual generated Typert/Gateway against the real Host, while R04–R06 use deliberately poisoned **read-only Inspector ports** to verify omission of instruction bodies, private paths and unapproved nested fields. These two proof classes remain explicitly separate from native M5B/M5C runtime execution. **No M8B Skill Editor UI or dedicated packed Chromium Skill CRUD E2E has been qualified.**
+
+### 13.3 Local/Draft baseline qualification and release boundaries
+
+The unchanged ordinary Draft Quick completed **SUCCESS** on exactly the **same code HEAD** in [CI #41072313972](https://github.com/WwlWss/dsh-context-manager/actions/runs/41072313972). No Host, Remote, Client, Controller, package manifest or official `.github/workflows/ci.yml` expansion accompanies the B0 patch beyond the one inherited-key Host lookup and permanent preflight/test/evidence code.
+
+**B0 implementation and published-compatibility acceptance: PASS at source HEAD `26a6d13c...`.** The next step under `11.6 is archiving this evidence, deleting the **temporary** `.github/workflows/m8b-b0-published-preflight.yml` file, and verifying the final documentation-only cleanup HEAD through a fresh Draft Quick. The archived B0 GREEN run remains associated with its exact earlier code HEAD; it must never be mislabeled as an 86-job Ready Full or a run on the later cleanup commit.
+
+**B1 remains unimplemented.** PR #42 must remain Draft through B1 RED, later B2/B3 GREEN and independent Strict Review. No Ready/full, merge or post-merge main qualification has occurred.
