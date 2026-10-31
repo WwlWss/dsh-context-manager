@@ -138,9 +138,14 @@ export function ContextManagerResourceDrawerContent(props: ContextManagerDrawerP
   const unavailable = () => {
     actions.setResourceNotice({ code: 'resourceNoticeUnavailable', kind: 'warning' })
   }
-  const ownsRenderSession = () => isLiveDrawerOpenSession(
-    readLivePresentationForActions(actions), renderedOpenSessionEpoch,
-  )
+  const ownsRenderSession = () => mounted.current
+    && mayApplyCurrentNavigationEvent(actions, renderedOpenSessionEpoch, 'resources')
+  const ownsSelectedResource = () => {
+    const live = readLivePresentationForActions(actions)
+    return ownsRenderSession()
+      && live?.selectedResourceId === requestedId
+      && latestSelection.current === selectedId
+  }
   const applyDraftEvent = (token: number, event: () => void): void => {
     if (mayApplyCurrentDraftEvent(actions, renderedOpenSessionEpoch, 'resources', token)) event()
   }
@@ -158,7 +163,7 @@ export function ContextManagerResourceDrawerContent(props: ContextManagerDrawerP
   }
 
   const startEdit = () => {
-    if (!ownsRenderSession()) return
+    if (!ownsSelectedResource()) return
     const selected = view.selected
     const document = view.document
     if (!canStart || !view.canEditSelected || selected?.status !== 'usable' || !document) {
@@ -171,7 +176,7 @@ export function ContextManagerResourceDrawerContent(props: ContextManagerDrawerP
   }
 
   const startDelete = () => {
-    if (!ownsRenderSession()) return
+    if (!ownsSelectedResource()) return
     const selected = view.selected
     if (!canStart || selected?.status !== 'usable') return unavailable()
     const stamp = props.capturePromptResourceReadStamp(selected.id, 'list')
