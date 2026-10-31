@@ -1808,8 +1808,8 @@ if (process.env.M8B_SKILL_PROBE) {
         assert.equal(live()?.selectedResourceId, 'b-resource')
       }
       await act(async () => { buttonByLabel(tree, 'Edit').props.onClick() })
-      assert.equal(live()?.resourceDraft?.resourceId ?? live()?.resourceDraft?.id,
-        'b-resource', 'R15RBegin: fresh Bravo Edit must start a Bravo draft')
+      assert.equal(live()?.resourceDraft?.stamp?.resourceId,
+        'b-resource', 'R15RBegin: fresh Bravo Edit must start a Bravo-stamped draft')
       await act(async () => { buttonByLabel(tree, 'Cancel').props.onClick() })
       await act(async () => { buttonByLabel(tree, 'Delete resource').props.onClick() })
       assert.equal(live()?.resourceDraft?.resourceId, 'b-resource')
