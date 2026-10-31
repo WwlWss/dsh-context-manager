@@ -1302,6 +1302,174 @@ if (process.env.M8B_SKILL_PROBE) {
       break
     }
 
+
+    // F01-SR3: obsolete navigation handlers belong to the original Drawer
+    // opening, not merely this root Store. Positive current-session controls
+    // prove the fix cannot just make every navigation handler inert.
+    case 'R13T': {
+      const oldToResources = tree.root.findByProps({
+        'data-context-manager-tab': 'resources',
+      }).props.onClick
+      assert.equal(live()?.pane, 'profiles')
+      await act(async () => { trigger().props.onClick() })
+      await act(async () => { oldToResources() })
+      assert.equal(live()?.pane, 'profiles',
+        'F01-R13T RED: old Tab click cannot change Pane while Drawer is closed')
+      await act(async () => { trigger().props.onClick() })
+      await settleUI()
+      const reopenEpoch = live()?.openSessionEpoch
+      await act(async () => { oldToResources() })
+      assert.equal(live()?.pane, 'profiles',
+        'F01-R13T: old Tab click cannot navigate reopened Drawer')
+      await act(async () => {
+        tree.root.findByProps({ 'data-context-manager-tab': 'resources' }).props.onClick()
+      })
+      await settleUI()
+      assert.equal(live()?.pane, 'resources',
+        'F01-R13T: fresh Tab can navigate in the current session')
+      const oldToProfiles = tree.root.findByProps({
+        'data-context-manager-tab': 'profiles',
+      }).props.onClick
+      await act(async () => { trigger().props.onClick() })
+      await act(async () => { trigger().props.onClick() })
+      await settleUI()
+      assert.ok(live()?.openSessionEpoch > reopenEpoch)
+      await act(async () => { oldToProfiles() })
+      assert.equal(live()?.pane, 'resources',
+        'F01-R13T: old Tab cannot navigate in the reverse direction')
+      await act(async () => {
+        tree.root.findByProps({ 'data-context-manager-tab': 'profiles' }).props.onClick()
+      })
+      assert.equal(live()?.pane, 'profiles')
+      assert.equal(remoteFixture.writes.length, beforeWrites)
+      assert.equal(remoteFixture.resourceWrites.length, 0)
+      break
+    }
+
+    case 'R13P': {
+      assert.equal(live()?.pane, 'profiles')
+      assert.equal(live()?.selectedProfileId, null)
+      const getRow = () => {
+        const rows = tree.root.findAll(node =>
+          node.type === 'button'
+          && node.props['aria-current'] === 'true'
+          && renderedText(node).includes('Main'))
+        assert.equal(rows.length, 1, 'F01-R13P: actual default Profile row must exist')
+        return rows[0]
+      }
+      const oldSelection = getRow().props.onClick
+      await act(async () => { trigger().props.onClick() })
+      await act(async () => { oldSelection() })
+      assert.equal(live()?.selectedProfileId, null,
+        'F01-R13P RED: Profile selection cannot mutate closed Drawer')
+      await act(async () => { trigger().props.onClick() })
+      await settleUI()
+      await act(async () => { oldSelection() })
+      assert.equal(live()?.selectedProfileId, null,
+        'F01-R13P: obsolete Profile selection cannot alter a new session')
+      await act(async () => { getRow().props.onClick() })
+      assert.equal(live()?.selectedProfileId, 'main',
+        'F01-R13P: the new Profile row selection remains usable')
+      assert.equal(remoteFixture.writes.length, beforeWrites)
+      break
+    }
+
+    case 'R13R': {
+      remoteFixture.resources.set('z-selectable', {
+        id: 'z-selectable',
+        name: 'F01 SR3 selectable resource',
+        content: 'read-only navigation control',
+        revision: 1,
+        incarnationId: 'resource-session-selectable',
+      })
+      await act(async () => {
+        tree.root.findByProps({ 'data-context-manager-tab': 'resources' }).props.onClick()
+      })
+      await settleUI()
+      assert.equal(live()?.pane, 'resources')
+      assert.equal(live()?.selectedResourceId, null)
+      const getRow = () => {
+        const rows = tree.root.findAll(node =>
+          node.type === 'button'
+          && renderedText(node).includes('F01 SR3 selectable resource'))
+        assert.equal(rows.length, 1, 'F01-R13R: real Resource row must be hydrated')
+        return rows[0]
+      }
+      const oldSelection = getRow().props.onClick
+      await act(async () => { trigger().props.onClick() })
+      await act(async () => { oldSelection() })
+      assert.equal(live()?.selectedResourceId, null,
+        'F01-R13R RED: Resource selection cannot mutate closed Drawer')
+      await act(async () => { trigger().props.onClick() })
+      await settleUI()
+      await act(async () => { oldSelection() })
+      assert.equal(live()?.selectedResourceId, null,
+        'F01-R13R: obsolete Resource row cannot select in reopened Drawer')
+      await act(async () => { getRow().props.onClick() })
+      assert.equal(live()?.selectedResourceId, 'z-selectable',
+        'F01-R13R: a fresh Resource row remains selectable')
+      assert.equal(remoteFixture.resourceWrites.length, 0)
+      assert.equal(remoteFixture.writes.length, beforeWrites)
+      break
+    }
+
+    case 'R13C': {
+      const oldBackdropClose = tree.root.findByProps({
+        'data-context-manager-backdrop': '',
+      }).props.onClick
+      const oldHeaderClose = tree.root.findByProps({
+        'aria-label': 'Close Context Manager',
+      }).props.onClick
+      const oldEscape = tree.root.findByProps({
+        'data-context-manager-drawer': '',
+      }).props.onKeyDown
+      let prevented = 0
+      const escape = () => ({
+        key: 'Escape',
+        shiftKey: false,
+        preventDefault() { prevented++ },
+        stopPropagation() {},
+      })
+      await act(async () => { trigger().props.onClick() })
+      assert.equal(live()?.open, false)
+      await act(async () => { trigger().props.onClick() })
+      await settleUI()
+      const currentEpoch = live()?.openSessionEpoch
+      await act(async () => { oldBackdropClose() })
+      assert.equal(live()?.open, true,
+        'F01-R13C RED: obsolete backdrop callback must not close new session')
+      await act(async () => { oldHeaderClose() })
+      assert.equal(live()?.open, true,
+        'F01-R13C: obsolete header Close must not close new session')
+      await act(async () => { oldEscape(escape()) })
+      assert.equal(live()?.open, true,
+        'F01-R13C: obsolete Escape handler must not close new session')
+      assert.equal(prevented, 0,
+        'F01-R13C: obsolete Escape must not consume new session event')
+      await act(async () => {
+        tree.root.findByProps({ 'data-context-manager-backdrop': '' }).props.onClick()
+      })
+      assert.equal(live()?.open, false, 'F01-R13C: fresh Backdrop close still works')
+      await act(async () => { trigger().props.onClick() })
+      await settleUI()
+      assert.ok(live()?.openSessionEpoch > currentEpoch)
+      await act(async () => {
+        tree.root.findByProps({ 'aria-label': 'Close Context Manager' }).props.onClick()
+      })
+      assert.equal(live()?.open, false, 'F01-R13C: fresh header Close still works')
+      await act(async () => { trigger().props.onClick() })
+      await settleUI()
+      await act(async () => {
+        tree.root.findByProps({ 'data-context-manager-drawer': '' })
+          .props.onKeyDown(escape())
+      })
+      assert.equal(live()?.open, false, 'F01-R13C: fresh Escape still closes Drawer')
+      assert.equal(prevented, 1)
+      assert.equal(remoteFixture.writes.length, beforeWrites)
+      assert.equal(remoteFixture.resourceWrites.length, 0)
+      break
+    }
+
     default:
       throw new Error('Unknown B1-3 real Renderer probe: ' + probe)
   }
