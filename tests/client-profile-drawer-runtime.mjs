@@ -1840,6 +1840,108 @@ if (process.env.M8B_SKILL_PROBE) {
       break
     }
 
+
+    // F01-SR5 same-open-session unmount / remount proof. Neither current
+    // pane nor epoch alone authorizes handlers from a previous component
+    // instance (without a new Drawer opening).
+    case 'R15U': {
+      const epoch = live()?.openSessionEpoch
+      const oldBindingRead = buttonByLabel(tree, 'Load resource suggestions').props.onClick
+      const oldBindingBegin = tree.root.findByProps({
+        'data-context-manager-new-binding': '',
+      }).props.onClick
+      await act(async () => {
+        tree.root.findByProps({ 'data-context-manager-tab': 'resources' }).props.onClick()
+      })
+      await settleUI()
+      await act(async () => {
+        tree.root.findByProps({ 'data-context-manager-tab': 'profiles' }).props.onClick()
+      })
+      await settleUI()
+      assert.equal(live()?.openSessionEpoch, epoch,
+        'R15U must not depend on Close/Reopen changing session epoch')
+      const beforeBindingRead = uiListDispatches
+      await act(async () => { oldBindingRead(); oldBindingBegin() })
+      assert.equal(uiListDispatches, beforeBindingRead,
+        'R15U stale unmounted Binding Read cannot dispatch after remount in same epoch')
+      assert.equal(live()?.draft, null,
+        'R15U stale unmounted Binding Begin cannot create a hidden draft')
+      await act(async () => {
+        tree.root.findByProps({ 'data-context-manager-new-binding': '' }).props.onClick()
+      })
+      assert.equal(live()?.draft?.kind, 'prompt-binding-create')
+      await act(async () => { buttonByLabel(tree, 'Cancel').props.onClick() })
+      await act(async () => {
+        buttonByLabel(tree, 'Load resource suggestions').props.onClick()
+        for (let i = 0; i < 30; i++) await Promise.resolve()
+      })
+      assert.equal(uiListDispatches, beforeBindingRead + 1)
+
+      await act(async () => {
+        tree.root.findByProps({ 'data-context-manager-tab': 'resources' }).props.onClick()
+      })
+      await settleUI()
+      const oldResourceRead = buttonByLabel(tree, 'Refresh').props.onClick
+      const oldResourceBegin = tree.root.findByProps({
+        'data-context-manager-new-resource': '',
+      }).props.onClick
+      await act(async () => {
+        tree.root.findByProps({ 'data-context-manager-tab': 'profiles' }).props.onClick()
+      })
+      await settleUI()
+      await act(async () => {
+        tree.root.findByProps({ 'data-context-manager-tab': 'resources' }).props.onClick()
+      })
+      await settleUI()
+      assert.equal(live()?.openSessionEpoch, epoch)
+      const beforeResourceRead = uiListDispatches
+      await act(async () => { oldResourceRead(); oldResourceBegin() })
+      assert.equal(uiListDispatches, beforeResourceRead,
+        'R15U stale unmounted Resource Refresh cannot dispatch after remount')
+      assert.equal(live()?.resourceDraft, null,
+        'R15U stale unmounted Resource Create cannot create a draft')
+      await act(async () => {
+        buttonByLabel(tree, 'Refresh').props.onClick()
+        for (let i = 0; i < 30; i++) await Promise.resolve()
+      })
+      assert.equal(uiListDispatches, beforeResourceRead + 1)
+      await act(async () => {
+        tree.root.findByProps({ 'data-context-manager-new-resource': '' }).props.onClick()
+      })
+      assert.equal(live()?.resourceDraft?.kind, 'create')
+      await act(async () => { buttonByLabel(tree, 'Cancel').props.onClick() })
+      assert.equal(remoteFixture.writes.length, beforeWrites)
+      assert.equal(remoteFixture.resourceWrites.length, 0)
+      break
+    }
+
+    case 'R15SI': {
+      assert.equal(live()?.selectedProfileId, null)
+      const oldSkillBegin = tree.root.findByProps({
+        'data-context-manager-skill-new': '',
+      }).props.onClick
+      remoteFixture.externalSetDefault('beta')
+      await act(async () => {
+        buttonByLabel(tree, 'Refresh').props.onClick()
+        for (let i = 0; i < 30; i++) await Promise.resolve()
+      })
+      await settleUI()
+      assert.equal(live()?.selectedProfileId, null)
+      assert.equal(tree.root.findAll(node =>
+        node.type === 'h3' && renderedText(node) === 'Beta Profile').length, 1)
+      await act(async () => { oldSkillBegin() })
+      assert.equal(live()?.draft, null,
+        'R15SI old Skill Begin must not start Main after implicit default flip')
+      await act(async () => {
+        tree.root.findByProps({ 'data-context-manager-skill-new': '' }).props.onClick()
+      })
+      assert.equal(live()?.draft?.profileId, 'beta',
+        'R15SI fresh Beta Skill Begin remains usable after implicit fallback')
+      await act(async () => { buttonByLabel(tree, 'Cancel').props.onClick() })
+      assert.equal(remoteFixture.writes.length, beforeWrites)
+      break
+    }
+
     default:
       throw new Error('Unknown B1-3 real Renderer probe: ' + probe)
   }
