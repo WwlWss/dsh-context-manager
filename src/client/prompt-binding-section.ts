@@ -1,4 +1,4 @@
-import { createElement as h, useRef } from 'react'
+import { createElement as h, useEffect, useRef } from 'react'
 import type {
   ContextManagerRemoteProfile,
   ContextManagerRemotePromptBinding,
@@ -98,6 +98,13 @@ export function ContextManagerPromptBindingSection(props: PromptBindingSectionPr
   // Synchronous guard for duplicate same-render Save events; Profile Controller
   // provides the independent global mutation single-flight and authority checks.
   const committing = useRef<number | null>(null)
+  const mounted = useRef(false)
+  const latestEffectiveProfileId = useRef(profileId)
+  latestEffectiveProfileId.current = profileId
+  useEffect(() => {
+    mounted.current = true
+    return () => { mounted.current = false }
+  }, [])
   const rows = sortedPromptBindings(profile)
   const reservedIds = new Set(Object.keys(profile.prompts))
   const resourceList = snapshot.resources.list
@@ -110,9 +117,18 @@ export function ContextManagerPromptBindingSection(props: PromptBindingSectionPr
   }
   const unavailable = () =>
     actions.setNotice({ code: 'noticeUnavailable', kind: 'warning' })
+  // F01-SR5: the effective profile may change without the raw Store
+  // selectedProfileId changing (e.g. configured default/roster updates).
+  // A stale callback must not regain authority after a same-opening switch.
+  const ownsCurrentProfileEvent = (): boolean => {
+    const live = readLivePresentationForActions(actions)
+    return mounted.current
+      && mayApplyCurrentNavigationEvent(actions, renderedOpenSessionEpoch, 'profiles')
+      && live?.selectedProfileId === renderedSelectedProfileId
+      && latestEffectiveProfileId.current === profileId
+  }
   const begin = (bindingId?: string, renderedBinding?: ContextManagerRemotePromptBinding) => {
-    if (!isLiveDrawerOpenSession(readLivePresentationForActions(actions),
-      renderedOpenSessionEpoch)) return undefined
+    if (!ownsCurrentProfileEvent()) return undefined
     if (!isWritablePromptBindingPath(profileId, bindingId)) {
       actions.setNotice({ code: 'noticeNotEditable', kind: 'warning' })
       return undefined
@@ -169,9 +185,7 @@ export function ContextManagerPromptBindingSection(props: PromptBindingSectionPr
   // No automatic eager read, no body fetch, no Agent polling, no notice races:
   // only the explicitly clicked suggestions control starts a metadata-only read.
   const requestSuggestions = () => {
-    const live = readLivePresentationForActions(actions)
-    if (!mayApplyCurrentNavigationEvent(actions, renderedOpenSessionEpoch, 'profiles')
-      || live?.selectedProfileId !== renderedSelectedProfileId) return
+    if (!ownsCurrentProfileEvent()) return
     void props.loadPromptResourceList().catch(() => {
       // The Client surface exposes read failures as unverified advisory state.
       // Never replace a blocked mutation notice with a late read failure.
