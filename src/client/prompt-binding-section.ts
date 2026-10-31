@@ -20,7 +20,7 @@ import {
   sortedPromptBindings,
   validatePromptBindingCreate,
 } from './prompt-binding-editor.js'
-import { isLiveDrawerOpenSession, mayApplyCurrentDraftEvent, ownsLiveProfileDraft, readLivePresentationForActions } from './presentation-store.js'
+import { isLiveDrawerOpenSession, mayApplyCurrentDraftEvent, mayApplyCurrentNavigationEvent, ownsLiveProfileDraft, readLivePresentationForActions } from './presentation-store.js'
 import styles from './plugin.module.css'
 
 interface PromptBindingSectionProps extends ContextManagerDrawerProps {
@@ -85,6 +85,7 @@ export function ContextManagerPromptBindingSection(props: PromptBindingSectionPr
   const snapshot = props.useContextManager(s => s)
   const operation = props.useProfileMutation(s => s.profile)
   const renderedOpenSessionEpoch = props.useStore(s => s.openSessionEpoch)
+  const renderedSelectedProfileId = props.useStore(s => s.selectedProfileId)
   const draft = props.useStore(s => s.draft)
   const resourceDraft = props.useStore(s => s.resourceDraft)
   const running = operation.status === 'running'
@@ -168,6 +169,9 @@ export function ContextManagerPromptBindingSection(props: PromptBindingSectionPr
   // No automatic eager read, no body fetch, no Agent polling, no notice races:
   // only the explicitly clicked suggestions control starts a metadata-only read.
   const requestSuggestions = () => {
+    const live = readLivePresentationForActions(actions)
+    if (!mayApplyCurrentNavigationEvent(actions, renderedOpenSessionEpoch, 'profiles')
+      || live?.selectedProfileId !== renderedSelectedProfileId) return
     void props.loadPromptResourceList().catch(() => {
       // The Client surface exposes read failures as unverified advisory state.
       // Never replace a blocked mutation notice with a late read failure.

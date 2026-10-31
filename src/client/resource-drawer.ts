@@ -112,6 +112,9 @@ export function ContextManagerResourceDrawerContent(props: ContextManagerDrawerP
   }, [selectedId, view.selected?.status, props.loadPromptResource])
 
   const refresh = () => {
+    const live = readLivePresentationForActions(actions)
+    if (!mayApplyCurrentNavigationEvent(actions, renderedOpenSessionEpoch, 'resources')
+      || live?.selectedResourceId !== requestedId) return
     const tokenAtStart = latestDraftToken.current
     const report = (code: 'resourceNoticeRefreshFailed' | 'resourceNoticeUnavailable') =>
       reportReadFailure(selectedId, tokenAtStart, code)

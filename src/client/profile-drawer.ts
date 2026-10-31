@@ -286,6 +286,7 @@ export function ContextManagerProfileDrawerContent(props: ContextManagerDrawerPr
   }
 
   const refresh = () => {
+    if (!mayApplyCurrentNavigationEvent(actions, renderedOpenSessionEpoch, 'profiles')) return
     const selectionAtStart = latestSelection.current
     const tokenAtStart = latestDraftToken.current
     const report = (code: 'noticeUnavailable' | 'noticeRefreshFailed') => {
