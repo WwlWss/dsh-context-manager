@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { test } from 'node:test'
 
-// F01-SR2 / M8B: a passing protected Full must actually execute the
+// F01-SR5 / M8B: a passing protected Full must actually execute the
 // published Skill Editor interaction probes. The historical default Drawer
 // script does NOT enter its M8B_SKILL_PROBE branch without this runner.
 const workflow = readFileSync('.github/workflows/ci.yml', 'utf8')
@@ -13,7 +13,7 @@ test('M8B full qualification requires real Skill Renderer probes in the existing
   assert.ok(client, 'the protected four-generation Client Renderer job must exist')
   assert.match(client,
     /name:\s*Execute M8B real Skill Renderer qualification\s*\n\s*run:\s*node \.\/tests\/m8b\/run-skill-renderer-probes\.mjs/,
-    'historical Profile-only Drawer invocation cannot qualify Skill R01-R12')
+    'historical Profile-only Drawer invocation cannot qualify Skill R01-R15')
 })
 
 test('M8B preserves every retained Published Client generation and the historical Drawer step', () => {

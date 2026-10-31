@@ -1,4 +1,4 @@
-name: M8B F01-SR2 Draft four-version Published Renderer regression
+name: M8B F01-SR5 Draft four-version Published Renderer regression
 
 on:
   pull_request:
@@ -149,7 +149,7 @@ jobs:
         run: node ./tests/client-profile-drawer-runtime.mjs
 
   b13-skill-renderer:
-    name: F01-SR2 full Skill Renderer regression (${{ matrix.version }})
+    name: F01-SR5 full Skill Renderer regression (${{ matrix.version }})
     needs: oldest-built-client
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -200,6 +200,6 @@ jobs:
             src/client/model-types.ts src/client/mutation-types.ts src/client/remote-port.ts \
             src/client/mutation-controller.ts src/client/model.ts src/client/business-face.ts src/client/plugin.ts \
             tests/client-upstream-contract.ts tests/client-generated-remote-contract.ts
-      - name: Execute same complete 21-case published Skill Renderer suite as official Full
+      - name: Execute shared 36-case published Skill Renderer suite as official Full
         run: node ./tests/m8b/run-skill-renderer-probes.mjs
 

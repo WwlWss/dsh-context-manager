@@ -1,6 +1,6 @@
 # M8B — Profile Skill Policy Editor (Capability & Implementation Contract)
 
-**Status (2026-10-31):** **M8B Profile-local Skill Policy Editor is implemented on PR #42 (Draft/unmerged); F01-SR2, SR3 and SR4 read/nav/draft callback repairs have executable Published Renderer RED→GREEN and four-version scoped qualification.** §19 archives F01-SR2, §20 archives SR3 (25 cases), §21 archives SR4/R14 (28 cases). Historical [Ready 86-job Full #41125921741](https://github.com/WwlWss/dsh-context-manager/actions/runs/41125921741) was for old HEAD `c4de841d` **only**; latest repairs require a **new independent Final Strict Review and protected exact-head Ready 86-job Full** before merge and independent post-merge main qualification.
+**Status (2026-11-01):** **PR #42 remains Draft/unmerged. F01-SR5 / R15 actual-effective-target isolation is implemented through Fix A→B→C; 34/34 cases × four Published DSH versions passed on production Fix C, while two additional same-epoch remount/Skill-fallback controls have been added to the canonical 36-case suite and await their own exact-head CI qualification.** Historic §19 (21 cases), §20 (25), §21 (28) retain their original RED→GREEN evidence; §22 records R15. The historical [Ready Full 86/86 #41125921741](https://github.com/WwlWss/dsh-context-manager/actions/runs/41125921741) applies solely to old HEAD `c4de841d`. Independent Final Strict Review and *new exact-head Ready 86-job Full* remain required before merge.
 **Baseline:** merged M8A2 PR #41, main commit `5a21df1b5f27fbcc22cdb389de3c1d765b96a95d`; independent main Full [#41009808239](https://github.com/WwlWss/dsh-context-manager/actions/runs/41009808239), 86/86 SUCCESS, 0 failed/skipped.
 **Branch:** `feat/m8b-skill-policy-editor` / PR #42, **Draft, unmerged**. Keep all earlier RED and GREEN evidence in its original exact-HEAD context. Do not mark Ready or merge until independent Final Strict Review closes and the repaired exact-HEAD Full gate is requalified.
 **Purpose:** edit explicit Profile-local Skill policy configuration with the existing Profile Settings authority; explain known native/Agent effectiveness separately, never infer an Agent's behavior from a reusable Profile record alone.
@@ -1072,3 +1072,94 @@ Draft/unmerged** until a new independent Final Strict Code Review resolves
 all P1/P2, followed by an explicit Ready transition and new **86/86
 protected Full on the repaired exact HEAD**. Merge approval and independent
 post-merge main Full remain separate gates.
+
+## 22. F01-SR5 — effective selection and stale Begin authorization
+
+### 22.1 Source-level root cause
+
+A Drawer opening can retain its `openSessionEpoch` and raw
+`selectedProfileId` / `selectedResourceId` while the effective displayed
+target changes through `deriveProfileView` default fallback or
+`deriveResourceView` sorted-list fallback. An old render's Resource Refresh
+or Binding Suggestions handler therefore passed F01-SR4's epoch/pane/raw
+selection check and started a new `runLazy('list','')` read. The shared Client
+Model increments the keyed owner *before* response completion; the late
+result guard was insufficient. Separately, an old Profile/PromptBinding/
+Resource Edit or Delete Begin could combine a valid unchanged Host Basis or
+Resource Stamp with obsolete A-target user intent after the UI selected B
+within the **same Drawer opening**. Skill Begin already had a different
+effective selection fence; this was tested independently.
+
+### 22.2 R15 real Published Renderer RED, before production changes
+
+- **Test-only HEAD** `9b355d6ffda976b2ca22aa79c66cb538a2986ef2`;
+  [four-generation R15 RED #41233360166](https://github.com/WwlWss/dsh-context-manager/actions/runs/41233360166).
+  Each actual published DSH Renderer independently reported **29/34 PASS**:
+  retained 28 probes and Skill safe positive control R15SBegin PASS; exactly
+  **five expected behavioral RED** at R15R (implicit Resource fallback),
+  R15B (implicit Profile fallback), R15Begin (old Binding Create),
+  R15PBegin (old Profile Edit) and R15RBegin (old Resource Edit).
+  Tests reached live React callbacks, actual Client Model, the registered
+  root Store and genuine Remote fixture reads, not mock callback functions.
+  R15Begin/PBegin/RBegin separately include the old Edit/Delete and fresh
+  B-target controls for the eventual GREEN.
+
+### 22.3 Scoped Fix A → B → C, each with independent qualification
+
+- **Fix A** `2a8a43063a3e6cf144b17507cbb6f5a818770e40`:
+  Resource Refresh checks existing `mounted.current` and
+  `latestSelection.current === selectedId` **before** starting a keyed
+  read, in addition to F01-SR4's original root Store / epoch / pane / raw
+  selection checks. Four-version [intermediate #41233481433](https://github.com/WwlWss/dsh-context-manager/actions/runs/41233481433):
+  R15R **GREEN 4/4** with the other four intentional REDs preserved.
+- **Fix B** `506e997fd9723837f83e37a67f988b7ac395cf42`:
+  PromptBinding's mounted component tracks latest effective Profile and
+  verifies original raw Profile selection and original Drawer epoch before
+  *both* suggestions Read and Create/Edit/Delete Begin. No shadow Store or
+  recaptured Basis. [Four-version intermediate #41233614015](https://github.com/WwlWss/dsh-context-manager/actions/runs/41233614015):
+  R15B/R15Begin **GREEN 4/4 each**; only PBegin/RBegin remained deliberately
+  RED. R15SBegin maintained its existing GREEN control.
+- **Test-only positive control correction**
+  `61450645a589b54991cb5b16f4c743e8c998dff5`:
+  Resource Edit draft target is identified by immutable
+  `stamp.resourceId`, not a direct `resourceDraft.id`. The old-target
+  negative assertion was **not** weakened.
+- **Fix C** `ab81133b80b7ba4627e0874dbf109b74d22c47cf`:
+  Profile Edit/Delete and immediate default toggle as well as Resource
+  Edit/Delete now check existing mounted component plus latest effective
+  target against original render, raw selection, root Store, epoch and pane.
+  Global Profile/Resource Create semantics are left unchanged. The original
+  Profile Basis, Resource Stamp, Host/Remote CAS, Controller single-flight,
+  Draft Token and first-terminal receipts remain unchanged.
+  [Published Renderer #41233774887](https://github.com/WwlWss/dsh-context-manager/actions/runs/41233774887)
+  **10/10 scoped Jobs SUCCESS**, all **4 × 34 = 136/136 actual cases PASS**,
+  including five formerly RED tests. [Draft Quick #41233774858](https://github.com/WwlWss/dsh-context-manager/actions/runs/41233774858)
+  SUCCESS. This verifies production Fix C at its *exact code HEAD*, not a
+  Ready protected Full for the later branch.
+
+### 22.4 Additional same-epoch remount and Skill fallback controls
+
+- **Test-only HEAD** `47f287b170f88138c8609cacd39abac86b4339ef`
+  adds R15U (same Drawer epoch, Pane unmount→remount must revoke old
+  Binding/Resource Read and Begin handlers, while fresh controls remain
+  functional) and R15SI (default Profile flips with raw selection `null`,
+  stale Skill Begin remains inert, fresh current Skill Begin works).
+- The canonical runner now requires **36 unique real Renderer processes per
+  DSH version**; the original four-version official Full matrix still
+  invokes the same shared runner and historical Drawer smoke, preserving
+  the original **86-job / 21 upstream group** structure. The additional
+  cases require independent current-head CI evidence; they are **not**
+  retrospectively counted as GREEN at Fix C's 34-case HEAD.
+
+### 22.5 Outstanding release gates
+
+After the final Fix D code/docs HEAD: obtain a successful strict
+TypeScript/Client/Node/Slot Draft Quick and **4 × 36 actual Published Renderer
+probes**, with no skipped/failed probes. Perform a **new independent Final
+Strict Code Review** of the final exact HEAD and document any blockers
+separately. Only after that review approves, explicitly transition PR #42
+to Ready and execute a new, protected **86-job Full Qualification** on the
+same exact HEAD, confirming the canonical 36 probes run in each of four
+required Client Renderer jobs. Merge requires separate approval and
+post-merge main Full is a separate gate. This subsection does not claim
+those steps were already performed.
