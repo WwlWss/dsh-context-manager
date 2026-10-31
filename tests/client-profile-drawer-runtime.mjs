@@ -532,6 +532,26 @@ slots.installLocale(locale)
 
 const remoteFixture = createWritableRemoteFixture()
 if (process.env.M8B_SKILL_PROBE) remoteFixture.seedSkillsForProbe()
+// R15 tests seed *real* Remote fixture rows before the published DSH
+// Business Face mounts. No direct Presentation Store / React mocks.
+if (process.env.M8B_SKILL_PROBE?.startsWith('R15')) {
+  const binding = { resourceId: 'fixture-prompt', enabled: true,
+    placement: 'before-persona', order: 1 }
+  remoteFixture.profiles.main.prompts.legacy = { ...binding }
+  remoteFixture.profiles.beta = {
+    name: 'Beta Profile', description: 'Independent Profile', basePreset: 'native',
+    skills: {}, prompts: { legacy: { ...binding } },
+  }
+  const seed = (id, name) => remoteFixture.resources.set(id, {
+    id, name, content: 'R15 readable body: ' + id,
+    revision: 1, incarnationId: 'r15-' + id,
+  })
+  if (process.env.M8B_SKILL_PROBE === 'R15R') seed('b-resource', 'Bravo Resource')
+  if (process.env.M8B_SKILL_PROBE === 'R15RBegin') {
+    seed('a-resource', 'Alpha Resource')
+    seed('b-resource', 'Bravo Resource')
+  }
+}
 const remote = {
   contextManager: remoteFixture.face,
   async $mount() { return async () => {} },
@@ -1595,6 +1615,228 @@ if (process.env.M8B_SKILL_PROBE) {
         'F01-R14B: new Suggestions must reach real Remote Resource metadata')
       assert.equal(remoteFixture.writes.length, beforeWrites)
       assert.equal(remoteFixture.resourceWrites.length, 0)
+      break
+    }
+
+
+    // F01-SR5: effective displayed selection may change during the SAME
+    // Drawer opening while the raw Store selectedId stays null. CAS may
+    // remain unchanged. Old render closures must not gain current intent.
+    case 'R15R': {
+      await act(async () => {
+        tree.root.findByProps({ 'data-context-manager-tab': 'resources' }).props.onClick()
+      })
+      await settleUI()
+      assert.equal(live()?.selectedResourceId, null)
+      const selectedRow = () => tree.root.findAll(node =>
+        node.type === 'button' && node.props['aria-current'] === 'true'
+        && /Resource/.test(renderedText(node)))[0]
+      assert.ok(renderedText(selectedRow()).includes('Bravo Resource'),
+        'R15R setup must initially render Bravo as effective selection')
+      const oldRefresh = buttonByLabel(tree, 'Refresh').props.onClick
+      const oldEpoch = live()?.openSessionEpoch
+      remoteFixture.resources.set('a-resource', {
+        id: 'a-resource', name: 'Alpha Resource',
+        content: 'new lower-sorted resource', revision: 1,
+        incarnationId: 'r15-a-resource',
+      })
+      await act(async () => {
+        buttonByLabel(tree, 'Refresh').props.onClick()
+        for (let i = 0; i < 35; i++) await Promise.resolve()
+      })
+      await settleUI()
+      assert.equal(live()?.openSessionEpoch, oldEpoch)
+      assert.equal(live()?.selectedResourceId, null,
+        'implicit fallback changes effective resource, not raw selection')
+      assert.ok(renderedText(selectedRow()).includes('Alpha Resource'),
+        'R15R new list must display Alpha in same opening')
+      const before = uiListDispatches
+      const beforeRemote = remoteFixture.readCalls.resourceLists
+      await act(async () => { oldRefresh() })
+      await settleUI()
+      assert.equal(uiListDispatches, before,
+        'R15R RED: obsolete Bravo Refresh must not issue a new keyed Client list read')
+      assert.equal(remoteFixture.readCalls.resourceLists, beforeRemote,
+        'R15R stale closure cannot reach the actual Remote list')
+      await act(async () => {
+        buttonByLabel(tree, 'Refresh').props.onClick()
+        for (let i = 0; i < 35; i++) await Promise.resolve()
+      })
+      await settleUI()
+      assert.equal(uiListDispatches, before + 1)
+      assert.ok(remoteFixture.readCalls.resourceLists > beforeRemote)
+      assert.equal(remoteFixture.writes.length, beforeWrites)
+      assert.equal(remoteFixture.resourceWrites.length, 0)
+      break
+    }
+
+    case 'R15B': {
+      assert.equal(live()?.selectedProfileId, null)
+      const selectedHeading = () => tree.root.findAll(node =>
+        node.type === 'h3' && (renderedText(node) === 'Main'
+          || renderedText(node) === 'Beta Profile'))[0]
+      assert.equal(renderedText(selectedHeading()), 'Main')
+      const oldSuggestions = buttonByLabel(tree, 'Load resource suggestions').props.onClick
+      const originalEpoch = live()?.openSessionEpoch
+      remoteFixture.externalSetDefault('beta')
+      await act(async () => {
+        buttonByLabel(tree, 'Refresh').props.onClick()
+        for (let i = 0; i < 35; i++) await Promise.resolve()
+      })
+      await settleUI()
+      assert.equal(live()?.openSessionEpoch, originalEpoch)
+      assert.equal(live()?.selectedProfileId, null)
+      assert.equal(renderedText(selectedHeading()), 'Beta Profile',
+        'R15B must actually replace default displayed Profile with unchanged raw null')
+      const before = uiListDispatches
+      const reads = remoteFixture.readCalls.resourceLists
+      await act(async () => { oldSuggestions() })
+      await settleUI()
+      assert.equal(uiListDispatches, before,
+        'R15B RED: obsolete Main Suggestions must not claim new Beta Resource read')
+      assert.equal(remoteFixture.readCalls.resourceLists, reads)
+      await act(async () => {
+        buttonByLabel(tree, 'Load resource suggestions').props.onClick()
+        for (let i = 0; i < 35; i++) await Promise.resolve()
+      })
+      await settleUI()
+      assert.equal(uiListDispatches, before + 1)
+      assert.ok(remoteFixture.readCalls.resourceLists > reads)
+      assert.equal(remoteFixture.writes.length, beforeWrites)
+      break
+    }
+
+    case 'R15Begin': {
+      const oldCreate = tree.root.findByProps({
+        'data-context-manager-new-binding': '',
+      }).props.onClick
+      const oldEdit = tree.root.findByProps({
+        'data-context-manager-binding-edit-resourceId': 'legacy',
+      }).props.onClick
+      const oldDelete = tree.root.findByProps({
+        'data-context-manager-binding-delete': 'legacy',
+      }).props.onClick
+      const epoch = live()?.openSessionEpoch
+      const beforeToken = live()?.nextDraftToken
+      const beta = tree.root.findAll(node => node.type === 'button'
+        && renderedText(node).includes('Beta Profile'))[0]
+      assert.ok(beta, 'R15Begin requires a second selectable Profile')
+      await act(async () => { beta.props.onClick() })
+      await settleUI()
+      assert.equal(live()?.openSessionEpoch, epoch)
+      assert.equal(live()?.selectedProfileId, 'beta')
+      for (const [kind, oldEvent] of [
+        ['create', oldCreate], ['edit', oldEdit], ['delete', oldDelete],
+      ]) {
+        await act(async () => { oldEvent() })
+        assert.equal(live()?.draft, null,
+          'R15Begin RED: old Main ' + kind + ' must not create a Beta-session draft')
+        assert.equal(live()?.selectedProfileId, 'beta',
+          'R15Begin: old Main ' + kind + ' must not select Main again')
+        assert.equal(live()?.nextDraftToken, beforeToken)
+      }
+      for (const [kind, attr] of [
+        ['create', 'data-context-manager-new-binding'],
+        ['edit', 'data-context-manager-binding-edit-resourceId'],
+        ['delete', 'data-context-manager-binding-delete'],
+      ]) {
+        const node = tree.root.findByProps({ [attr]: kind === 'create' ? '' : 'legacy' })
+        await act(async () => { node.props.onClick() })
+        assert.equal(live()?.draft?.profileId, 'beta',
+          'R15Begin: fresh Beta ' + kind + ' must create a Beta-owned draft')
+        await act(async () => { buttonByLabel(tree, 'Cancel').props.onClick() })
+        assert.equal(live()?.draft, null)
+      }
+      assert.equal(remoteFixture.writes.length, beforeWrites)
+      break
+    }
+
+    case 'R15PBegin': {
+      const oldEdit = buttonByLabel(tree, 'Edit').props.onClick
+      const oldDelete = buttonByLabel(tree, 'Delete profile').props.onClick
+      const beta = tree.root.findAll(node => node.type === 'button'
+        && renderedText(node).includes('Beta Profile'))[0]
+      assert.ok(beta)
+      const epoch = live()?.openSessionEpoch
+      await act(async () => { beta.props.onClick() })
+      await settleUI()
+      assert.equal(live()?.selectedProfileId, 'beta')
+      assert.equal(live()?.openSessionEpoch, epoch)
+      for (const [kind, oldHandler] of [
+        ['edit', oldEdit], ['delete', oldDelete],
+      ]) {
+        await act(async () => { oldHandler() })
+        assert.equal(live()?.draft, null,
+          'R15PBegin RED: old Main ' + kind + ' must not enter Main editing')
+        assert.equal(live()?.selectedProfileId, 'beta')
+      }
+      await act(async () => { buttonByLabel(tree, 'Edit').props.onClick() })
+      assert.equal(live()?.draft?.profileId, 'beta')
+      await act(async () => { buttonByLabel(tree, 'Cancel').props.onClick() })
+      await act(async () => { buttonByLabel(tree, 'Delete profile').props.onClick() })
+      assert.equal(live()?.draft?.profileId, 'beta')
+      await act(async () => { buttonByLabel(tree, 'Cancel').props.onClick() })
+      assert.equal(remoteFixture.writes.length, beforeWrites)
+      break
+    }
+
+    case 'R15RBegin': {
+      await act(async () => {
+        tree.root.findByProps({ 'data-context-manager-tab': 'resources' }).props.onClick()
+      })
+      await settleUI()
+      const first = tree.root.findAll(node => node.type === 'button'
+        && node.props['aria-current'] === 'true'
+        && renderedText(node).includes('Alpha Resource'))
+      assert.equal(first.length, 1)
+      const oldEdit = buttonByLabel(tree, 'Edit').props.onClick
+      const oldDelete = buttonByLabel(tree, 'Delete resource').props.onClick
+      const beta = tree.root.findAll(node => node.type === 'button'
+        && renderedText(node).includes('Bravo Resource'))[0]
+      assert.ok(beta)
+      const epoch = live()?.openSessionEpoch
+      await act(async () => { beta.props.onClick() })
+      await settleUI()
+      assert.equal(live()?.selectedResourceId, 'b-resource')
+      assert.equal(live()?.openSessionEpoch, epoch)
+      for (const [kind, handler] of [
+        ['edit', oldEdit], ['delete', oldDelete],
+      ]) {
+        await act(async () => { handler() })
+        assert.equal(live()?.resourceDraft, null,
+          'R15RBegin RED: old Alpha ' + kind + ' must not start an Alpha draft')
+        assert.equal(live()?.selectedResourceId, 'b-resource')
+      }
+      await act(async () => { buttonByLabel(tree, 'Edit').props.onClick() })
+      assert.equal(live()?.resourceDraft?.resourceId ?? live()?.resourceDraft?.id,
+        'b-resource', 'R15RBegin: fresh Bravo Edit must start a Bravo draft')
+      await act(async () => { buttonByLabel(tree, 'Cancel').props.onClick() })
+      await act(async () => { buttonByLabel(tree, 'Delete resource').props.onClick() })
+      assert.equal(live()?.resourceDraft?.resourceId, 'b-resource')
+      await act(async () => { buttonByLabel(tree, 'Cancel').props.onClick() })
+      assert.equal(remoteFixture.resourceWrites.length, 0)
+      break
+    }
+
+    case 'R15SBegin': {
+      const oldSkill = tree.root.findByProps({
+        'data-context-manager-skill-new': '',
+      }).props.onClick
+      const beta = tree.root.findAll(node => node.type === 'button'
+        && renderedText(node).includes('Beta Profile'))[0]
+      assert.ok(beta)
+      await act(async () => { beta.props.onClick() })
+      await settleUI()
+      assert.equal(live()?.selectedProfileId, 'beta')
+      await act(async () => { oldSkill() })
+      assert.equal(live()?.draft, null,
+        'R15SBegin: existing Skill Begin effective-selection fence rejects Main')
+      await act(async () => {
+        tree.root.findByProps({ 'data-context-manager-skill-new': '' }).props.onClick()
+      })
+      assert.equal(live()?.draft?.profileId, 'beta')
+      await act(async () => { buttonByLabel(tree, 'Cancel').props.onClick() })
+      assert.equal(remoteFixture.writes.length, beforeWrites)
       break
     }
 

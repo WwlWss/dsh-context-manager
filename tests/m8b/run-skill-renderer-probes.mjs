@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url'
 /** One canonical, ordered M8B real Published Renderer case inventory.
  * Each case runs in its own fresh Node process and freshly hydrated DSH
  * root Store/Business Face. Reuse this runner from the protected four-
- * generation Client matrix AND the temporary Draft-only two-generation CI.
+ * generation Client matrix AND the temporary Draft-only four-generation CI.
  * No fake Renderer, no skipped tests, and no contribution to Host writes. */
 export const SKILL_RENDERER_PROBES = Object.freeze([
   'R01', 'R02', 'R03', 'R04', 'R05',
@@ -13,11 +13,12 @@ export const SKILL_RENDERER_PROBES = Object.freeze([
   'R12S', 'R12P', 'R12B', 'R12R',
   'R13T', 'R13P', 'R13R', 'R13C',
   'R14P', 'R14R', 'R14B',
+  'R15R', 'R15B', 'R15Begin', 'R15PBegin', 'R15RBegin', 'R15SBegin',
 ])
 
-if (SKILL_RENDERER_PROBES.length !== 28
+if (SKILL_RENDERER_PROBES.length !== 34
   || new Set(SKILL_RENDERER_PROBES).size !== SKILL_RENDERER_PROBES.length) {
-  throw new Error('Published Skill Renderer probe inventory must have 28 distinct cases')
+  throw new Error('Published Skill Renderer probe inventory must have 34 distinct cases')
 }
 
 const entry = fileURLToPath(new URL('../client-profile-drawer-runtime.mjs', import.meta.url))
