@@ -231,6 +231,7 @@ test('outcome classification never treats unknown as applied or retries applied-
 
 test('presentation store keeps Resource draft across close/reopen and prevents tab/selection loss', () => {
   const store = createContextManagerPresentationStore().create()
+  store.actions.open()
   store.actions.selectPane('resources')
   store.actions.beginResourceCreate(CREATE)
   const initialToken = store.getSnapshot().resourceDraft?.token
@@ -260,6 +261,7 @@ test('presentation store keeps Resource draft across close/reopen and prevents t
 
 test('resource presentation token prevents late completion from clearing a new draft', () => {
   const s = createContextManagerPresentationStore().create()
+  s.actions.open()
   s.actions.selectPane('resources')
   s.actions.beginResourceCreate(CREATE)
   const old = s.getSnapshot().resourceDraft?.token

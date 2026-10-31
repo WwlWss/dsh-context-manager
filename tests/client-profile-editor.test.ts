@@ -15,7 +15,7 @@ import {
   isProfileDraftCurrent,
   resolveProfilePreset,
 } from '../src/client/profile-view.js'
-import { createContextManagerPresentationStore } from '../src/client/presentation-store.js'
+import { createContextManagerPresentationStore, isLiveDrawerOpenSession, ownsLiveProfileDraft, readLivePresentationForActions } from '../src/client/presentation-store.js'
 import type { ContextManagerClientSnapshot } from '../src/client/model-types.js'
 import type {
   ContextManagerClientProfileMutationBasis,
@@ -245,6 +245,7 @@ test('DSH presentation store retains drafts across overlay close/reopen and guar
 
 test('DSH presentation store blocks uncertain replay, and older completions cannot clear newer drafts', () => {
   const store = createContextManagerPresentationStore().create()
+  store.actions.open()
   store.actions.beginCreate(BASIS)
   const firstToken = store.getSnapshot().draft?.token
   assert.ok(firstToken)
@@ -333,4 +334,204 @@ test('M8A2 Fix4: Profile Begin compares rendered Settings revision and exact usa
   assert.equal(isProfileBeginCurrent(rehydrated, BASIS, newRow, 'name', 'Main'), true)
   assert.equal(isProfileBeginCurrent(rehydrated, BASIS, main), false,
     'a rendered row must come from the snapshot used in the Begin fence')
+})
+
+
+// M8B B1-2a executable behavioral RED. A retained Begin callback from the
+// previously open Drawer must not occupy an invisible draft after Close.
+// Invoke the REAL published Presentation Store actions; do not mock their
+// behavior or treat an import/TypeScript error as meaningful RED evidence.
+type B1ClosedBeginStore = ReturnType<ReturnType<typeof createContextManagerPresentationStore>['create']>
+const B1_RESOURCE_STAMP = Object.freeze({
+  instanceId: 'm8b-profile-instance', resourceAuthorityId: 'm8b-library',
+  resourceId: 'exact', incarnationId: 'incarnation', revision: 3,
+  source: 'document' as const,
+})
+const B1_RESOURCE_DOCUMENT = Object.freeze({
+  id: 'exact', name: 'Stored', description: 'Exact',
+  content: 'body\n', incarnationId: 'incarnation', revision: 3,
+})
+const b1ClosedBeginProbes: Array<{
+  name: string
+  pane: 'profiles' | 'resources'
+  begin: (store: B1ClosedBeginStore) => void
+}> = [
+  { name: 'M7C Profile create', pane: 'profiles',
+    begin: s => s.actions.beginCreate(BASIS) },
+  { name: 'M7C Profile field edit', pane: 'profiles',
+    begin: s => s.actions.beginFieldEdit({
+      profileId: 'main', field: 'name', original: 'Main', basis: BASIS,
+    }) },
+  { name: 'M7C Profile delete', pane: 'profiles',
+    begin: s => s.actions.beginDelete('main', BASIS) },
+  { name: 'M8A2 PromptBinding create', pane: 'profiles',
+    begin: s => s.actions.beginPromptBindingCreate({ profileId: 'main', basis: BASIS }) },
+  { name: 'M8A2 PromptBinding edit', pane: 'profiles',
+    begin: s => s.actions.beginPromptBindingFieldEdit({
+      profileId: 'main', bindingId: 'binding', field: 'enabled',
+      original: true, basis: BASIS,
+    }) },
+  { name: 'M8A2 PromptBinding delete', pane: 'profiles',
+    begin: s => s.actions.beginPromptBindingDelete({
+      profileId: 'main', bindingId: 'binding', basis: BASIS,
+    }) },
+  { name: 'M8A1 Resource create', pane: 'resources',
+    begin: s => s.actions.beginResourceCreate({ resourceAuthorityId: 'm8b-library' }) },
+  { name: 'M8A1 Resource edit', pane: 'resources',
+    begin: s => s.actions.beginResourceEdit(B1_RESOURCE_DOCUMENT, B1_RESOURCE_STAMP) },
+  { name: 'M8A1 Resource delete', pane: 'resources',
+    begin: s => s.actions.beginResourceDelete('exact', 'Stored', B1_RESOURCE_STAMP) },
+]
+
+for (const probe of b1ClosedBeginProbes) {
+  test('M8B B1-2a RED: closed Drawer forbids ' + probe.name + ' Begin without hidden draft or notice', () => {
+    const store = createContextManagerPresentationStore().create()
+    store.actions.open()
+    if (probe.pane === 'resources') {
+      store.actions.selectPane('resources')
+      store.actions.selectResource('exact')
+    } else {
+      store.actions.selectProfile('main')
+    }
+    // Capture the actual stale callback before Close, not a fresh after-Close
+    // callback that the real React UI would normally stop rendering.
+    const retainedBegin = () => probe.begin(store)
+    store.actions.close()
+    const before = store.getSnapshot()
+    assert.equal(before.open, false)
+    assert.equal(before.draft, null)
+    assert.equal(before.resourceDraft, null)
+
+    retainedBegin()
+    const after = store.getSnapshot()
+    assert.equal(after.open, false)
+    assert.equal(after.draft, null, 'closed Begin may not create a hidden Profile draft')
+    assert.equal(after.resourceDraft, null, 'closed Begin may not create a hidden Resource draft')
+    assert.equal(after.nextDraftToken, before.nextDraftToken,
+      'closed Begin must not consume a Profile token')
+    assert.equal(after.nextResourceDraftToken, before.nextResourceDraftToken,
+      'closed Begin must not consume a Resource token')
+    assert.equal(after.selectedProfileId, before.selectedProfileId)
+    assert.equal(after.selectedResourceId, before.selectedResourceId)
+    assert.deepEqual(after.notice, before.notice,
+      'closed Begin may not leave a misleading Draft Active warning for reopen')
+    assert.deepEqual(after.resourceNotice, before.resourceNotice)
+
+    // A new genuine Begin after explicit Reopen remains permitted. This
+    // positive case does not claim old React closures are safe after Reopen:
+    // that is a distinct B1 session-epoch behavioral RED.
+    store.actions.open()
+    probe.begin(store)
+    assert.equal(store.getSnapshot().open, true)
+    assert.ok(
+      probe.pane === 'profiles' ? store.getSnapshot().draft !== null
+        : store.getSnapshot().resourceDraft !== null,
+      'the open Drawer must still permit the normal Begin path',
+    )
+  })
+}
+
+test('M8B B1-2a control: closing an existing Profile or Resource draft keeps token and first terminal receipt', () => {
+  const profile = createContextManagerPresentationStore().create()
+  profile.actions.open()
+  profile.actions.beginFieldEdit({
+    profileId: 'main', field: 'name', original: 'Main', basis: BASIS,
+  })
+  const existingProfile = profile.getSnapshot().draft
+  assert.ok(existingProfile !== null)
+  profile.actions.blockDraft(existingProfile.token, 'unknown', {
+    code: 'noticeOutcomeUnknown', kind: 'warning', detail: 'original Host receipt',
+  })
+  profile.actions.close()
+  const retainedProfile = profile.getSnapshot().draft
+  assert.equal(retainedProfile?.token, existingProfile.token)
+  profile.actions.beginCreate(BASIS)
+  assert.equal(profile.getSnapshot().draft?.token, existingProfile.token)
+  assert.equal(profile.getSnapshot().notice?.detail, 'original Host receipt')
+  profile.actions.open()
+  assert.equal(profile.getSnapshot().draft?.token, existingProfile.token)
+  profile.actions.discardBlockedDraft(existingProfile.token)
+  profile.actions.beginCreate(BASIS)
+  assert.equal(profile.getSnapshot().draft?.kind, 'create')
+
+  const resource = createContextManagerPresentationStore().create()
+  resource.actions.open()
+  resource.actions.selectPane('resources')
+  resource.actions.beginResourceCreate({ resourceAuthorityId: 'm8b-library' })
+  const existingResource = resource.getSnapshot().resourceDraft
+  assert.ok(existingResource !== null)
+  resource.actions.blockResourceDraft(existingResource.token, 'unknown', {
+    code: 'resourceNoticeUnknown', kind: 'warning', detail: 'original Resource receipt',
+  })
+  resource.actions.close()
+  resource.actions.beginResourceEdit(B1_RESOURCE_DOCUMENT, B1_RESOURCE_STAMP)
+  assert.equal(resource.getSnapshot().resourceDraft?.token, existingResource.token)
+  assert.equal(resource.getSnapshot().resourceNotice?.detail, 'original Resource receipt')
+  resource.actions.open()
+  assert.equal(resource.getSnapshot().resourceDraft?.token, existingResource.token)
+  resource.actions.discardBlockedResourceDraft(existingResource.token)
+  resource.actions.beginResourceCreate({ resourceAuthorityId: 'm8b-library' })
+  assert.equal(resource.getSnapshot().resourceDraft?.kind, 'create')
+})
+
+
+test('M8B F01-SR1 RED: real root Store advances only on a newly opened Drawer session', () => {
+  const store = createContextManagerPresentationStore().create()
+  // Read as an optional test observation so B1 RED is a behavioral assertion,
+  // not a missing-field or TypeScript compile failure before the production fix.
+  const getEpoch = () => (store.getSnapshot() as unknown as { openSessionEpoch?: number }).openSessionEpoch
+  assert.equal(getEpoch(), 0, 'the first closed session starts at epoch zero')
+  store.actions.open()
+  assert.equal(getEpoch(), 1, 'closed-to-open is a new visible session')
+  store.actions.open()
+  assert.equal(getEpoch(), 1, 'idempotent open must not invalidate live callbacks')
+  store.actions.selectProfile('main')
+  store.actions.beginFieldEdit({
+    profileId: 'main', field: 'name', original: 'Main', basis: BASIS,
+  })
+  const original = store.getSnapshot().draft
+  assert.ok(original)
+  store.actions.close()
+  assert.equal(getEpoch(), 1, 'close retains epoch and original draft')
+  assert.strictEqual(store.getSnapshot().draft, original)
+  store.actions.close()
+  assert.equal(getEpoch(), 1)
+  store.actions.open()
+  assert.equal(getEpoch(), 2, 'reopened callbacks need a new epoch')
+  assert.strictEqual(store.getSnapshot().draft, original)
+  assert.deepEqual(store.getSnapshot().draft?.basis, BASIS)
+  store.actions.toggle()
+  assert.equal(getEpoch(), 2, 'open-to-closed toggle does not advance session')
+  store.actions.toggle()
+  assert.equal(getEpoch(), 3, 'closed-to-open toggle must advance session')
+  assert.strictEqual(store.getSnapshot().draft, original)
+})
+
+test('M8B F01-SR1 GREEN: original draft identity is not sufficient across Drawer sessions', () => {
+  const owner = createContextManagerPresentationStore()
+  const instance = owner.create()
+  instance.actions.open()
+  instance.actions.selectProfile('main')
+  instance.actions.beginFieldEdit({
+    profileId: 'main', field: 'name', original: 'Main', basis: BASIS,
+  })
+  const original = instance.getSnapshot().draft
+  assert.ok(original)
+  const epochBefore = instance.getSnapshot().openSessionEpoch
+  const liveBefore = readLivePresentationForActions(instance.actions)
+  assert.equal(isLiveDrawerOpenSession(liveBefore, epochBefore), true)
+  assert.equal(ownsLiveProfileDraft(liveBefore, original), true)
+  instance.actions.close()
+  assert.equal(isLiveDrawerOpenSession(readLivePresentationForActions(instance.actions), epochBefore), false)
+  instance.actions.open()
+  const liveAfter = readLivePresentationForActions(instance.actions)
+  assert.equal(isLiveDrawerOpenSession(liveAfter, epochBefore), false,
+    'a matching original Store draft does not authorize the old rendered closure')
+  assert.equal(ownsLiveProfileDraft(liveAfter, original), true,
+    'the existing ownership check alone proves why the historical callback was unsafe')
+  assert.equal(isLiveDrawerOpenSession(liveAfter, liveAfter!.openSessionEpoch), true,
+    'a freshly rendered callback may operate on the preserved draft')
+  owner.revokeSnapshotReader()
+  assert.equal(isLiveDrawerOpenSession(readLivePresentationForActions(instance.actions),
+    liveAfter!.openSessionEpoch), false)
 })

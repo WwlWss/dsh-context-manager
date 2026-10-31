@@ -12,7 +12,7 @@ import {
   resourceEditChanges,
   validateResourceCreateDraft,
 } from './resource-editor.js'
-import { ownsLiveResourceDraft, readLivePresentationForActions, terminalResourceNotice } from './presentation-store.js'
+import { isLiveDrawerOpenSession, mayApplyCurrentDraftEvent, mayApplyCurrentNavigationEvent, ownsLiveResourceDraft, readLivePresentationForActions, terminalResourceNotice } from './presentation-store.js'
 import styles from './plugin.module.css'
 
 function button(
@@ -51,6 +51,7 @@ export function ContextManagerResourceDrawerContent(props: ContextManagerDrawerP
   const { useStore, actions, t } = props
   const snapshot = props.useContextManager(s => s)
   const operation = props.useResourceMutation(s => s.resource)
+  const renderedOpenSessionEpoch = useStore(s => s.openSessionEpoch)
   const requestedId = useStore(s => s.selectedResourceId)
   const draft = useStore(s => s.resourceDraft)
   const profileDraft = useStore(s => s.draft)
@@ -111,6 +112,11 @@ export function ContextManagerResourceDrawerContent(props: ContextManagerDrawerP
   }, [selectedId, view.selected?.status, props.loadPromptResource])
 
   const refresh = () => {
+    const live = readLivePresentationForActions(actions)
+    if (!mounted.current
+      || !mayApplyCurrentNavigationEvent(actions, renderedOpenSessionEpoch, 'resources')
+      || live?.selectedResourceId !== requestedId
+      || latestSelection.current !== selectedId) return
     const tokenAtStart = latestDraftToken.current
     const report = (code: 'resourceNoticeRefreshFailed' | 'resourceNoticeUnavailable') =>
       reportReadFailure(selectedId, tokenAtStart, code)
@@ -132,11 +138,23 @@ export function ContextManagerResourceDrawerContent(props: ContextManagerDrawerP
   const unavailable = () => {
     actions.setResourceNotice({ code: 'resourceNoticeUnavailable', kind: 'warning' })
   }
+  const ownsRenderSession = () => mounted.current
+    && mayApplyCurrentNavigationEvent(actions, renderedOpenSessionEpoch, 'resources')
+  const ownsSelectedResource = () => {
+    const live = readLivePresentationForActions(actions)
+    return ownsRenderSession()
+      && live?.selectedResourceId === requestedId
+      && latestSelection.current === selectedId
+  }
+  const applyDraftEvent = (token: number, event: () => void): void => {
+    if (mayApplyCurrentDraftEvent(actions, renderedOpenSessionEpoch, 'resources', token)) event()
+  }
   const staleBegin = () => {
     actions.setResourceNotice({ code: 'resourceNoticeStale', kind: 'warning' })
   }
 
   const startCreate = () => {
+    if (!ownsRenderSession()) return
     if (!canStart) return unavailable()
     const basis = props.capturePromptResourceCreateBasis()
     if (!basis) return unavailable()
@@ -145,6 +163,7 @@ export function ContextManagerResourceDrawerContent(props: ContextManagerDrawerP
   }
 
   const startEdit = () => {
+    if (!ownsSelectedResource()) return
     const selected = view.selected
     const document = view.document
     if (!canStart || !view.canEditSelected || selected?.status !== 'usable' || !document) {
@@ -157,6 +176,7 @@ export function ContextManagerResourceDrawerContent(props: ContextManagerDrawerP
   }
 
   const startDelete = () => {
+    if (!ownsSelectedResource()) return
     const selected = view.selected
     if (!canStart || selected?.status !== 'usable') return unavailable()
     const stamp = props.capturePromptResourceReadStamp(selected.id, 'list')
@@ -186,8 +206,10 @@ export function ContextManagerResourceDrawerContent(props: ContextManagerDrawerP
   }
 
   const commit = async () => {
+    const live = readLivePresentationForActions(actions)
     if (!canSubmit || draft === null || committing.current !== null
-      || !ownsLiveResourceDraft(readLivePresentationForActions(actions), draft)) return
+      || !isLiveDrawerOpenSession(live, renderedOpenSessionEpoch)
+      || !ownsLiveResourceDraft(live, draft)) return
     if (draft.kind === 'create') {
       const validation = validateResourceCreateDraft(draft, new Set(view.rows.map(row => row.id)))
       if (validation !== 'valid') {
@@ -238,9 +260,10 @@ export function ContextManagerResourceDrawerContent(props: ContextManagerDrawerP
       h('p', null, t('resourceDraftBlockedHint')),
       h('div', { className: styles.actions },
         button(t('refresh'), refresh, running),
-        button(t('discardDraft'), () => draft.blocked !== undefined
-          ? actions.discardBlockedResourceDraft(draft.token) : actions.cancelResourceDraft(draft.token),
-          running || draft.submitting === true),
+        button(t('discardDraft'), () => applyDraftEvent(draft.token, () => {
+          if (draft.blocked !== undefined) actions.discardBlockedResourceDraft(draft.token)
+          else actions.cancelResourceDraft(draft.token)
+        }), running || draft.submitting === true),
       ),
     ) : null
 
@@ -250,14 +273,14 @@ export function ContextManagerResourceDrawerContent(props: ContextManagerDrawerP
     } },
     h('h3', null, t('resourceCreateTitle')),
     field('cm-resource-create-id', t('fieldId'), draft.id,
-      v => actions.updateResourceCreate(draft.token, 'id', v), !canSubmit),
+      v => applyDraftEvent(draft.token, () => actions.updateResourceCreate(draft.token, 'id', v)), !canSubmit),
     h('p', { className: styles.hint }, t('idImmutableHint')),
     field('cm-resource-create-name', t('fieldName'), draft.name,
-      v => actions.updateResourceCreate(draft.token, 'name', v), !canSubmit),
+      v => applyDraftEvent(draft.token, () => actions.updateResourceCreate(draft.token, 'name', v)), !canSubmit),
     field('cm-resource-create-description', t('fieldDescription'), draft.description,
-      v => actions.updateResourceCreate(draft.token, 'description', v), !canSubmit),
+      v => applyDraftEvent(draft.token, () => actions.updateResourceCreate(draft.token, 'description', v)), !canSubmit),
     field('cm-resource-create-content', t('resourceContent'), draft.content,
-      v => actions.updateResourceCreate(draft.token, 'content', v), !canSubmit, true),
+      v => applyDraftEvent(draft.token, () => actions.updateResourceCreate(draft.token, 'content', v)), !canSubmit, true),
     h('p', { className: styles.hint }, t('resourceBodyExactHint')),
     h('div', { className: styles.actions },
       h('button', {
@@ -265,7 +288,7 @@ export function ContextManagerResourceDrawerContent(props: ContextManagerDrawerP
         disabled: !canSubmit
           || validateResourceCreateDraft(draft, new Set(view.rows.map(x => x.id))) !== 'valid',
       }, t('create')),
-      button(t('cancel'), () => actions.cancelResourceDraft(draft.token), running || draft.submitting === true),
+      button(t('cancel'), () => applyDraftEvent(draft.token, () => actions.cancelResourceDraft(draft.token)), running || draft.submitting === true),
     ),
     ) : null
 
@@ -276,28 +299,28 @@ export function ContextManagerResourceDrawerContent(props: ContextManagerDrawerP
     h('h3', null, t('resourceDetails')),
     h('p', { className: styles.hint }, `${t('resourceRevision')}: ${draft.stamp.revision}`),
     field('cm-resource-edit-name', t('fieldName'), draft.name,
-      v => actions.updateResourceEdit(draft.token, 'name', v), !canSubmit),
+      v => applyDraftEvent(draft.token, () => actions.updateResourceEdit(draft.token, 'name', v)), !canSubmit),
     field('cm-resource-edit-description', t('fieldDescription'),
       draft.removeDescription ? '' : draft.description,
-      v => actions.updateResourceEdit(draft.token, 'description', v), !canSubmit),
+      v => applyDraftEvent(draft.token, () => actions.updateResourceEdit(draft.token, 'description', v)), !canSubmit),
     h('div', { className: styles.actions },
-      button(t('removeDescription'), () => actions.markResourceDescriptionRemoved(draft.token),
+      button(t('removeDescription'), () => applyDraftEvent(draft.token, () => actions.markResourceDescriptionRemoved(draft.token)),
         !canSubmit || draft.original.description === undefined),
       draft.original.description === undefined
         ? button(t('resourceSetEmptyDescription'),
-          () => actions.markResourceDescriptionEmpty(draft.token), !canSubmit)
+          () => applyDraftEvent(draft.token, () => actions.markResourceDescriptionEmpty(draft.token)), !canSubmit)
         : null,
     ),
     draft.removeDescription
       ? h('p', { className: styles.hint }, t('resourceRemoveDescriptionHint')) : null,
     field('cm-resource-edit-content', t('resourceContent'), draft.content,
-      v => actions.updateResourceEdit(draft.token, 'content', v), !canSubmit, true),
+      v => applyDraftEvent(draft.token, () => actions.updateResourceEdit(draft.token, 'content', v)), !canSubmit, true),
     h('p', { className: styles.hint }, t('resourceBodyExactHint')),
     h('div', { className: styles.actions },
       h('button', { type: 'submit', className: styles.primary,
         disabled: !canSubmit || resourceEditChanges(draft).length === 0,
       }, t('save')),
-      button(t('cancel'), () => actions.cancelResourceDraft(draft.token), running || draft.submitting === true),
+      button(t('cancel'), () => applyDraftEvent(draft.token, () => actions.cancelResourceDraft(draft.token)), running || draft.submitting === true),
     ),
     ) : null
 
@@ -309,7 +332,7 @@ export function ContextManagerResourceDrawerContent(props: ContextManagerDrawerP
       h('code', null, draft.resourceId),
       h('div', { className: styles.actions },
         button(t('confirmDelete'), () => { void commit() }, !canSubmit, true),
-        button(t('cancel'), () => actions.cancelResourceDraft(draft.token), running || draft.submitting === true),
+        button(t('cancel'), () => applyDraftEvent(draft.token, () => actions.cancelResourceDraft(draft.token)), running || draft.submitting === true),
       ),
     ) : null
 
@@ -395,7 +418,11 @@ export function ContextManagerResourceDrawerContent(props: ContextManagerDrawerP
                 className: row.id === selectedId ? styles.selectedRow : styles.profileRow,
                 disabled: draft !== null && row.id !== selectedId,
                 'aria-current': row.id === selectedId ? 'true' : undefined,
-                onClick: () => actions.selectResource(row.id),
+                onClick: () => {
+                  if (mayApplyCurrentNavigationEvent(actions, renderedOpenSessionEpoch, 'resources')) {
+                    actions.selectResource(row.id)
+                  }
+                },
               },
               h('span', { className: styles.rowTitle },
                 row.status === 'usable' ? row.name || row.id : row.id),

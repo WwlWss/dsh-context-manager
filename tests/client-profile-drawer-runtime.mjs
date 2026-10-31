@@ -124,6 +124,7 @@ function createWritableRemoteFixture() {
   let readOnly = false
   const writes = []
   const resourceWrites = []
+  const readCalls = { protocol: 0, profiles: 0, resourceLists: 0 }
   const resources = new Map()
   let resourceCursor = 0
   let unknownNextResourceWrite = false
@@ -192,8 +193,8 @@ function createWritableRemoteFixture() {
     return accepted(kind === 'resource-delete' ? { id } : { id, revision: next.revision })
   }
 
-  async function write(kind, basis, update) {
-    writes.push({ kind, basis })
+  async function write(kind, basis, update, details = {}) {
+    writes.push({ kind, basis, ...details })
     if (readOnly) return rejected('persistence-read-only', 'read-only')
     if (basis.instanceId !== instanceId) return rejected('host-instance-conflict', 'different host')
     if (basis.revision !== revision) return okRead({
@@ -212,7 +213,7 @@ function createWritableRemoteFixture() {
   }
 
   const face = {
-    async protocol() { return okRead({ apiVersion: 3 }) },
+    async protocol() { readCalls.protocol++; return okRead({ apiVersion: 3 }) },
     async changes() {
       return okRead({
         instanceId,
@@ -225,6 +226,7 @@ function createWritableRemoteFixture() {
       })
     },
     async profiles() {
+      readCalls.profiles++
       if (failProfileReads > 0) {
         failProfileReads -= 1
         // profiles() is a single-layer RemoteResult, unlike mutation RPCs.
@@ -254,6 +256,7 @@ function createWritableRemoteFixture() {
     },
     async promptPlacement() { return okRead({ status: 'unavailable' }) },
     async listPromptResources() {
+      readCalls.resourceLists++
       if (failNextResourceListRead) {
         failNextResourceListRead = false
         return rejected('prompt-library-not-ready', 'simulated read-back failure')
@@ -337,6 +340,23 @@ function createWritableRemoteFixture() {
     setDefaultProfile(id, basis) {
       return write('default', basis, () => { defaultId = id })
     },
+    // Test-only existing Remote v3 RPCs. Neither Skill UI nor controller
+    // behavior is mocked: these are reached only via the real Business Face.
+    setSkillMode(profileId, skillName, mode, basis) {
+      return write('skill-mode', basis, () => {
+        const map = profiles[profileId].skills
+        const previous = Object.hasOwn(map, skillName) ? map[skillName] : {}
+        Object.defineProperty(map, skillName, {
+          value: { ...previous, mode },
+          enumerable: true, writable: true, configurable: true,
+        })
+      }, { profileId, skillName, mode })
+    },
+    removeSkillBinding(profileId, skillName, basis) {
+      return write('skill-remove', basis, () => {
+        delete profiles[profileId].skills[skillName]
+      }, { profileId, skillName })
+    },
     addPromptBinding(profileId, bindingId, input, basis) {
       return write('binding-add', basis, () => {
         profiles[profileId].prompts[bindingId] = structuredClone(input)
@@ -369,8 +389,33 @@ function createWritableRemoteFixture() {
     },
   }
   return {
-    face, profiles, writes, resources, resourceWrites,
+    face, profiles, writes, resources, resourceWrites, readCalls,
     getDefault: () => defaultId,
+    // The chosen Profile snapshot is seeded before the real Renderer is
+    // mounted. Special names are own Settings-style keys, not native catalog.
+    seedSkillsForProbe() {
+      const skills = Object.create(null)
+      for (const [id, mode] of [
+        ['manual', 'manual'],
+        ['constructor', 'auto'],
+        ['日本語', 'off'],
+        ['toString', 'pinned'],
+        ['__proto__', 'manual'],
+      ]) Object.defineProperty(skills, id, {
+        value: { mode }, enumerable: true, configurable: true, writable: true,
+      })
+      profiles.main.skills = skills
+    },
+    externalSkillMode(profileId, skillName, mode) {
+      const map = profiles[profileId].skills
+      const previous = Object.hasOwn(map, skillName) ? map[skillName] : {}
+      Object.defineProperty(map, skillName, {
+        value: { ...previous, mode }, enumerable: true, configurable: true, writable: true,
+      })
+      revision += 1
+      profileCursor += 1
+      change += 1
+    },
     makeUnknownNextResourceWrite() { unknownNextResourceWrite = true },
     failNextResourceListRead() { failNextResourceListRead = true },
     externalResourceReplacement(id, newName) {
@@ -486,6 +531,27 @@ assert.equal(typeof slots.installLocale, 'function')
 slots.installLocale(locale)
 
 const remoteFixture = createWritableRemoteFixture()
+if (process.env.M8B_SKILL_PROBE) remoteFixture.seedSkillsForProbe()
+// R15 tests seed *real* Remote fixture rows before the published DSH
+// Business Face mounts. No direct Presentation Store / React mocks.
+if (process.env.M8B_SKILL_PROBE?.startsWith('R15')) {
+  const binding = { resourceId: 'fixture-prompt', enabled: true,
+    placement: 'before-persona', order: 1 }
+  remoteFixture.profiles.main.prompts.legacy = { ...binding }
+  remoteFixture.profiles.beta = {
+    name: 'Beta Profile', description: 'Independent Profile', basePreset: 'native',
+    skills: {}, prompts: { legacy: { ...binding } },
+  }
+  const seed = (id, name) => remoteFixture.resources.set(id, {
+    id, name, content: 'R15 readable body: ' + id,
+    revision: 1, incarnationId: 'r15-' + id,
+  })
+  if (process.env.M8B_SKILL_PROBE === 'R15R') seed('b-resource', 'Bravo Resource')
+  if (process.env.M8B_SKILL_PROBE === 'R15RBegin') {
+    seed('a-resource', 'Alpha Resource')
+    seed('b-resource', 'Bravo Resource')
+  }
+}
 const remote = {
   contextManager: remoteFixture.face,
   async $mount() { return async () => {} },
@@ -507,6 +573,8 @@ let injectedBusiness
 let registeredOverlayStore
 let registeredSidebarStore
 let delayNextUiRefresh = false
+let uiRefreshDispatches = 0
+let uiListDispatches = 0
 let rejectDelayedUiRefresh
 slotFace.register = (options, component) => {
   if (options.name === 'shell.overlay') {
@@ -521,12 +589,19 @@ slotFace.register = (options, component) => {
           ...face,
           // Test-only delayed UI read failure: Controller reads continue on
           // their actual paths, so no invented Host/Remote mutation response.
-          refresh: () => delayNextUiRefresh
-            ? new Promise((_resolve, reject) => {
-              delayNextUiRefresh = false
-              rejectDelayedUiRefresh = reject
-            })
-            : face.refresh(),
+          refresh: () => {
+            uiRefreshDispatches++
+            return delayNextUiRefresh
+              ? new Promise((_resolve, reject) => {
+                delayNextUiRefresh = false
+                rejectDelayedUiRefresh = reject
+              })
+              : face.refresh()
+          },
+          loadPromptResourceList: () => {
+            uiListDispatches++
+            return face.loadPromptResourceList()
+          },
         }
       },
     }, component)
@@ -558,6 +633,1329 @@ assert.equal(registeredOverlayStore.readLiveSnapshot()?.pane, 'profiles')
 assert.equal(tree.root.findAllByProps({ 'data-context-manager-new-profile': '' }).length, 1)
 assert.equal(remoteFixture.writes.length, 0)
 
+// B1-3 uses this same Published Renderer + root Store + real Business Face.
+// The probe branch isolates each intentional RED from the long historical
+// M7C/M8A1/M8A2 green scenario; it never substitutes a fake UI renderer.
+if (process.env.M8B_SKILL_PROBE) {
+  const probe = process.env.M8B_SKILL_PROBE
+  const live = () => registeredOverlayStore.readLiveSnapshot()
+  const skillRows = () => tree.root.findAll(node =>
+    node.props?.['data-context-manager-skill-row'] !== undefined)
+  const beforeWrites = remoteFixture.writes.length
+  const initialProfiles = injectedBusiness?.()?.hooks.contextManager.getSnapshot().profiles
+  assert.equal(initialProfiles.status, 'ready',
+    'B1-3: the actual published Client must have hydrated the Profile snapshot')
+  assert.equal(initialProfiles.data?.profiles.main.skills.manual.mode, 'manual')
+
+  // Independent mount control; subsequent REDs must reach real React Begin
+  // callbacks, not fail because the Skill section itself is absent.
+  const sections = tree.root.findAllByProps({ 'data-context-manager-skills': '' })
+  assert.equal(sections.length, 1,
+    'B1-R01: real selected usable Profile must mount Skill section')
+  assert.deepEqual(skillRows().map(row => row.props['data-context-manager-skill-row']),
+    ['__proto__', 'constructor', 'manual', 'toString', '日本語'],
+    'B1-R01: only exact own configured keys, code-unit order; no native inventory')
+  for (const [name, mode] of [
+    ['__proto__', 'manual'], ['constructor', 'auto'], ['manual', 'manual'],
+    ['toString', 'pinned'], ['日本語', 'off'],
+  ]) {
+    const row = tree.root.findByProps({ 'data-context-manager-skill-row': name })
+    assert.ok(renderedText(row).includes(mode),
+      'B1-R01: visible explicit mode for ' + JSON.stringify(name))
+  }
+  assert.equal(tree.root.findByProps({
+    'data-context-manager-skill-edit': '__proto__',
+  }).props.disabled, true, 'unsafe own Skill key is viewable but not editable')
+  assert.equal(tree.root.findByProps({
+    'data-context-manager-skill-edit': 'constructor',
+  }).props.disabled, false, 'constructor is a valid Skill path key')
+  assert.equal(remoteFixture.writes.length, beforeWrites,
+    'B1-R01: rendering explicit Skills must not issue Host writes')
+  assert.equal(live()?.draft, null)
+  assert.equal(live()?.resourceDraft, null)
+
+  switch (probe) {
+    case 'R01':
+      // Read-only mount/sort proof. R02-R05 independently exercise handlers.
+      break
+
+    case 'R02': {
+      const startCreate = tree.root.findByProps({
+        'data-context-manager-skill-new': '',
+      })
+      assert.equal(startCreate.props.disabled, false)
+      const tokenBefore = live()?.nextDraftToken
+      await act(async () => { startCreate.props.onClick() })
+      assert.equal(live()?.draft?.kind, 'skill-mode-create',
+        'B1-R02 RED: real Skill Configure Begin must enter the one Profile Store slot')
+      assert.equal(live()?.nextDraftToken, tokenBefore + 1)
+      assert.equal(live()?.draft?.mode, 'auto',
+        'B1-R02: explicit Auto must be default for the new draft')
+      assert.equal(remoteFixture.writes.length, beforeWrites,
+        'Begin is not a Host write')
+      const form = tree.root.findByProps({ 'data-context-manager-skill-create-form': '' })
+      assert.ok(form, 'Create draft must expose a real editable form')
+      // Empty Skill key must be accepted without trimming or coercion.
+      await act(async () => {
+        tree.root.findByProps({ id: 'cm-skill-create-name' }).props.onChange({
+          currentTarget: { value: '' },
+        })
+      })
+      await act(async () => {
+        form.props.onSubmit({ preventDefault() {} })
+        for (let i = 0; i < 25; i += 1) await Promise.resolve()
+      })
+      await settleUI()
+      assert.equal(remoteFixture.writes.length, beforeWrites + 1)
+      assert.deepEqual(remoteFixture.writes.at(-1), {
+        kind: 'skill-mode', basis: { instanceId: 'm7c-real-ui-host', revision: 7 },
+        profileId: 'main', skillName: '', mode: 'auto',
+      })
+      assert.equal(Object.hasOwn(remoteFixture.profiles.main.skills, ''), true)
+      assert.equal(remoteFixture.profiles.main.skills[''].mode, 'auto')
+      break
+    }
+
+    case 'R03': {
+      const click = tree.root.findByProps({
+        'data-context-manager-skill-edit': 'manual',
+      }).props.onClick
+      await act(async () => { click() })
+      assert.equal(live()?.draft?.kind, 'skill-mode-edit',
+        'B1-R03 RED: mounted Skill mode Edit must create one Profile draft')
+      assert.equal(live()?.draft?.originalMode, 'manual')
+      assert.equal(live()?.draft?.skillName, 'manual')
+      assert.equal(remoteFixture.writes.length, beforeWrites,
+        'Mode Edit Begin is not an RPC')
+      const mode = tree.root.findByProps({ id: 'cm-skill-mode-edit' })
+      await act(async () => { mode.props.onChange({ currentTarget: { value: 'pinned' } }) })
+      await act(async () => {
+        tree.root.findByProps({ 'data-context-manager-skill-edit-form': '' })
+          .props.onSubmit({ preventDefault() {} })
+        for (let i = 0; i < 25; i += 1) await Promise.resolve()
+      })
+      await settleUI()
+      assert.equal(remoteFixture.writes.length, beforeWrites + 1)
+      assert.equal(remoteFixture.writes.at(-1)?.kind, 'skill-mode')
+      assert.equal(remoteFixture.writes.at(-1)?.mode, 'pinned')
+      assert.equal(remoteFixture.profiles.main.skills.manual.mode, 'pinned')
+      break
+    }
+
+    case 'R04': {
+      const click = tree.root.findByProps({
+        'data-context-manager-skill-delete': '日本語',
+      }).props.onClick
+      await act(async () => { click() })
+      assert.equal(live()?.draft?.kind, 'skill-binding-delete',
+        'B1-R04 RED: removal must create confirmation, not immediate RPC')
+      assert.equal(live()?.draft?.skillName, '日本語')
+      assert.equal(live()?.draft?.originalMode, 'off')
+      assert.equal(remoteFixture.writes.length, beforeWrites,
+        'Begin Remove must not delete anything before confirmation')
+      const confirmation = tree.root.findByProps({
+        'data-context-manager-skill-delete-confirm': '',
+      })
+      const text = renderedText(confirmation)
+      assert.ok(text.includes(JSON.stringify('main')))
+      assert.ok(text.includes(JSON.stringify('日本語')))
+      assert.ok(text.includes('extension') || text.includes('扩展'),
+        'destructive confirmation must warn about unknown Stored sibling fields')
+      await act(async () => {
+        confirmation.findByProps({ 'data-context-manager-skill-confirm-delete': '' })
+          .props.onClick()
+        for (let i = 0; i < 25; i += 1) await Promise.resolve()
+      })
+      await settleUI()
+      assert.equal(remoteFixture.writes.length, beforeWrites + 1)
+      assert.equal(remoteFixture.writes.at(-1)?.kind, 'skill-remove')
+      assert.equal(Object.hasOwn(remoteFixture.profiles.main.skills, '日本語'), false)
+      break
+    }
+
+    case 'R05': {
+      const oldEdit = tree.root.findByProps({
+        'data-context-manager-skill-edit': 'manual',
+      }).props.onClick
+      remoteFixture.externalSkillMode('main', 'manual', 'pinned')
+      await act(async () => { await injectedBusiness?.()?.refresh() })
+      await settleUI()
+      await act(async () => { oldEdit() })
+      assert.equal(live()?.draft, null,
+        'B1-R05: obsolete rendered Edit cannot create a draft on newer Settings revision')
+      assert.equal(remoteFixture.writes.length, beforeWrites)
+      const freshEdit = tree.root.findByProps({
+        'data-context-manager-skill-edit': 'manual',
+      }).props.onClick
+      await act(async () => { freshEdit() })
+      assert.equal(live()?.draft?.kind, 'skill-mode-edit',
+        'B1-R05 RED: fresh displayed mode must permit editing at new Settings revision')
+      assert.equal(live()?.draft?.originalMode, 'pinned')
+      break
+    }
+
+
+    case 'R06V': {
+      // Observable external Settings writer: stale Save emits ZERO RPC.
+      await act(async () => {
+        tree.root.findByProps({ 'data-context-manager-skill-edit': 'manual' }).props.onClick()
+      })
+      await act(async () => {
+        tree.root.findByProps({ id: 'cm-skill-mode-edit' })
+          .props.onChange({ currentTarget: { value: 'off' } })
+      })
+      const oldSave = tree.root.findByProps({
+        'data-context-manager-skill-edit-form': '',
+      }).props.onSubmit
+      remoteFixture.externalSkillMode('main', 'toString', 'manual')
+      await act(async () => { await injectedBusiness?.()?.refresh() })
+      await settleUI()
+      await act(async () => {
+        oldSave({ preventDefault() {} })
+        for (let i = 0; i < 30; i += 1) await Promise.resolve()
+      })
+      assert.equal(remoteFixture.writes.length, beforeWrites,
+        'B1-R06V: visible stale Settings Basis must be rejected before RPC')
+      assert.equal(remoteFixture.profiles.main.skills.manual.mode, 'manual')
+      await act(async () => { buttonByLabel(tree, 'Cancel').props.onClick() })
+      await act(async () => {
+        tree.root.findByProps({ 'data-context-manager-skill-edit': 'manual' }).props.onClick()
+      })
+      await act(async () => {
+        tree.root.findByProps({ id: 'cm-skill-mode-edit' })
+          .props.onChange({ currentTarget: { value: 'off' } })
+      })
+      await act(async () => {
+        tree.root.findByProps({ 'data-context-manager-skill-edit-form': '' })
+          .props.onSubmit({ preventDefault() {} })
+        for (let i = 0; i < 35; i += 1) await Promise.resolve()
+      })
+      await settleUI()
+      assert.equal(remoteFixture.writes.length, beforeWrites + 1,
+        'B1-R06V RED: fresh rendered Save must work at the new revision')
+      assert.equal(remoteFixture.profiles.main.skills.manual.mode, 'off')
+      break
+    }
+
+    case 'R06H': {
+      // Host-only external writer, invisible to Client until attempted CAS.
+      await act(async () => {
+        tree.root.findByProps({ 'data-context-manager-skill-edit': 'manual' }).props.onClick()
+      })
+      await act(async () => {
+        tree.root.findByProps({ id: 'cm-skill-mode-edit' })
+          .props.onChange({ currentTarget: { value: 'pinned' } })
+      })
+      const originalBasis = live()?.draft?.basis
+      remoteFixture.externalSkillMode('main', 'toString', 'manual')
+      await act(async () => {
+        tree.root.findByProps({ 'data-context-manager-skill-edit-form': '' })
+          .props.onSubmit({ preventDefault() {} })
+        for (let i = 0; i < 35; i += 1) await Promise.resolve()
+      })
+      await settleUI()
+      assert.equal(remoteFixture.writes.length, beforeWrites + 1,
+        'B1-R06H RED: one original-Basis RPC must reach actual Host CAS')
+      assert.deepEqual(remoteFixture.writes.at(-1)?.basis, originalBasis)
+      assert.equal(remoteFixture.profiles.main.skills.manual.mode, 'manual',
+        'rejected CAS must never persist the stale mode')
+      assert.equal(live()?.draft?.blocked, 'conflict')
+      assert.equal(live()?.notice?.code, 'noticeConflict')
+      break
+    }
+
+    case 'R07': {
+      // Old Save after Cancel and new same-Profile draft must not consume the
+      // new Token. Positive current Save makes an inert implementation fail.
+      await act(async () => {
+        tree.root.findByProps({ 'data-context-manager-skill-edit': 'manual' }).props.onClick()
+      })
+      await act(async () => {
+        tree.root.findByProps({ id: 'cm-skill-mode-edit' })
+          .props.onChange({ currentTarget: { value: 'pinned' } })
+      })
+      const obsolete = tree.root.findByProps({
+        'data-context-manager-skill-edit-form': '',
+      }).props.onSubmit
+      const oldToken = live()?.draft?.token
+      await act(async () => { buttonByLabel(tree, 'Cancel').props.onClick() })
+      await act(async () => {
+        tree.root.findByProps({ 'data-context-manager-skill-edit': 'manual' }).props.onClick()
+      })
+      assert.notEqual(live()?.draft?.token, oldToken)
+      await act(async () => {
+        tree.root.findByProps({ id: 'cm-skill-mode-edit' })
+          .props.onChange({ currentTarget: { value: 'off' } })
+      })
+      await act(async () => {
+        obsolete({ preventDefault() {} })
+        for (let i = 0; i < 20; i += 1) await Promise.resolve()
+      })
+      assert.equal(remoteFixture.writes.length, beforeWrites,
+        'B1-R07: an old Save cannot write or claim a newer Token')
+      assert.equal(live()?.draft?.kind, 'skill-mode-edit')
+      await act(async () => {
+        tree.root.findByProps({ 'data-context-manager-skill-edit-form': '' })
+          .props.onSubmit({ preventDefault() {} })
+        for (let i = 0; i < 35; i += 1) await Promise.resolve()
+      })
+      await settleUI()
+      assert.equal(remoteFixture.writes.length, beforeWrites + 1,
+        'B1-R07 RED: genuine new Save must commit exactly once')
+      assert.equal(remoteFixture.profiles.main.skills.manual.mode, 'off')
+      break
+    }
+
+    case 'R08': {
+      // Same-render Save twice, then Save->Cancel, must claim synchronously.
+      await act(async () => {
+        tree.root.findByProps({ 'data-context-manager-skill-edit': 'manual' }).props.onClick()
+      })
+      await act(async () => {
+        tree.root.findByProps({ id: 'cm-skill-mode-edit' })
+          .props.onChange({ currentTarget: { value: 'pinned' } })
+      })
+      const submit = tree.root.findByProps({
+        'data-context-manager-skill-edit-form': '',
+      }).props.onSubmit
+      const cancel = buttonByLabel(tree, 'Cancel').props.onClick
+      await act(async () => {
+        submit({ preventDefault() {} })
+        submit({ preventDefault() {} })
+        cancel()
+        for (let i = 0; i < 35; i += 1) await Promise.resolve()
+      })
+      await settleUI()
+      assert.equal(remoteFixture.writes.length, beforeWrites + 1,
+        'B1-R08 RED: exactly one synchronous claim survives double Save/Cancel')
+      assert.equal(remoteFixture.profiles.main.skills.manual.mode, 'pinned')
+      assert.equal(live()?.draft, null)
+      break
+    }
+
+    case 'R08U': {
+      // The Host has applied a write but the response was dropped: Unknown
+      // blocks automatic replay and preserves the one original receipt.
+      await act(async () => {
+        tree.root.findByProps({ 'data-context-manager-skill-edit': 'manual' }).props.onClick()
+      })
+      await act(async () => {
+        tree.root.findByProps({ id: 'cm-skill-mode-edit' })
+          .props.onChange({ currentTarget: { value: 'off' } })
+      })
+      remoteFixture.makeUnknownNextWrite()
+      await act(async () => {
+        tree.root.findByProps({ 'data-context-manager-skill-edit-form': '' })
+          .props.onSubmit({ preventDefault() {} })
+        for (let i = 0; i < 35; i += 1) await Promise.resolve()
+      })
+      await settleUI()
+      assert.equal(remoteFixture.writes.length, beforeWrites + 1,
+        'B1-R08U RED: the real Host must receive one write before lost reply')
+      assert.equal(remoteFixture.profiles.main.skills.manual.mode, 'off')
+      assert.equal(live()?.draft?.blocked, 'unknown')
+      assert.equal(live()?.notice?.code, 'noticeOutcomeUnknown')
+      assert.ok(live()?.notice?.detail?.includes('simulated lost reply'))
+      const originalReceipt = live()?.notice
+      await act(async () => {
+        tree.root.findByProps({ 'data-context-manager-tab': 'resources' }).props.onClick()
+      })
+      assert.deepEqual(live()?.notice, originalReceipt)
+      assert.equal(remoteFixture.writes.length, beforeWrites + 1)
+      await act(async () => { buttonByLabel(tree, 'Discard draft').props.onClick() })
+      assert.equal(live()?.draft, null)
+      break
+    }
+
+    case 'R09': {
+      // Applied+Degraded means the write is confirmed but the read-back is
+      // not; neither Unknown nor a retry is permitted.
+      await act(async () => {
+        tree.root.findByProps({ 'data-context-manager-skill-edit': 'manual' }).props.onClick()
+      })
+      await act(async () => {
+        tree.root.findByProps({ id: 'cm-skill-mode-edit' })
+          .props.onChange({ currentTarget: { value: 'off' } })
+      })
+      remoteFixture.failProfileReads()
+      await act(async () => {
+        tree.root.findByProps({ 'data-context-manager-skill-edit-form': '' })
+          .props.onSubmit({ preventDefault() {} })
+        for (let i = 0; i < 35; i += 1) await Promise.resolve()
+      })
+      await settleUI()
+      assert.equal(remoteFixture.writes.length, beforeWrites + 1,
+        'B1-R09 RED: exactly one real acknowledged write')
+      assert.equal(remoteFixture.profiles.main.skills.manual.mode, 'off')
+      assert.equal(live()?.draft?.blocked, 'unverified')
+      assert.equal(live()?.notice?.code, 'noticeSavedDegraded')
+      const degradedUiText = renderedText(tree.root)
+      assert.ok(
+        degradedUiText.includes('Write confirmed, but reconciliation is incomplete. Refresh; do not resubmit.')
+          || degradedUiText.includes('写入已确认，但重新同步不完整；请刷新，不要再次提交。'),
+        'B1-R09: the confirmed-degraded notice must be rendered using the actual localized Profile message',
+      )
+      const first = live()?.notice
+      await act(async () => { tree.root.findByProps({
+        'data-context-manager-tab': 'resources',
+      }).props.onClick() })
+      assert.deepEqual(live()?.notice, first,
+        'B1-R09: late reads/pane changes cannot overwrite confirmed degraded receipt')
+      assert.equal(remoteFixture.writes.length, beforeWrites + 1)
+      break
+    }
+
+    case 'R10': {
+      // F01-SR1 semantics extend to retained Skill drafts, not just legacy.
+      await act(async () => {
+        tree.root.findByProps({ 'data-context-manager-skill-edit': 'manual' }).props.onClick()
+      })
+      await act(async () => {
+        tree.root.findByProps({ id: 'cm-skill-mode-edit' })
+          .props.onChange({ currentTarget: { value: 'pinned' } })
+      })
+      const oldSave = tree.root.findByProps({
+        'data-context-manager-skill-edit-form': '',
+      }).props.onSubmit
+      const original = live()?.draft
+      await act(async () => { trigger().props.onClick() })
+      assert.equal(live()?.open, false)
+      await act(async () => { trigger().props.onClick() })
+      await settleUI()
+      assert.equal(live()?.open, true)
+      assert.equal(live()?.draft?.token, original.token)
+      assert.deepEqual(live()?.draft?.basis, original.basis)
+      await act(async () => {
+        oldSave({ preventDefault() {} })
+        for (let i = 0; i < 20; i += 1) await Promise.resolve()
+      })
+      assert.equal(remoteFixture.writes.length, beforeWrites,
+        'B1-R10: pre-Close Save callback must never write in reopened session')
+      assert.equal(live()?.draft?.token, original.token)
+      await act(async () => {
+        tree.root.findByProps({ 'data-context-manager-skill-edit-form': '' })
+          .props.onSubmit({ preventDefault() {} })
+        for (let i = 0; i < 35; i += 1) await Promise.resolve()
+      })
+      await settleUI()
+      assert.equal(remoteFixture.writes.length, beforeWrites + 1,
+        'B1-R10 RED: new reopened Save may write once with old original Basis')
+      assert.equal(remoteFixture.profiles.main.skills.manual.mode, 'pinned')
+      assert.equal(live()?.draft, null)
+      break
+    }
+
+
+    // F01-SR2: independent real published Renderer old-event RED cases.
+    // Each old callback is captured from the OLD render. A valid callback
+    // captured after Reopen is the positive control against vacuous no-ops.
+    case 'R11P': {
+      await act(async () => {
+        tree.root.findByProps({ 'data-context-manager-new-profile': '' }).props.onClick()
+      })
+      const oldDraft = live()?.draft
+      assert.equal(oldDraft?.kind, 'create')
+      const oldCancel = buttonByLabel(tree, 'Cancel').props.onClick
+      await act(async () => { trigger().props.onClick() })
+      assert.equal(live()?.open, false)
+      await act(async () => { trigger().props.onClick() })
+      await settleUI()
+      assert.equal(live()?.draft?.token, oldDraft.token)
+      assert.deepEqual(live()?.draft?.basis, oldDraft.basis)
+      await act(async () => { oldCancel() })
+      assert.equal(live()?.draft?.token, oldDraft.token,
+        'F01-R11P RED: obsolete Profile Cancel cannot discard retained draft')
+      await act(async () => { buttonByLabel(tree, 'Cancel').props.onClick() })
+      assert.equal(live()?.draft, null,
+        'F01-R11P: fresh Profile Cancel must still work')
+      assert.equal(remoteFixture.writes.length, beforeWrites)
+      break
+    }
+
+    case 'R11B': {
+      await act(async () => {
+        tree.root.findByProps({ 'data-context-manager-new-binding': '' }).props.onClick()
+      })
+      const oldDraft = live()?.draft
+      assert.equal(oldDraft?.kind, 'prompt-binding-create')
+      const oldCancel = buttonByLabel(tree, 'Cancel').props.onClick
+      await act(async () => { trigger().props.onClick() })
+      await act(async () => { trigger().props.onClick() })
+      await settleUI()
+      assert.equal(live()?.draft?.token, oldDraft.token)
+      await act(async () => { oldCancel() })
+      assert.equal(live()?.draft?.token, oldDraft.token,
+        'F01-R11B RED: obsolete Binding Cancel cannot discard retained draft')
+      await act(async () => { buttonByLabel(tree, 'Cancel').props.onClick() })
+      assert.equal(live()?.draft, null,
+        'F01-R11B: fresh Binding Cancel must still work')
+      assert.equal(remoteFixture.writes.length, beforeWrites)
+      break
+    }
+
+    case 'R11R': {
+      await act(async () => {
+        tree.root.findByProps({ 'data-context-manager-tab': 'resources' }).props.onClick()
+      })
+      await settleUI()
+      await act(async () => {
+        tree.root.findByProps({ 'data-context-manager-new-resource': '' }).props.onClick()
+      })
+      const oldDraft = live()?.resourceDraft
+      assert.equal(oldDraft?.kind, 'create')
+      const oldCancel = buttonByLabel(tree, 'Cancel').props.onClick
+      await act(async () => { trigger().props.onClick() })
+      await act(async () => { trigger().props.onClick() })
+      await settleUI()
+      assert.equal(live()?.resourceDraft?.token, oldDraft.token)
+      assert.deepEqual(live()?.resourceDraft?.basis, oldDraft.basis)
+      await act(async () => { oldCancel() })
+      assert.equal(live()?.resourceDraft?.token, oldDraft.token,
+        'F01-R11R RED: obsolete Resource Cancel cannot discard retained draft')
+      await act(async () => { buttonByLabel(tree, 'Cancel').props.onClick() })
+      assert.equal(live()?.resourceDraft, null,
+        'F01-R11R: fresh Resource Cancel must still work')
+      assert.equal(remoteFixture.resourceWrites.length, 0)
+      break
+    }
+
+    case 'R11T': {
+      await act(async () => {
+        tree.root.findByProps({ 'data-context-manager-skill-edit': 'manual' }).props.onClick()
+      })
+      await act(async () => {
+        tree.root.findByProps({ id: 'cm-skill-mode-edit' })
+          .props.onChange({ currentTarget: { value: 'off' } })
+      })
+      remoteFixture.makeUnknownNextWrite()
+      await act(async () => {
+        tree.root.findByProps({ 'data-context-manager-skill-edit-form': '' })
+          .props.onSubmit({ preventDefault() {} })
+        for (let i = 0; i < 30; i += 1) await Promise.resolve()
+      })
+      await settleUI()
+      const first = live()?.notice
+      const original = live()?.draft
+      assert.equal(original?.blocked, 'unknown')
+      assert.equal(first?.code, 'noticeOutcomeUnknown')
+      assert.equal(remoteFixture.writes.length, beforeWrites + 1)
+      const oldDiscard = buttonByLabel(tree, 'Discard draft').props.onClick
+      await act(async () => { trigger().props.onClick() })
+      await act(async () => { trigger().props.onClick() })
+      await settleUI()
+      await act(async () => { oldDiscard() })
+      assert.equal(live()?.draft?.token, original.token,
+        'F01-R11T RED: obsolete Discard cannot erase retained Unknown Skill draft')
+      assert.deepEqual(live()?.notice, first,
+        'F01-R11T: old Discard cannot erase first terminal notice')
+      assert.equal(remoteFixture.writes.length, beforeWrites + 1)
+      await act(async () => { buttonByLabel(tree, 'Discard draft').props.onClick() })
+      assert.equal(live()?.draft, null, 'F01-R11T: new explicit Discard must work')
+      break
+    }
+
+    case 'R11TR': {
+      await act(async () => {
+        tree.root.findByProps({ 'data-context-manager-tab': 'resources' }).props.onClick()
+      })
+      await settleUI()
+      await act(async () => {
+        tree.root.findByProps({ 'data-context-manager-new-resource': '' }).props.onClick()
+      })
+      assert.equal(live()?.resourceDraft?.kind, 'create')
+      await act(async () => {
+        tree.root.findByProps({ id: 'cm-resource-create-id' })
+          .props.onChange({ currentTarget: { value: 'f01-sr2-unknown' } })
+        tree.root.findByProps({ id: 'cm-resource-create-name' })
+          .props.onChange({ currentTarget: { value: 'F01 SR2 Unknown' } })
+      })
+      remoteFixture.makeUnknownNextResourceWrite()
+      await act(async () => {
+        tree.root.findAllByType('form')[0].props.onSubmit({ preventDefault() {} })
+        for (let i = 0; i < 30; i += 1) await Promise.resolve()
+      })
+      await settleUI()
+      const original = live()?.resourceDraft
+      const first = live()?.resourceNotice
+      assert.equal(original?.blocked, 'unknown')
+      assert.equal(first?.code, 'resourceNoticeUnknown')
+      assert.equal(remoteFixture.resourceWrites.length, 1)
+      const oldDiscard = buttonByLabel(tree, 'Discard draft').props.onClick
+      await act(async () => { trigger().props.onClick() })
+      await act(async () => { trigger().props.onClick() })
+      await settleUI()
+      await act(async () => { oldDiscard() })
+      assert.equal(live()?.resourceDraft?.token, original.token,
+        'F01-R11TR RED: obsolete Resource Discard cannot remove Unknown')
+      assert.deepEqual(live()?.resourceNotice, first)
+      await act(async () => { buttonByLabel(tree, 'Discard draft').props.onClick() })
+      assert.equal(live()?.resourceDraft, null)
+      assert.equal(remoteFixture.resourceWrites.length, 1)
+      break
+    }
+
+    case 'R12S': {
+      await act(async () => {
+        tree.root.findByProps({ 'data-context-manager-skill-new': '' }).props.onClick()
+      })
+      assert.equal(live()?.draft?.kind, 'skill-mode-create')
+      const oldInput = tree.root.findByProps({ id: 'cm-skill-create-name' }).props.onChange
+      await act(async () => { oldInput({ currentTarget: { value: 'before' } }) })
+      const original = live()?.draft
+      const epochBefore = live()?.openSessionEpoch
+      await act(async () => { trigger().props.onClick() })
+      assert.equal(live()?.open, false)
+      await act(async () => { oldInput({ currentTarget: { value: 'closed-overwrite' } }) })
+      assert.equal(live()?.draft?.skillName, 'before',
+        'F01-R12S RED: old Skill Create input during closed Drawer must be inert')
+      await act(async () => { trigger().props.onClick() })
+      await settleUI()
+      assert.equal(live()?.openSessionEpoch, epochBefore + 1)
+      assert.equal(live()?.draft?.token, original.token)
+      await act(async () => { oldInput({ currentTarget: { value: 'reopened-overwrite' } }) })
+      assert.equal(live()?.draft?.skillName, 'before',
+        'F01-R12S: obsolete Skill Create input cannot overwrite reopened name')
+      await act(async () => {
+        tree.root.findByProps({ id: 'cm-skill-create-name' })
+          .props.onChange({ currentTarget: { value: 'fresh' } })
+      })
+      assert.equal(live()?.draft?.skillName, 'fresh')
+      await act(async () => { buttonByLabel(tree, 'Cancel').props.onClick() })
+
+      await act(async () => {
+        tree.root.findByProps({ 'data-context-manager-skill-edit': 'manual' }).props.onClick()
+      })
+      await act(async () => {
+        tree.root.findByProps({ id: 'cm-skill-mode-edit' })
+          .props.onChange({ currentTarget: { value: 'pinned' } })
+      })
+      const oldMode = tree.root.findByProps({ id: 'cm-skill-mode-edit' }).props.onChange
+      const beforeMode = live()?.draft
+      await act(async () => { trigger().props.onClick() })
+      await act(async () => { trigger().props.onClick() })
+      await settleUI()
+      assert.equal(live()?.draft?.token, beforeMode.token)
+      await act(async () => { oldMode({ currentTarget: { value: 'off' } }) })
+      assert.equal(live()?.draft?.mode, 'pinned',
+        'F01-R12S: obsolete Skill Edit mode cannot overwrite new session')
+      await act(async () => {
+        tree.root.findByProps({ id: 'cm-skill-mode-edit' })
+          .props.onChange({ currentTarget: { value: 'off' } })
+      })
+      assert.equal(live()?.draft?.mode, 'off',
+        'F01-R12S: fresh mode onChange must remain editable')
+      assert.equal(remoteFixture.writes.length, beforeWrites)
+      break
+    }
+
+    case 'R12P': {
+      await act(async () => {
+        tree.root.findByProps({ 'data-context-manager-new-profile': '' }).props.onClick()
+      })
+      assert.equal(live()?.draft?.kind, 'create')
+      const oldInput = tree.root.findByProps({ id: 'cm-create-name' }).props.onChange
+      await act(async () => { oldInput({ currentTarget: { value: 'original' } }) })
+      const original = live()?.draft
+      await act(async () => { trigger().props.onClick() })
+      await act(async () => { trigger().props.onClick() })
+      await settleUI()
+      await act(async () => {
+        oldInput({ currentTarget: { value: 'obsolete-profile-name' } })
+      })
+      assert.equal(live()?.draft?.name, 'original',
+        'F01-R12P RED: old Profile input cannot rewrite reopened draft')
+      assert.equal(live()?.draft?.token, original.token)
+      await act(async () => {
+        tree.root.findByProps({ id: 'cm-create-name' })
+          .props.onChange({ currentTarget: { value: 'current' } })
+      })
+      assert.equal(live()?.draft?.name, 'current')
+      assert.equal(remoteFixture.writes.length, beforeWrites)
+      break
+    }
+
+    case 'R12B': {
+      await act(async () => {
+        tree.root.findByProps({ 'data-context-manager-new-binding': '' }).props.onClick()
+      })
+      assert.equal(live()?.draft?.kind, 'prompt-binding-create')
+      const oldInput = tree.root.findByProps({ id: 'cm-binding-create-resource' }).props.onChange
+      await act(async () => {
+        oldInput({ currentTarget: { value: 'original-resource' } })
+      })
+      const original = live()?.draft
+      await act(async () => { trigger().props.onClick() })
+      await act(async () => { trigger().props.onClick() })
+      await settleUI()
+      await act(async () => {
+        oldInput({ currentTarget: { value: 'obsolete-binding-resource' } })
+      })
+      assert.equal(live()?.draft?.resourceId, 'original-resource',
+        'F01-R12B RED: old Binding input cannot rewrite reopened draft')
+      assert.equal(live()?.draft?.token, original.token)
+      await act(async () => {
+        tree.root.findByProps({ id: 'cm-binding-create-resource' })
+          .props.onChange({ currentTarget: { value: 'current-resource' } })
+      })
+      assert.equal(live()?.draft?.resourceId, 'current-resource')
+      assert.equal(remoteFixture.writes.length, beforeWrites)
+      break
+    }
+
+    case 'R12R': {
+      await act(async () => {
+        tree.root.findByProps({ 'data-context-manager-tab': 'resources' }).props.onClick()
+      })
+      await settleUI()
+      await act(async () => {
+        tree.root.findByProps({ 'data-context-manager-new-resource': '' }).props.onClick()
+      })
+      assert.equal(live()?.resourceDraft?.kind, 'create')
+      const oldInput = tree.root.findByProps({ id: 'cm-resource-create-content' }).props.onChange
+      await act(async () => {
+        oldInput({ currentTarget: { value: 'original content' } })
+      })
+      const original = live()?.resourceDraft
+      await act(async () => { trigger().props.onClick() })
+      await act(async () => { trigger().props.onClick() })
+      await settleUI()
+      await act(async () => {
+        oldInput({ currentTarget: { value: 'obsolete resource content' } })
+      })
+      assert.equal(live()?.resourceDraft?.content, 'original content',
+        'F01-R12R RED: old Resource input cannot rewrite reopened draft')
+      assert.equal(live()?.resourceDraft?.token, original.token)
+      await act(async () => {
+        tree.root.findByProps({ id: 'cm-resource-create-content' })
+          .props.onChange({ currentTarget: { value: 'current content' } })
+      })
+      assert.equal(live()?.resourceDraft?.content, 'current content')
+      assert.equal(remoteFixture.resourceWrites.length, 0)
+      break
+    }
+
+
+    // F01-SR3: obsolete navigation handlers belong to the original Drawer
+    // opening, not merely this root Store. Positive current-session controls
+    // prove the fix cannot just make every navigation handler inert.
+    case 'R13T': {
+      const oldToResources = tree.root.findByProps({
+        'data-context-manager-tab': 'resources',
+      }).props.onClick
+      assert.equal(live()?.pane, 'profiles')
+      await act(async () => { trigger().props.onClick() })
+      await act(async () => { oldToResources() })
+      assert.equal(live()?.pane, 'profiles',
+        'F01-R13T RED: old Tab click cannot change Pane while Drawer is closed')
+      await act(async () => { trigger().props.onClick() })
+      await settleUI()
+      const reopenEpoch = live()?.openSessionEpoch
+      await act(async () => { oldToResources() })
+      assert.equal(live()?.pane, 'profiles',
+        'F01-R13T: old Tab click cannot navigate reopened Drawer')
+      await act(async () => {
+        tree.root.findByProps({ 'data-context-manager-tab': 'resources' }).props.onClick()
+      })
+      await settleUI()
+      assert.equal(live()?.pane, 'resources',
+        'F01-R13T: fresh Tab can navigate in the current session')
+      const oldToProfiles = tree.root.findByProps({
+        'data-context-manager-tab': 'profiles',
+      }).props.onClick
+      await act(async () => { trigger().props.onClick() })
+      await act(async () => { trigger().props.onClick() })
+      await settleUI()
+      assert.ok(live()?.openSessionEpoch > reopenEpoch)
+      await act(async () => { oldToProfiles() })
+      assert.equal(live()?.pane, 'resources',
+        'F01-R13T: old Tab cannot navigate in the reverse direction')
+      await act(async () => {
+        tree.root.findByProps({ 'data-context-manager-tab': 'profiles' }).props.onClick()
+      })
+      assert.equal(live()?.pane, 'profiles')
+      assert.equal(remoteFixture.writes.length, beforeWrites)
+      assert.equal(remoteFixture.resourceWrites.length, 0)
+      break
+    }
+
+    case 'R13P': {
+      assert.equal(live()?.pane, 'profiles')
+      assert.equal(live()?.selectedProfileId, null)
+      const getRow = () => {
+        const rows = tree.root.findAll(node =>
+          node.type === 'button'
+          && node.props['aria-current'] === 'true'
+          && renderedText(node).includes('Main'))
+        assert.equal(rows.length, 1, 'F01-R13P: actual default Profile row must exist')
+        return rows[0]
+      }
+      const oldSelection = getRow().props.onClick
+      await act(async () => { trigger().props.onClick() })
+      await act(async () => { oldSelection() })
+      assert.equal(live()?.selectedProfileId, null,
+        'F01-R13P RED: Profile selection cannot mutate closed Drawer')
+      await act(async () => { trigger().props.onClick() })
+      await settleUI()
+      await act(async () => { oldSelection() })
+      assert.equal(live()?.selectedProfileId, null,
+        'F01-R13P: obsolete Profile selection cannot alter a new session')
+      await act(async () => { getRow().props.onClick() })
+      assert.equal(live()?.selectedProfileId, 'main',
+        'F01-R13P: the new Profile row selection remains usable')
+      assert.equal(remoteFixture.writes.length, beforeWrites)
+      break
+    }
+
+    case 'R13R': {
+      remoteFixture.resources.set('z-selectable', {
+        id: 'z-selectable',
+        name: 'F01 SR3 selectable resource',
+        content: 'read-only navigation control',
+        revision: 1,
+        incarnationId: 'resource-session-selectable',
+      })
+      await act(async () => {
+        tree.root.findByProps({ 'data-context-manager-tab': 'resources' }).props.onClick()
+      })
+      await settleUI()
+      assert.equal(live()?.pane, 'resources')
+      assert.equal(live()?.selectedResourceId, null)
+      const getRow = () => {
+        const rows = tree.root.findAll(node =>
+          node.type === 'button'
+          && renderedText(node).includes('F01 SR3 selectable resource'))
+        assert.equal(rows.length, 1, 'F01-R13R: real Resource row must be hydrated')
+        return rows[0]
+      }
+      const oldSelection = getRow().props.onClick
+      await act(async () => { trigger().props.onClick() })
+      await act(async () => { oldSelection() })
+      assert.equal(live()?.selectedResourceId, null,
+        'F01-R13R RED: Resource selection cannot mutate closed Drawer')
+      await act(async () => { trigger().props.onClick() })
+      await settleUI()
+      await act(async () => { oldSelection() })
+      assert.equal(live()?.selectedResourceId, null,
+        'F01-R13R: obsolete Resource row cannot select in reopened Drawer')
+      await act(async () => { getRow().props.onClick() })
+      assert.equal(live()?.selectedResourceId, 'z-selectable',
+        'F01-R13R: a fresh Resource row remains selectable')
+      assert.equal(remoteFixture.resourceWrites.length, 0)
+      assert.equal(remoteFixture.writes.length, beforeWrites)
+      break
+    }
+
+    case 'R13C': {
+      const oldBackdropClose = tree.root.findByProps({
+        'data-context-manager-backdrop': '',
+      }).props.onClick
+      const oldHeaderClose = tree.root.findByProps({
+        'aria-label': 'Close Context Manager',
+      }).props.onClick
+      const oldEscape = tree.root.findByProps({
+        'data-context-manager-drawer': '',
+      }).props.onKeyDown
+      let prevented = 0
+      const escape = () => ({
+        key: 'Escape',
+        shiftKey: false,
+        preventDefault() { prevented++ },
+        stopPropagation() {},
+      })
+      await act(async () => { trigger().props.onClick() })
+      assert.equal(live()?.open, false)
+      await act(async () => { trigger().props.onClick() })
+      await settleUI()
+      const currentEpoch = live()?.openSessionEpoch
+      await act(async () => { oldBackdropClose() })
+      assert.equal(live()?.open, true,
+        'F01-R13C RED: obsolete backdrop callback must not close new session')
+      await act(async () => { oldHeaderClose() })
+      assert.equal(live()?.open, true,
+        'F01-R13C: obsolete header Close must not close new session')
+      await act(async () => { oldEscape(escape()) })
+      assert.equal(live()?.open, true,
+        'F01-R13C: obsolete Escape handler must not close new session')
+      assert.equal(prevented, 0,
+        'F01-R13C: obsolete Escape must not consume new session event')
+      await act(async () => {
+        tree.root.findByProps({ 'data-context-manager-backdrop': '' }).props.onClick()
+      })
+      assert.equal(live()?.open, false, 'F01-R13C: fresh Backdrop close still works')
+      await act(async () => { trigger().props.onClick() })
+      await settleUI()
+      assert.ok(live()?.openSessionEpoch > currentEpoch)
+      await act(async () => {
+        tree.root.findByProps({ 'aria-label': 'Close Context Manager' }).props.onClick()
+      })
+      assert.equal(live()?.open, false, 'F01-R13C: fresh header Close still works')
+      await act(async () => { trigger().props.onClick() })
+      await settleUI()
+      await act(async () => {
+        tree.root.findByProps({ 'data-context-manager-drawer': '' })
+          .props.onKeyDown(escape())
+      })
+      assert.equal(live()?.open, false, 'F01-R13C: fresh Escape still closes Drawer')
+      assert.equal(prevented, 1)
+      assert.equal(remoteFixture.writes.length, beforeWrites)
+      assert.equal(remoteFixture.resourceWrites.length, 0)
+      break
+    }
+
+
+    // F01-SR4: obsolete user-requested Read callbacks may not start even a
+    // READ RPC after Close->Reopen; same-key Resource reads share Model owners.
+    // The remote read counters prove that the fresh current-session control
+    // really runs the published Host/Client read chain, not a stubbed no-op.
+    case 'R14P': {
+      const oldRefresh = buttonByLabel(tree, 'Refresh').props.onClick
+      const originalEpoch = live()?.openSessionEpoch
+      const beforeClose = uiRefreshDispatches
+      await act(async () => { trigger().props.onClick() })
+      await act(async () => { oldRefresh() })
+      await settleUI()
+      assert.equal(uiRefreshDispatches, beforeClose,
+        'F01-R14P RED: old Profile Refresh must not dispatch while Drawer is closed')
+      await act(async () => { trigger().props.onClick() })
+      await settleUI()
+      assert.ok(live()?.openSessionEpoch > originalEpoch)
+      const beforeReopen = uiRefreshDispatches
+      await act(async () => { oldRefresh() })
+      await settleUI()
+      assert.equal(uiRefreshDispatches, beforeReopen,
+        'F01-R14P: old Profile Refresh must not start baseline reconcile in a new session')
+      const beforeRemote = remoteFixture.readCalls.profiles
+      await act(async () => {
+        buttonByLabel(tree, 'Refresh').props.onClick()
+        for (let i = 0; i < 30; i++) await Promise.resolve()
+      })
+      await settleUI()
+      assert.equal(uiRefreshDispatches, beforeReopen + 1,
+        'F01-R14P: a fresh current-session Profile Refresh must dispatch')
+      assert.ok(remoteFixture.readCalls.profiles > beforeRemote,
+        'F01-R14P: a fresh Profile Refresh must actually read Remote profiles')
+      assert.equal(remoteFixture.writes.length, beforeWrites)
+      assert.equal(remoteFixture.resourceWrites.length, 0)
+      break
+    }
+
+    case 'R14R': {
+      await act(async () => {
+        tree.root.findByProps({ 'data-context-manager-tab': 'resources' }).props.onClick()
+      })
+      await settleUI()
+      assert.equal(live()?.pane, 'resources')
+      const oldRefresh = buttonByLabel(tree, 'Refresh').props.onClick
+      const beforeClose = uiListDispatches
+      await act(async () => { trigger().props.onClick() })
+      await act(async () => { oldRefresh() })
+      await settleUI()
+      assert.equal(uiListDispatches, beforeClose,
+        'F01-R14R RED: old Resource Refresh cannot begin a keyed read while closed')
+      await act(async () => { trigger().props.onClick() })
+      await settleUI()
+      const beforeReopen = uiListDispatches
+      await act(async () => { oldRefresh() })
+      await settleUI()
+      assert.equal(uiListDispatches, beforeReopen,
+        'F01-R14R: old Resource Refresh cannot supersede a new same-key read')
+      const beforeRemote = remoteFixture.readCalls.resourceLists
+      await act(async () => {
+        buttonByLabel(tree, 'Refresh').props.onClick()
+        for (let i = 0; i < 30; i++) await Promise.resolve()
+      })
+      await settleUI()
+      assert.equal(uiListDispatches, beforeReopen + 1,
+        'F01-R14R: fresh Resource Refresh must dispatch exactly once')
+      assert.ok(remoteFixture.readCalls.resourceLists > beforeRemote,
+        'F01-R14R: fresh Resource Refresh must reach the real Remote list')
+      assert.equal(remoteFixture.writes.length, beforeWrites)
+      assert.equal(remoteFixture.resourceWrites.length, 0)
+      break
+    }
+
+    case 'R14B': {
+      const oldSuggestions = buttonByLabel(tree, 'Load resource suggestions').props.onClick
+      const beforeClose = uiListDispatches
+      await act(async () => { trigger().props.onClick() })
+      await act(async () => { oldSuggestions() })
+      await settleUI()
+      assert.equal(uiListDispatches, beforeClose,
+        'F01-R14B RED: old Binding Suggestions must not read while Drawer is closed')
+      await act(async () => { trigger().props.onClick() })
+      await settleUI()
+      const beforeReopen = uiListDispatches
+      await act(async () => { oldSuggestions() })
+      await settleUI()
+      assert.equal(uiListDispatches, beforeReopen,
+        'F01-R14B: old Binding Suggestions cannot read after Reopen')
+      await act(async () => {
+        tree.root.findByProps({ 'data-context-manager-tab': 'resources' }).props.onClick()
+      })
+      await settleUI()
+      const otherPane = uiListDispatches
+      await act(async () => { oldSuggestions() })
+      await settleUI()
+      assert.equal(uiListDispatches, otherPane,
+        'F01-R14B: stale Binding Suggestions cannot steal Resource Pane list owner')
+      await act(async () => {
+        tree.root.findByProps({ 'data-context-manager-tab': 'profiles' }).props.onClick()
+      })
+      await settleUI()
+      const beforeFresh = uiListDispatches
+      const beforeRemote = remoteFixture.readCalls.resourceLists
+      await act(async () => {
+        buttonByLabel(tree, 'Load resource suggestions').props.onClick()
+        for (let i = 0; i < 30; i++) await Promise.resolve()
+      })
+      await settleUI()
+      assert.equal(uiListDispatches, beforeFresh + 1,
+        'F01-R14B: new current-session Suggestions still dispatches one read')
+      assert.ok(remoteFixture.readCalls.resourceLists > beforeRemote,
+        'F01-R14B: new Suggestions must reach real Remote Resource metadata')
+      assert.equal(remoteFixture.writes.length, beforeWrites)
+      assert.equal(remoteFixture.resourceWrites.length, 0)
+      break
+    }
+
+
+    // F01-SR5: effective displayed selection may change during the SAME
+    // Drawer opening while the raw Store selectedId stays null. CAS may
+    // remain unchanged. Old render closures must not gain current intent.
+    case 'R15R': {
+      await act(async () => {
+        tree.root.findByProps({ 'data-context-manager-tab': 'resources' }).props.onClick()
+      })
+      await settleUI()
+      assert.equal(live()?.selectedResourceId, null)
+      const selectedRow = () => tree.root.findAll(node =>
+        node.type === 'button' && node.props['aria-current'] === 'true'
+        && /Resource/.test(renderedText(node)))[0]
+      assert.ok(renderedText(selectedRow()).includes('Bravo Resource'),
+        'R15R setup must initially render Bravo as effective selection')
+      const oldRefresh = buttonByLabel(tree, 'Refresh').props.onClick
+      const oldEpoch = live()?.openSessionEpoch
+      remoteFixture.resources.set('a-resource', {
+        id: 'a-resource', name: 'Alpha Resource',
+        content: 'new lower-sorted resource', revision: 1,
+        incarnationId: 'r15-a-resource',
+      })
+      await act(async () => {
+        buttonByLabel(tree, 'Refresh').props.onClick()
+        for (let i = 0; i < 35; i++) await Promise.resolve()
+      })
+      await settleUI()
+      assert.equal(live()?.openSessionEpoch, oldEpoch)
+      assert.equal(live()?.selectedResourceId, null,
+        'implicit fallback changes effective resource, not raw selection')
+      assert.ok(renderedText(selectedRow()).includes('Alpha Resource'),
+        'R15R new list must display Alpha in same opening')
+      const before = uiListDispatches
+      const beforeRemote = remoteFixture.readCalls.resourceLists
+      await act(async () => { oldRefresh() })
+      await settleUI()
+      assert.equal(uiListDispatches, before,
+        'R15R RED: obsolete Bravo Refresh must not issue a new keyed Client list read')
+      assert.equal(remoteFixture.readCalls.resourceLists, beforeRemote,
+        'R15R stale closure cannot reach the actual Remote list')
+      await act(async () => {
+        buttonByLabel(tree, 'Refresh').props.onClick()
+        for (let i = 0; i < 35; i++) await Promise.resolve()
+      })
+      await settleUI()
+      assert.equal(uiListDispatches, before + 1)
+      assert.ok(remoteFixture.readCalls.resourceLists > beforeRemote)
+      assert.equal(remoteFixture.writes.length, beforeWrites)
+      assert.equal(remoteFixture.resourceWrites.length, 0)
+      break
+    }
+
+    case 'R15B': {
+      assert.equal(live()?.selectedProfileId, null)
+      const selectedHeading = () => tree.root.findAll(node =>
+        node.type === 'h3' && (renderedText(node) === 'Main'
+          || renderedText(node) === 'Beta Profile'))[0]
+      assert.equal(renderedText(selectedHeading()), 'Main')
+      const oldSuggestions = buttonByLabel(tree, 'Load resource suggestions').props.onClick
+      const originalEpoch = live()?.openSessionEpoch
+      remoteFixture.externalSetDefault('beta')
+      await act(async () => {
+        buttonByLabel(tree, 'Refresh').props.onClick()
+        for (let i = 0; i < 35; i++) await Promise.resolve()
+      })
+      await settleUI()
+      assert.equal(live()?.openSessionEpoch, originalEpoch)
+      assert.equal(live()?.selectedProfileId, null)
+      assert.equal(renderedText(selectedHeading()), 'Beta Profile',
+        'R15B must actually replace default displayed Profile with unchanged raw null')
+      const before = uiListDispatches
+      const reads = remoteFixture.readCalls.resourceLists
+      await act(async () => { oldSuggestions() })
+      await settleUI()
+      assert.equal(uiListDispatches, before,
+        'R15B RED: obsolete Main Suggestions must not claim new Beta Resource read')
+      assert.equal(remoteFixture.readCalls.resourceLists, reads)
+      await act(async () => {
+        buttonByLabel(tree, 'Load resource suggestions').props.onClick()
+        for (let i = 0; i < 35; i++) await Promise.resolve()
+      })
+      await settleUI()
+      assert.equal(uiListDispatches, before + 1)
+      assert.ok(remoteFixture.readCalls.resourceLists > reads)
+      assert.equal(remoteFixture.writes.length, beforeWrites)
+      break
+    }
+
+    case 'R15Begin': {
+      const oldCreate = tree.root.findByProps({
+        'data-context-manager-new-binding': '',
+      }).props.onClick
+      const oldEdit = tree.root.findByProps({
+        'data-context-manager-binding-edit-resourceId': 'legacy',
+      }).props.onClick
+      const oldDelete = tree.root.findByProps({
+        'data-context-manager-binding-delete': 'legacy',
+      }).props.onClick
+      const epoch = live()?.openSessionEpoch
+      const beforeToken = live()?.nextDraftToken
+      const beta = tree.root.findAll(node => node.type === 'button'
+        && renderedText(node).includes('Beta Profile'))[0]
+      assert.ok(beta, 'R15Begin requires a second selectable Profile')
+      await act(async () => { beta.props.onClick() })
+      await settleUI()
+      assert.equal(live()?.openSessionEpoch, epoch)
+      assert.equal(live()?.selectedProfileId, 'beta')
+      for (const [kind, oldEvent] of [
+        ['create', oldCreate], ['edit', oldEdit], ['delete', oldDelete],
+      ]) {
+        await act(async () => { oldEvent() })
+        assert.equal(live()?.draft, null,
+          'R15Begin RED: old Main ' + kind + ' must not create a Beta-session draft')
+        assert.equal(live()?.selectedProfileId, 'beta',
+          'R15Begin: old Main ' + kind + ' must not select Main again')
+        assert.equal(live()?.nextDraftToken, beforeToken)
+      }
+      for (const [kind, attr] of [
+        ['create', 'data-context-manager-new-binding'],
+        ['edit', 'data-context-manager-binding-edit-resourceId'],
+        ['delete', 'data-context-manager-binding-delete'],
+      ]) {
+        const node = tree.root.findByProps({ [attr]: kind === 'create' ? '' : 'legacy' })
+        await act(async () => { node.props.onClick() })
+        assert.equal(live()?.draft?.profileId, 'beta',
+          'R15Begin: fresh Beta ' + kind + ' must create a Beta-owned draft')
+        await act(async () => { buttonByLabel(tree, 'Cancel').props.onClick() })
+        assert.equal(live()?.draft, null)
+      }
+      assert.equal(remoteFixture.writes.length, beforeWrites)
+      break
+    }
+
+    case 'R15PBegin': {
+      const oldEdit = buttonByLabel(tree, 'Edit').props.onClick
+      const oldDelete = buttonByLabel(tree, 'Delete profile').props.onClick
+      const beta = tree.root.findAll(node => node.type === 'button'
+        && renderedText(node).includes('Beta Profile'))[0]
+      assert.ok(beta)
+      const epoch = live()?.openSessionEpoch
+      await act(async () => { beta.props.onClick() })
+      await settleUI()
+      assert.equal(live()?.selectedProfileId, 'beta')
+      assert.equal(live()?.openSessionEpoch, epoch)
+      for (const [kind, oldHandler] of [
+        ['edit', oldEdit], ['delete', oldDelete],
+      ]) {
+        await act(async () => { oldHandler() })
+        assert.equal(live()?.draft, null,
+          'R15PBegin RED: old Main ' + kind + ' must not enter Main editing')
+        assert.equal(live()?.selectedProfileId, 'beta')
+      }
+      await act(async () => { buttonByLabel(tree, 'Edit').props.onClick() })
+      assert.equal(live()?.draft?.profileId, 'beta')
+      await act(async () => { buttonByLabel(tree, 'Cancel').props.onClick() })
+      await act(async () => { buttonByLabel(tree, 'Delete profile').props.onClick() })
+      assert.equal(live()?.draft?.profileId, 'beta')
+      await act(async () => { buttonByLabel(tree, 'Cancel').props.onClick() })
+      assert.equal(remoteFixture.writes.length, beforeWrites)
+      break
+    }
+
+    case 'R15RBegin': {
+      await act(async () => {
+        tree.root.findByProps({ 'data-context-manager-tab': 'resources' }).props.onClick()
+      })
+      await settleUI()
+      const first = tree.root.findAll(node => node.type === 'button'
+        && node.props['aria-current'] === 'true'
+        && renderedText(node).includes('Alpha Resource'))
+      assert.equal(first.length, 1)
+      const oldEdit = buttonByLabel(tree, 'Edit').props.onClick
+      const oldDelete = buttonByLabel(tree, 'Delete resource').props.onClick
+      const beta = tree.root.findAll(node => node.type === 'button'
+        && renderedText(node).includes('Bravo Resource'))[0]
+      assert.ok(beta)
+      const epoch = live()?.openSessionEpoch
+      await act(async () => { beta.props.onClick() })
+      await settleUI()
+      assert.equal(live()?.selectedResourceId, 'b-resource')
+      assert.equal(live()?.openSessionEpoch, epoch)
+      for (const [kind, handler] of [
+        ['edit', oldEdit], ['delete', oldDelete],
+      ]) {
+        await act(async () => { handler() })
+        assert.equal(live()?.resourceDraft, null,
+          'R15RBegin RED: old Alpha ' + kind + ' must not start an Alpha draft')
+        assert.equal(live()?.selectedResourceId, 'b-resource')
+      }
+      await act(async () => { buttonByLabel(tree, 'Edit').props.onClick() })
+      assert.equal(live()?.resourceDraft?.stamp?.resourceId,
+        'b-resource', 'R15RBegin: fresh Bravo Edit must start a Bravo-stamped draft')
+      await act(async () => { buttonByLabel(tree, 'Cancel').props.onClick() })
+      await act(async () => { buttonByLabel(tree, 'Delete resource').props.onClick() })
+      assert.equal(live()?.resourceDraft?.resourceId, 'b-resource')
+      await act(async () => { buttonByLabel(tree, 'Cancel').props.onClick() })
+      assert.equal(remoteFixture.resourceWrites.length, 0)
+      break
+    }
+
+    case 'R15SBegin': {
+      const oldSkill = tree.root.findByProps({
+        'data-context-manager-skill-new': '',
+      }).props.onClick
+      const beta = tree.root.findAll(node => node.type === 'button'
+        && renderedText(node).includes('Beta Profile'))[0]
+      assert.ok(beta)
+      await act(async () => { beta.props.onClick() })
+      await settleUI()
+      assert.equal(live()?.selectedProfileId, 'beta')
+      await act(async () => { oldSkill() })
+      assert.equal(live()?.draft, null,
+        'R15SBegin: existing Skill Begin effective-selection fence rejects Main')
+      await act(async () => {
+        tree.root.findByProps({ 'data-context-manager-skill-new': '' }).props.onClick()
+      })
+      assert.equal(live()?.draft?.profileId, 'beta')
+      await act(async () => { buttonByLabel(tree, 'Cancel').props.onClick() })
+      assert.equal(remoteFixture.writes.length, beforeWrites)
+      break
+    }
+
+
+    // F01-SR5 same-open-session unmount / remount proof. Neither current
+    // pane nor epoch alone authorizes handlers from a previous component
+    // instance (without a new Drawer opening).
+    case 'R15U': {
+      const epoch = live()?.openSessionEpoch
+      const oldBindingRead = buttonByLabel(tree, 'Load resource suggestions').props.onClick
+      const oldBindingBegin = tree.root.findByProps({
+        'data-context-manager-new-binding': '',
+      }).props.onClick
+      await act(async () => {
+        tree.root.findByProps({ 'data-context-manager-tab': 'resources' }).props.onClick()
+      })
+      await settleUI()
+      await act(async () => {
+        tree.root.findByProps({ 'data-context-manager-tab': 'profiles' }).props.onClick()
+      })
+      await settleUI()
+      assert.equal(live()?.openSessionEpoch, epoch,
+        'R15U must not depend on Close/Reopen changing session epoch')
+      const beforeBindingRead = uiListDispatches
+      await act(async () => { oldBindingRead(); oldBindingBegin() })
+      assert.equal(uiListDispatches, beforeBindingRead,
+        'R15U stale unmounted Binding Read cannot dispatch after remount in same epoch')
+      assert.equal(live()?.draft, null,
+        'R15U stale unmounted Binding Begin cannot create a hidden draft')
+      await act(async () => {
+        tree.root.findByProps({ 'data-context-manager-new-binding': '' }).props.onClick()
+      })
+      assert.equal(live()?.draft?.kind, 'prompt-binding-create')
+      await act(async () => { buttonByLabel(tree, 'Cancel').props.onClick() })
+      await act(async () => {
+        buttonByLabel(tree, 'Load resource suggestions').props.onClick()
+        for (let i = 0; i < 30; i++) await Promise.resolve()
+      })
+      assert.equal(uiListDispatches, beforeBindingRead + 1)
+
+      await act(async () => {
+        tree.root.findByProps({ 'data-context-manager-tab': 'resources' }).props.onClick()
+      })
+      await settleUI()
+      const oldResourceRead = buttonByLabel(tree, 'Refresh').props.onClick
+      const oldResourceBegin = tree.root.findByProps({
+        'data-context-manager-new-resource': '',
+      }).props.onClick
+      await act(async () => {
+        tree.root.findByProps({ 'data-context-manager-tab': 'profiles' }).props.onClick()
+      })
+      await settleUI()
+      await act(async () => {
+        tree.root.findByProps({ 'data-context-manager-tab': 'resources' }).props.onClick()
+      })
+      await settleUI()
+      assert.equal(live()?.openSessionEpoch, epoch)
+      const beforeResourceRead = uiListDispatches
+      await act(async () => { oldResourceRead(); oldResourceBegin() })
+      assert.equal(uiListDispatches, beforeResourceRead,
+        'R15U stale unmounted Resource Refresh cannot dispatch after remount')
+      assert.equal(live()?.resourceDraft, null,
+        'R15U stale unmounted Resource Create cannot create a draft')
+      await act(async () => {
+        buttonByLabel(tree, 'Refresh').props.onClick()
+        for (let i = 0; i < 30; i++) await Promise.resolve()
+      })
+      assert.equal(uiListDispatches, beforeResourceRead + 1)
+      await act(async () => {
+        tree.root.findByProps({ 'data-context-manager-new-resource': '' }).props.onClick()
+      })
+      assert.equal(live()?.resourceDraft?.kind, 'create')
+      await act(async () => { buttonByLabel(tree, 'Cancel').props.onClick() })
+      assert.equal(remoteFixture.writes.length, beforeWrites)
+      assert.equal(remoteFixture.resourceWrites.length, 0)
+      break
+    }
+
+    case 'R15SI': {
+      assert.equal(live()?.selectedProfileId, null)
+      const oldSkillBegin = tree.root.findByProps({
+        'data-context-manager-skill-new': '',
+      }).props.onClick
+      remoteFixture.externalSetDefault('beta')
+      await act(async () => {
+        buttonByLabel(tree, 'Refresh').props.onClick()
+        for (let i = 0; i < 30; i++) await Promise.resolve()
+      })
+      await settleUI()
+      assert.equal(live()?.selectedProfileId, null)
+      assert.equal(tree.root.findAll(node =>
+        node.type === 'h3' && renderedText(node) === 'Beta Profile').length, 1)
+      await act(async () => { oldSkillBegin() })
+      assert.equal(live()?.draft, null,
+        'R15SI old Skill Begin must not start Main after implicit default flip')
+      await act(async () => {
+        tree.root.findByProps({ 'data-context-manager-skill-new': '' }).props.onClick()
+      })
+      assert.equal(live()?.draft?.profileId, 'beta',
+        'R15SI fresh Beta Skill Begin remains usable after implicit fallback')
+      await act(async () => { buttonByLabel(tree, 'Cancel').props.onClick() })
+      assert.equal(remoteFixture.writes.length, beforeWrites)
+      break
+    }
+
+    default:
+      throw new Error('Unknown B1-3 real Renderer probe: ' + probe)
+  }
+
+  assert.equal(remoteFixture.resourceWrites.length, probe === 'R11TR' ? 1 : 0,
+    'M8B Skill interactions must never dispatch a Resource RPC; R11TR deliberately creates one Resource Unknown receipt')
+  await act(async () => { tree.unmount() })
+  disposeRoot()
+  await disposePlugin()
+  assert.equal(registeredOverlayStore.readLiveSnapshot(), undefined)
+  await sessionFiber.dispose()
+  await rendererFiber.dispose()
+} else {
+
 // M8A2 executable RED in the ACTUAL published DSH React Renderer:
 // the selected usable Profile must expose its PromptBindings section.
 // This is intentionally absent until the M8A2 production implementation.
@@ -566,6 +1964,74 @@ assert.equal(
   1,
   'M8A2 RED: Profile PromptBindings editor is not yet mounted',
 )
+
+// M8B B1-2a real published Renderer control: capture live, enabled React
+// Begin callbacks while open, then invoke them *after* the Drawer is closed,
+// in the same act() batch before the old mounted tree has rerendered.
+// They must not create a hidden draft, consume a token or dispatch an RPC.
+const b1OldProfileBegin = tree.root.findByProps({
+  'data-context-manager-new-profile': '',
+}).props.onClick
+const b1OldBindingBegin = tree.root.findByProps({
+  'data-context-manager-new-binding': '',
+}).props.onClick
+const b1ProfileCallsBefore = remoteFixture.writes.length
+const b1ResourceCallsBefore = remoteFixture.resourceWrites.length
+const b1TokenBefore = registeredOverlayStore.readLiveSnapshot()?.nextDraftToken
+await act(async () => {
+  trigger().props.onClick()
+  b1OldProfileBegin()
+  b1OldBindingBegin()
+})
+await settleUI()
+assert.equal(registeredOverlayStore.readLiveSnapshot()?.open, false)
+assert.equal(registeredOverlayStore.readLiveSnapshot()?.draft, null,
+  'B1-2a: retained Profile/Binding Begin must create no hidden closed draft')
+assert.equal(registeredOverlayStore.readLiveSnapshot()?.resourceDraft, null)
+assert.equal(registeredOverlayStore.readLiveSnapshot()?.nextDraftToken, b1TokenBefore)
+assert.equal(registeredOverlayStore.readLiveSnapshot()?.notice, null,
+  'B1-2a: stale closed Begin may not inject a phantom Draft Active notice')
+assert.equal(remoteFixture.writes.length, b1ProfileCallsBefore,
+  'B1-2a: no Profile RPC after closed Begin callback')
+assert.equal(remoteFixture.resourceWrites.length, b1ResourceCallsBefore,
+  'B1-2a: no Resource RPC after closed Profile/Binding Begin')
+await act(async () => { trigger().props.onClick() })
+await settleUI()
+assert.equal(registeredOverlayStore.readLiveSnapshot()?.open, true)
+
+// Resource's real tab initializes its read-only list asynchronously, so
+// require a truly enabled Create handler before retaining it across Close.
+await act(async () => {
+  tree.root.findByProps({ 'data-context-manager-tab': 'resources' }).props.onClick()
+})
+await settleUI()
+const b1ResourceStart = tree.root.findByProps({ 'data-context-manager-new-resource': '' })
+assert.equal(b1ResourceStart.props.disabled, false,
+  'B1-2a: genuine published Resource Begin must be enabled before this race test')
+const b1OldResourceBegin = b1ResourceStart.props.onClick
+const b1ResourceTokenBefore = registeredOverlayStore.readLiveSnapshot()?.nextResourceDraftToken
+const b1ResourceWritesBefore = remoteFixture.resourceWrites.length
+await act(async () => {
+  trigger().props.onClick()
+  b1OldResourceBegin()
+})
+await settleUI()
+assert.equal(registeredOverlayStore.readLiveSnapshot()?.open, false)
+assert.equal(registeredOverlayStore.readLiveSnapshot()?.resourceDraft, null,
+  'B1-2a: retained Resource Begin must create no hidden closed draft')
+assert.equal(registeredOverlayStore.readLiveSnapshot()?.nextResourceDraftToken, b1ResourceTokenBefore)
+assert.equal(registeredOverlayStore.readLiveSnapshot()?.resourceNotice, null,
+  'B1-2a: stale closed Resource Begin may not leave a phantom notice')
+assert.equal(remoteFixture.resourceWrites.length, b1ResourceWritesBefore)
+await act(async () => { trigger().props.onClick() })
+await settleUI()
+await act(async () => {
+  tree.root.findByProps({ 'data-context-manager-tab': 'profiles' }).props.onClick()
+})
+await settleUI()
+assert.equal(registeredOverlayStore.readLiveSnapshot()?.open, true)
+assert.equal(registeredOverlayStore.readLiveSnapshot()?.pane, 'profiles')
+assert.equal(remoteFixture.writes.length, 0)
 
 // Create with one explicit, basis-bearing Host write.
 await act(async () => {
@@ -1408,6 +2874,187 @@ await act(async () => { buttonByLabel(tree, 'Delete profile').props.onClick() })
 assert.equal(registeredOverlayStore.readLiveSnapshot()?.draft?.kind, 'confirm-delete')
 await act(async () => { buttonByLabel(tree, 'Cancel').props.onClick() })
 
+// M8B B1-2b independent REAL published Renderer behavioral RED:
+// A Save handler captured during a previous Drawer open session must not
+// authorize a write after Close -> Reopen, even when the same Profile draft
+// and original Settings Basis are deliberately retained. A new visible
+// handler from the reopened session may still commit the preserved draft.
+// This intentionally exercises existing M7C UI, before Skill UI exists.
+await act(async () => { buttonByLabel(tree, 'Edit', 0).props.onClick() })
+assert.equal(registeredOverlayStore.readLiveSnapshot()?.draft?.kind, 'edit-field')
+await act(async () => {
+  tree.root.findByProps({ id: 'cm-edit-name' }).props.onChange({
+    currentTarget: { value: 'Fresh reopened edit' },
+  })
+})
+const b12bOldSessionSave = tree.root.findAllByType('form')[0].props.onSubmit
+const b12bOriginalToken = registeredOverlayStore.readLiveSnapshot()?.draft?.token
+const b12bOriginalBasis = registeredOverlayStore.readLiveSnapshot()?.draft?.basis
+const b12bWritesBefore = remoteFixture.writes.length
+await act(async () => { trigger().props.onClick() })
+assert.equal(registeredOverlayStore.readLiveSnapshot()?.open, false)
+assert.equal(registeredOverlayStore.readLiveSnapshot()?.draft?.token, b12bOriginalToken,
+  'B1-2b control: Close preserves the active Profile draft')
+await act(async () => { trigger().props.onClick() })
+await settleUI()
+assert.equal(registeredOverlayStore.readLiveSnapshot()?.open, true)
+assert.equal(registeredOverlayStore.readLiveSnapshot()?.draft?.token, b12bOriginalToken)
+assert.deepEqual(registeredOverlayStore.readLiveSnapshot()?.draft?.basis, b12bOriginalBasis,
+  'B1-2b control: Reopen does not recapture Settings revision')
+await act(async () => {
+  b12bOldSessionSave({ preventDefault() {} })
+  for (let i = 0; i < 20; i += 1) await Promise.resolve()
+})
+assert.equal(remoteFixture.writes.length, b12bWritesBefore,
+  'B1-2b RED: pre-Close Save callback must not write through reopened session')
+assert.equal(registeredOverlayStore.readLiveSnapshot()?.draft?.token, b12bOriginalToken,
+  'B1-2b RED: obsolete Save cannot consume the preserved draft')
+// Positive continuation is executed once a later GREEN blocks the stale Save:
+await act(async () => {
+  tree.root.findAllByType('form')[0].props.onSubmit({ preventDefault() {} })
+  for (let i = 0; i < 20; i += 1) await Promise.resolve()
+})
+await settleUI()
+assert.equal(remoteFixture.writes.length, b12bWritesBefore + 1,
+  'B1-2b control: a freshly rendered reopened Save may commit once')
+assert.equal(remoteFixture.writes.at(-1)?.kind, 'name')
+assert.equal(registeredOverlayStore.readLiveSnapshot()?.draft, null)
+
+// M8B F01-SR1 regression: a pre-Close Profile Begin and immediate default
+// handler must not act after Reopen, even though Settings is unchanged.
+const f01OldProfileBegin = tree.root.findByProps({
+  'data-context-manager-new-profile': '',
+}).props.onClick
+const f01OldDefault = buttonByLabel(tree, 'Set as default').props.onClick
+const f01ProfileTokenBefore = registeredOverlayStore.readLiveSnapshot()?.nextDraftToken
+const f01ProfileWritesBefore = remoteFixture.writes.length
+await act(async () => { trigger().props.onClick() })
+await act(async () => { trigger().props.onClick() })
+await settleUI()
+await act(async () => {
+  f01OldProfileBegin()
+  f01OldDefault()
+  for (let i = 0; i < 20; i += 1) await Promise.resolve()
+})
+assert.equal(registeredOverlayStore.readLiveSnapshot()?.draft, null,
+  'F01-SR1: old Profile Begin must not occupy a reopened Drawer')
+assert.equal(registeredOverlayStore.readLiveSnapshot()?.nextDraftToken, f01ProfileTokenBefore)
+assert.equal(remoteFixture.writes.length, f01ProfileWritesBefore,
+  'F01-SR1: old immediate default callback must issue zero Profile RPCs')
+
+// M8A2 Profile PromptBinding Save shares the same opening-session safety as
+// M7C Profile, but still permits the fresh reopened handler to Save once.
+await act(async () => {
+  tree.root.findByProps({ 'data-context-manager-new-binding': '' }).props.onClick()
+})
+await act(async () => {
+  tree.root.findByProps({ id: 'cm-binding-create-id' }).props.onChange({
+    currentTarget: { value: 'f01-reopen-binding' },
+  })
+  tree.root.findByProps({ id: 'cm-binding-create-resource' }).props.onChange({
+    currentTarget: { value: 'not-a-required-resource' },
+  })
+})
+const f01BindingDraft = registeredOverlayStore.readLiveSnapshot()?.draft
+assert.equal(f01BindingDraft?.kind, 'prompt-binding-create')
+const f01OldBindingSave = tree.root.findByProps({
+  'data-context-manager-binding-create-form': '',
+}).props.onSubmit
+const f01BindingWritesBefore = remoteFixture.writes.length
+await act(async () => { trigger().props.onClick() })
+await act(async () => { trigger().props.onClick() })
+await settleUI()
+assert.strictEqual(registeredOverlayStore.readLiveSnapshot()?.draft, f01BindingDraft,
+  'F01-SR1: Binding Token and original Basis must survive Close/Reopen')
+await act(async () => {
+  f01OldBindingSave({ preventDefault() {} })
+  for (let i = 0; i < 20; i += 1) await Promise.resolve()
+})
+assert.equal(remoteFixture.writes.length, f01BindingWritesBefore,
+  'F01-SR1: an obsolete Binding Save cannot reuse the retained Profile draft')
+assert.strictEqual(registeredOverlayStore.readLiveSnapshot()?.draft, f01BindingDraft)
+await act(async () => {
+  tree.root.findByProps({ 'data-context-manager-binding-create-form': '' })
+    .props.onSubmit({ preventDefault() {} })
+  for (let i = 0; i < 25; i += 1) await Promise.resolve()
+})
+await settleUI()
+assert.equal(remoteFixture.writes.length, f01BindingWritesBefore + 1)
+assert.equal(remoteFixture.writes.at(-1)?.kind, 'binding-add')
+assert.equal(registeredOverlayStore.readLiveSnapshot()?.draft, null)
+
+// Resource Controller retains its independent authority and Stamp. The
+// old Resource form callback must not submit across a Drawer reopen either.
+await act(async () => {
+  tree.root.findByProps({ 'data-context-manager-tab': 'resources' }).props.onClick()
+})
+await settleUI()
+const f01ResourceStart = tree.root.findByProps({ 'data-context-manager-new-resource': '' })
+assert.equal(f01ResourceStart.props.disabled, false,
+  'F01-SR1 control: real Resource Create must be available in reopened Drawer')
+await act(async () => { f01ResourceStart.props.onClick() })
+await act(async () => {
+  tree.root.findByProps({ id: 'cm-resource-create-id' }).props.onChange({
+    currentTarget: { value: 'f01-reopen-resource' },
+  })
+  tree.root.findByProps({ id: 'cm-resource-create-name' }).props.onChange({
+    currentTarget: { value: 'F01 retained Resource' },
+  })
+  tree.root.findByProps({ id: 'cm-resource-create-content' }).props.onChange({
+    currentTarget: { value: 'exact\\ncontent' },
+  })
+})
+const f01ResourceDraft = registeredOverlayStore.readLiveSnapshot()?.resourceDraft
+assert.equal(f01ResourceDraft?.kind, 'create')
+const f01OldResourceSave = tree.root.findAllByType('form')[0].props.onSubmit
+const f01ResourceWritesBefore = remoteFixture.resourceWrites.length
+await act(async () => { trigger().props.onClick() })
+await act(async () => { trigger().props.onClick() })
+await settleUI()
+assert.strictEqual(registeredOverlayStore.readLiveSnapshot()?.resourceDraft, f01ResourceDraft)
+await act(async () => {
+  f01OldResourceSave({ preventDefault() {} })
+  for (let i = 0; i < 20; i += 1) await Promise.resolve()
+})
+assert.equal(remoteFixture.resourceWrites.length, f01ResourceWritesBefore,
+  'F01-SR1: obsolete Resource Save cannot write after a new open session')
+await act(async () => {
+  tree.root.findAllByType('form')[0].props.onSubmit({ preventDefault() {} })
+  for (let i = 0; i < 25; i += 1) await Promise.resolve()
+})
+await settleUI()
+assert.equal(remoteFixture.resourceWrites.length, f01ResourceWritesBefore + 1)
+assert.equal(remoteFixture.resourceWrites.at(-1)?.kind, 'resource-create')
+assert.equal(remoteFixture.resources.get('f01-reopen-resource')?.content, 'exact\\ncontent')
+assert.equal(registeredOverlayStore.readLiveSnapshot()?.resourceDraft, null)
+
+const f01OldResourceBegin = tree.root.findByProps({
+  'data-context-manager-new-resource': '',
+}).props.onClick
+const f01ResourceTokenBefore = registeredOverlayStore.readLiveSnapshot()?.nextResourceDraftToken
+await act(async () => { trigger().props.onClick() })
+await act(async () => { trigger().props.onClick() })
+await settleUI()
+await act(async () => { f01OldResourceBegin() })
+assert.equal(registeredOverlayStore.readLiveSnapshot()?.resourceDraft, null)
+assert.equal(registeredOverlayStore.readLiveSnapshot()?.nextResourceDraftToken, f01ResourceTokenBefore,
+  'F01-SR1: old Resource Begin is not authorized by a later Drawer session')
+await act(async () => {
+  tree.root.findByProps({ 'data-context-manager-tab': 'profiles' }).props.onClick()
+})
+await settleUI()
+const f01OldBindingBegin = tree.root.findByProps({
+  'data-context-manager-new-binding': '',
+}).props.onClick
+const f01BindingTokenBefore = registeredOverlayStore.readLiveSnapshot()?.nextDraftToken
+await act(async () => { trigger().props.onClick() })
+await act(async () => { trigger().props.onClick() })
+await settleUI()
+await act(async () => { f01OldBindingBegin() })
+assert.equal(registeredOverlayStore.readLiveSnapshot()?.draft, null)
+assert.equal(registeredOverlayStore.readLiveSnapshot()?.nextDraftToken, f01BindingTokenBefore,
+  'F01-SR1: old Binding Begin cannot start a draft after Reopen')
+
 remoteFixture.setReadOnly(true)
 const overlayFace = injectedBusiness?.()
 assert.ok(overlayFace)
@@ -1424,3 +3071,4 @@ assert.equal(registeredOverlayStore.readLiveSnapshot(), undefined,
   'M8A2 live Store reader must be revoked on plugin disposal')
 await sessionFiber.dispose()
 await rendererFiber.dispose()
+}

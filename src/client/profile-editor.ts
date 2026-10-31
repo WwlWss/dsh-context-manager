@@ -1,6 +1,7 @@
 import type {
   ContextManagerRemoteProfileInput,
   ContextManagerRemotePromptPlacement,
+  ContextManagerRemoteSkillMode,
 } from '../remote/types.js'
 import type {
   ContextManagerClientProfileMutationBasis,
@@ -52,7 +53,30 @@ export type PromptBindingDraft =
       bindingId: string
     })
 
+export type SkillDraft =
+  | (DraftBase & {
+      kind: 'skill-mode-create'
+      profileId: string
+      skillName: string
+      mode: ContextManagerRemoteSkillMode
+      readonly observedSkillNames: readonly string[]
+    })
+  | (DraftBase & {
+      kind: 'skill-mode-edit'
+      profileId: string
+      readonly skillName: string
+      readonly originalMode: ContextManagerRemoteSkillMode
+      mode: ContextManagerRemoteSkillMode
+    })
+  | (DraftBase & {
+      kind: 'skill-binding-delete'
+      profileId: string
+      readonly skillName: string
+      readonly originalMode: ContextManagerRemoteSkillMode
+    })
+
 export type ProfileDraft =
+  | SkillDraft
   | PromptBindingDraft
   | (DraftBase & {
       kind: 'create'
@@ -91,6 +115,7 @@ export type ProfileNoticeCode =
   | 'noticeRefreshRequested'
   | 'noticeBindingExists'
   | 'noticeBindingMissing'
+  | 'noticeSkillMissing'
 
 export interface ProfileNotice {
   readonly code: ProfileNoticeCode

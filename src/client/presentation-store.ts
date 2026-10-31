@@ -2,7 +2,7 @@ import { defineStore } from '@deepseek-ai/dsh-client-store'
 import type { ContextManagerClientProfileMutationBasis } from './mutation-types.js'
 import type { ContextManagerClientPromptResourceReadStamp } from './model-types.js'
 import type { ContextManagerClientResourceCreateBasis } from './resource-mutation-types.js'
-import type { ContextManagerRemotePromptResource, ContextManagerRemotePromptPlacement } from '../remote/types.js'
+import type { ContextManagerRemotePromptResource, ContextManagerRemotePromptPlacement, ContextManagerRemoteSkillMode } from '../remote/types.js'
 import type { ResourceDraft, ResourceDraftBlock, ResourceNotice } from './resource-editor.js'
 import { isPromptBindingDraft } from './prompt-binding-editor.js'
 import type {
@@ -14,6 +14,8 @@ import type {
 
 export interface ContextManagerPresentationState {
   open: boolean
+  /** Monotonic UI-only session, not a Profile/Resource Host authority or CAS. */
+  openSessionEpoch: number
   pane: 'profiles' | 'resources'
   selectedProfileId: string | null
   selectedResourceId: string | null
@@ -57,26 +59,82 @@ export function terminalResourceNotice(
 }
 
 function notifyOccupiedProfileDraft(state: ContextManagerPresentationState): void {
-  if (terminalProfileNotice(state) !== undefined) return
+  // An obsolete Begin after Drawer Close must not leave a phantom warning on Reopen.
+  if (!state.open || terminalProfileNotice(state) !== undefined) return
   state.notice = { code: 'noticeDraftActive', kind: 'warning' }
 }
 
 function canBeginProfileDraft(state: ContextManagerPresentationState): boolean {
-  return state.pane === 'profiles' && state.draft === null && state.resourceDraft === null
+  return state.open && state.pane === 'profiles' && state.draft === null && state.resourceDraft === null
 }
 
 function canBeginResourceDraft(state: ContextManagerPresentationState): boolean {
-  return state.pane === 'resources' && state.resourceDraft === null && state.draft === null
+  return state.open && state.pane === 'resources' && state.resourceDraft === null && state.draft === null
 }
 
 function notifyOccupiedResourceDraft(state: ContextManagerPresentationState): void {
-  if (state.resourceDraft?.blocked !== undefined) return
+  if (!state.open || state.resourceDraft?.blocked !== undefined) return
   state.resourceNotice = { code: 'resourceNoticeDraftActive', kind: 'warning' }
 }
 
 /** Never use the previous render's draft flag to authorize a Host RPC. Both
  * selectors read from the existing root DSH Store instance, not a shadow
  * state machine. React rerenders may lag one synchronous Store action. */
+/** A retained React handler must belong to this exact Drawer opening. Closing
+ * preserves an active draft, but Close -> Reopen revokes pre-Close handlers.
+ * Use together with the existing object-identity/token/Host CAS fences. */
+export function isLiveDrawerOpenSession(
+  current: ContextManagerPresentationState | undefined,
+  renderedOpenSessionEpoch: number,
+): boolean {
+  return current !== undefined
+    && current.open
+    && current.openSessionEpoch === renderedOpenSessionEpoch
+}
+
+/** F01-SR2: authorize a *user-originated* draft event from its rendered
+ * Drawer opening, not merely the retained Token. Close -> Reopen preserves
+ * the same draft Token, so old onChange/Cancel/Discard callbacks must not
+ * gain authority in a later opening. Do NOT apply this gate to RPC receipts:
+ * a valid in-flight Host outcome must still settle when the Drawer closes.
+ *
+ * This is presentation-only; neither Profile Basis nor Resource authority
+ * is re-read, and no second Store or lifecycle counter is created.
+ */
+export function mayApplyCurrentDraftEvent(
+  actions: object,
+  renderedOpenSessionEpoch: number,
+  pane: 'profiles' | 'resources',
+  token: number,
+): boolean {
+  const current = readLivePresentationForActions(actions)
+  if (!isLiveDrawerOpenSession(current, renderedOpenSessionEpoch)
+    || current?.pane !== pane) return false
+  return pane === 'profiles'
+    ? current.draft?.token === token && current.resourceDraft === null
+    : current.resourceDraft?.token === token && current.draft === null
+}
+
+/** F01-SR3: user-originated navigation/close events must belong to the
+ * Drawer opening that rendered their callback. This includes Tab switches,
+ * selected Profile/Resource rows, backdrop/header Close and Escape.
+ *
+ * A navigation event has no Draft Token: unlike editable fields, it must
+ * instead match the original openSessionEpoch and (for panes/rows) the
+ * active pane. The sidebar trigger is permanently mounted and intentionally
+ * retains its existing toggle semantics. Never apply this guard to an
+ * already dispatched Host/Controller result.
+ */
+export function mayApplyCurrentNavigationEvent(
+  actions: object,
+  renderedOpenSessionEpoch: number,
+  pane?: 'profiles' | 'resources',
+): boolean {
+  const current = readLivePresentationForActions(actions)
+  return isLiveDrawerOpenSession(current, renderedOpenSessionEpoch)
+    && (pane === undefined || current?.pane === pane)
+}
+
 export function mayDispatchImmediateProfileWrite(
   current: ContextManagerPresentationState | undefined,
   selectedProfileId: string | null,
@@ -120,6 +178,7 @@ export function createContextManagerPresentationStore() {
   const handle = defineStore({
     init: (): ContextManagerPresentationState => ({
       open: false,
+      openSessionEpoch: 0,
       pane: 'profiles',
       selectedProfileId: null,
       selectedResourceId: null,
@@ -132,13 +191,17 @@ export function createContextManagerPresentationStore() {
     }),
     actions: {
       open(state) {
-        state.open = true
+        if (!state.open) {
+          state.openSessionEpoch += 1
+          state.open = true
+        }
       },
       close(state) {
         // Closing does not silently discard a pending draft.
         state.open = false
       },
       toggle(state) {
+        if (!state.open) state.openSessionEpoch += 1
         state.open = !state.open
       },
       selectPane(state, pane: 'profiles' | 'resources') {
@@ -213,6 +276,106 @@ export function createContextManagerPresentationStore() {
           profileId,
         }
         state.notice = null
+      },
+      /** B2-A1 GREEN: Skill drafts share the one Profile lane and Profile
+       * Token. Their inputs are immutable Begin evidence, not Host authority.
+       * The rendered Profile/Binding + fresh Model basis are checked by the
+       * React caller; this Store alone enforces live pane/selection/occupancy. */
+      beginSkillModeCreate(state, input: {
+        profileId: string
+        basis: ContextManagerClientProfileMutationBasis
+        observedSkillNames: readonly string[]
+      }) {
+        if (!canBeginProfileDraft(state)) {
+          notifyOccupiedProfileDraft(state)
+          return
+        }
+        if (input.profileId === '__proto__'
+          || (state.selectedProfileId !== null
+            && state.selectedProfileId !== input.profileId)) return
+        state.nextDraftToken += 1
+        if (state.selectedProfileId === null) state.selectedProfileId = input.profileId
+        state.draft = {
+          kind: 'skill-mode-create', token: state.nextDraftToken,
+          profileId: input.profileId,
+          basis: Object.freeze({ ...input.basis }),
+          observedSkillNames: Object.freeze([...input.observedSkillNames]),
+          skillName: '', mode: 'auto',
+        }
+        state.notice = null
+      },
+      updateSkillCreateName(state, token: number, value: string) {
+        const draft = state.draft
+        if (draft?.kind !== 'skill-mode-create'
+          || draft.token !== token || draft.blocked !== undefined
+          || draft.submitting) return
+        draft.skillName = value
+        state.notice = null
+      },
+      beginSkillModeEdit(state, input: {
+        profileId: string
+        skillName: string
+        originalMode: ContextManagerRemoteSkillMode
+        basis: ContextManagerClientProfileMutationBasis
+      }) {
+        if (!canBeginProfileDraft(state)) {
+          notifyOccupiedProfileDraft(state)
+          return
+        }
+        if (input.profileId === '__proto__' || input.skillName === '__proto__'
+          || (state.selectedProfileId !== null
+            && state.selectedProfileId !== input.profileId)) return
+        state.nextDraftToken += 1
+        if (state.selectedProfileId === null) state.selectedProfileId = input.profileId
+        state.draft = {
+          kind: 'skill-mode-edit', token: state.nextDraftToken,
+          profileId: input.profileId, skillName: input.skillName,
+          originalMode: input.originalMode, mode: input.originalMode,
+          basis: Object.freeze({ ...input.basis }),
+        }
+        state.notice = null
+      },
+      updateSkillMode(state, token: number, mode: ContextManagerRemoteSkillMode) {
+        const draft = state.draft
+        if ((draft?.kind !== 'skill-mode-create' && draft?.kind !== 'skill-mode-edit')
+          || draft.token !== token || draft.blocked !== undefined
+          || draft.submitting
+          || !(['auto', 'manual', 'off', 'pinned'] as string[]).includes(mode)) return
+        draft.mode = mode
+        state.notice = null
+      },
+      beginSkillBindingDelete(state, input: {
+        profileId: string
+        skillName: string
+        originalMode: ContextManagerRemoteSkillMode
+        basis: ContextManagerClientProfileMutationBasis
+      }) {
+        if (!canBeginProfileDraft(state)) {
+          notifyOccupiedProfileDraft(state)
+          return
+        }
+        if (input.profileId === '__proto__' || input.skillName === '__proto__'
+          || (state.selectedProfileId !== null
+            && state.selectedProfileId !== input.profileId)) return
+        state.nextDraftToken += 1
+        if (state.selectedProfileId === null) state.selectedProfileId = input.profileId
+        state.draft = {
+          kind: 'skill-binding-delete', token: state.nextDraftToken,
+          profileId: input.profileId, skillName: input.skillName,
+          originalMode: input.originalMode,
+          basis: Object.freeze({ ...input.basis }),
+        }
+        state.notice = null
+      },
+      setSkillDraftNotice(state, token: number, notice: ProfileNotice) {
+        const draft = state.draft
+        if (draft === null || !(
+          draft.kind === 'skill-mode-create'
+          || draft.kind === 'skill-mode-edit'
+          || draft.kind === 'skill-binding-delete'
+        ) || draft.token !== token || draft.terminalNotice !== undefined
+          || draft.blocked !== undefined || draft.submitting) return
+        state.notice = notice
       },
       beginPromptBindingCreate(state, input: {
         profileId: string

@@ -15,6 +15,7 @@ import {
 } from './locales.js'
 import {
   createContextManagerPresentationStore,
+  mayApplyCurrentNavigationEvent,
   type ContextManagerPresentationStoreHandle,
 } from './presentation-store.js'
 import { createContextManagerClientModel } from './model.js'
@@ -56,7 +57,13 @@ function ContextManagerTrigger(props: TriggerProps) {
 /** Tabs share one apply-lifetime local Presentation Store; drafts outlive panel close. */
 function ContextManagerDrawerBody(props: ContextManagerDrawerProps) {
   const pane = props.useStore(state => state.pane)
+  const renderedOpenSessionEpoch = props.useStore(state => state.openSessionEpoch)
   const { actions, t } = props
+  const navigate = (next: 'profiles' | 'resources') => {
+    if (mayApplyCurrentNavigationEvent(actions, renderedOpenSessionEpoch, pane)) {
+      actions.selectPane(next)
+    }
+  }
   return createElement('div', { className: styles.workspace },
     createElement('nav', { className: styles.tabs, 'aria-label': t('title') },
       createElement('button', {
@@ -64,14 +71,14 @@ function ContextManagerDrawerBody(props: ContextManagerDrawerProps) {
         className: pane === 'profiles' ? styles.tabActive : styles.tab,
         'aria-current': pane === 'profiles' ? 'page' : undefined,
         'data-context-manager-tab': 'profiles',
-        onClick: () => actions.selectPane('profiles'),
+        onClick: () => navigate('profiles'),
       }, t('profilesTitle')),
       createElement('button', {
         type: 'button',
         className: pane === 'resources' ? styles.tabActive : styles.tab,
         'aria-current': pane === 'resources' ? 'page' : undefined,
         'data-context-manager-tab': 'resources',
-        onClick: () => actions.selectPane('resources'),
+        onClick: () => navigate('resources'),
       }, t('resourcesTitle')),
     ),
     pane === 'profiles'
@@ -83,14 +90,21 @@ function ContextManagerDrawerBody(props: ContextManagerDrawerProps) {
 function ContextManagerDrawer(props: ContextManagerDrawerProps) {
   const { useStore, actions, t } = props
   const open = useStore(state => state.open)
+  const renderedOpenSessionEpoch = useStore(state => state.openSessionEpoch)
   if (!open) return null
+
+  const ownsOpening = () =>
+    mayApplyCurrentNavigationEvent(actions, renderedOpenSessionEpoch)
+  const closeCurrentOpening = () => {
+    if (ownsOpening()) actions.close()
+  }
 
   return createElement(
     'div',
     {
       className: styles.backdrop,
       'data-context-manager-backdrop': '',
-      onClick: actions.close,
+      onClick: closeCurrentOpening,
     },
     createElement(
       'aside',
@@ -110,10 +124,11 @@ function ContextManagerDrawer(props: ContextManagerDrawerProps) {
           preventDefault(): void
           stopPropagation(): void
         }) => {
+          if (!ownsOpening()) return
           if (event.key === 'Escape') {
             event.preventDefault()
             event.stopPropagation()
-            actions.close()
+            closeCurrentOpening()
             return
           }
           if (event.key !== 'Tab') return
@@ -142,7 +157,7 @@ function ContextManagerDrawer(props: ContextManagerDrawerProps) {
           type: 'button',
           className: styles.close,
           'aria-label': t('closeAria'),
-          onClick: actions.close,
+          onClick: closeCurrentOpening,
         }, t('close')),
       ),
       createElement(ContextManagerDrawerBody, props),

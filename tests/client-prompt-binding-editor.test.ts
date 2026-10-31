@@ -52,6 +52,7 @@ function bindingDraft(store: ReturnType<ReturnType<typeof createContextManagerPr
 
 test('M8A2 GREEN: one shared Profile draft slot accepts exact Binding create and preserves it on close', () => {
   const store = createContextManagerPresentationStore().create()
+  store.actions.open()
   const actions = store.actions
   assert.equal(typeof actions.beginPromptBindingCreate, 'function',
     'Binding draft action must remain available in the strictly typed Store')
@@ -79,6 +80,7 @@ test('M8A2 GREEN: one shared Profile draft slot accepts exact Binding create and
 
 test('M8A2 GREEN: Binding leaf draft remains blocked after unknown and cannot be replaced by late actions', () => {
   const store = createContextManagerPresentationStore().create()
+  store.actions.open()
   const actions = store.actions
   assert.equal(typeof actions.beginPromptBindingFieldEdit, 'function')
   assert.equal(typeof actions.blockPromptBindingDraft, 'function')
@@ -107,6 +109,7 @@ test('M8A2 GREEN: Binding leaf draft remains blocked after unknown and cannot be
 
 test('M8A2 GREEN: Binding delete is explicit and mutually exclusive with other Profile drafts', () => {
   const store = createContextManagerPresentationStore().create()
+  store.actions.open()
   const actions = store.actions
   assert.equal(typeof actions.beginPromptBindingDelete, 'function')
   store.actions.selectProfile('main')
@@ -244,6 +247,7 @@ test('M8A2 Fix RED: blocked Binding terminal notice survives forbidden navigatio
     ['unverified', 'noticeSavedDegraded'],
   ] as const) {
     const store = createContextManagerPresentationStore().create()
+    store.actions.open()
     store.actions.selectProfile('main')
     store.actions.beginPromptBindingFieldEdit({
       profileId: 'main', bindingId: 'p',
@@ -333,6 +337,7 @@ test('M8A2 Fix2 RED: every existing Begin action retains a blocked Binding termi
   ] as const
   for (const c of cases) {
     const store = createContextManagerPresentationStore().create()
+    store.actions.open()
     store.actions.selectProfile('main')
     store.actions.beginPromptBindingFieldEdit({
       profileId: 'main', bindingId: 'exact', field: 'enabled', original: true, basis: BASIS,
@@ -474,6 +479,7 @@ test('M8A2 final Strict GREEN: late same-token Profile Complete cannot erase fir
     { blocked: 'unverified', code: 'noticeSavedDegraded' },
   ] as const) {
     const store = createContextManagerPresentationStore().create()
+    store.actions.open()
     const a = store.actions
     a.beginPromptBindingFieldEdit({
       profileId: 'main', bindingId: 'exact', field: 'enabled',

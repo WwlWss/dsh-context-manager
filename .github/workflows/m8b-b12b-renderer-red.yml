@@ -1,0 +1,205 @@
+name: M8B F01-SR5 Draft four-version Published Renderer regression
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - '.github/workflows/m8b-b12b-renderer-red.yml'
+      - '.github/workflows/ci.yml'
+      - 'tests/m8b/run-skill-renderer-probes.mjs'
+      - 'tests/m8b-full-skill-gate.test.mjs'
+      - 'src/client/profile-editor.ts'
+      - 'docs/m8b-plan.md'
+      - 'src/client/presentation-store.ts'
+      - 'src/client/skill-policy-editor.ts'
+      - 'tests/client-skill-policy-editor.test.ts'
+      - 'tests/client-profile-editor.test.ts'
+      - 'src/client/profile-drawer.ts'
+      - 'src/client/skill-policy-section.ts'
+      - 'src/client/locales.ts'
+      - 'src/client/prompt-binding-section.ts'
+      - 'src/client/resource-drawer.ts'
+      - 'tests/client-profile-drawer-runtime.mjs'
+      - 'tsconfig.client-model-test.json'
+      - 'tsdown.client-model-test.config.ts'
+      - 'package.json'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  oldest-built-client:
+    name: B1-2b / one pinned-oldest Client bundle
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22.20.0
+      - name: Enable pinned pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.7.0 --activate
+      - run: pnpm install --frozen-lockfile
+      - name: Build one retained oldest dependency Client artifact
+        run: |
+          pnpm run clean
+          pnpm run build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: m8b-b12b-oldest-lib
+          path: lib
+          if-no-files-found: error
+          retention-days: 7
+
+  scoped-client:
+    name: F01-SR1 / pinned-oldest Store + Node + Slot controls
+    needs: oldest-built-client
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22.20.0
+      - name: Enable pinned pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.7.0 --activate
+      - run: pnpm install --frozen-lockfile
+      - run: rm -rf lib
+      - uses: actions/download-artifact@v4
+        with:
+          name: m8b-b12b-oldest-lib
+          path: lib
+      - name: Strict compile of all Client test sources including B1-2b RED seams
+        run: pnpm run typecheck:client-tests
+      - name: Build real Client test bundles (without running unrelated Skill RED)
+        run: pnpm exec tsdown --config tsdown.client-model-test.config.ts
+      - name: F01-SR1 + legacy Profile/Binding/Resource Client regression
+        run: |
+          node --test \
+            ./.artifacts/client-model-tests/client-profile-editor.test.mjs \
+            ./.artifacts/client-model-tests/client-prompt-binding-editor.test.mjs \
+            ./.artifacts/client-model-tests/client-resource-editor.test.mjs
+      - name: Existing Host/Node regression
+        run: node --test ./tests/*.test.mjs
+      - name: Existing Client Slot regression
+        run: node ./tests/client-upstream-runtime.mjs
+
+  retained-renderer:
+    name: F01-SR1 / actual Published Renderer (${{ matrix.version }})
+    needs: oldest-built-client
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        version: [0.1.2-rc.1, 0.1.5-rc.1, 0.1.5-rc.2, 0.1.6-alpha.2]
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22.20.0
+      - name: Enable pinned pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.7.0 --activate
+      - run: pnpm install --frozen-lockfile
+      - name: Restore exact pinned-oldest artifact
+        run: rm -rf lib
+      - uses: actions/download-artifact@v4
+        with:
+          name: m8b-b12b-oldest-lib
+          path: lib
+      - name: Install actual selected Published Client/React generation
+        run: |
+          pnpm add --ignore-scripts --save-dev --save-exact \
+            @deepseek-ai/cordis@4.0.2 \
+            @deepseek-ai/dsh-invariants@${{ matrix.version }} \
+            @deepseek-ai/dsh-client-store@${{ matrix.version }} \
+            @deepseek-ai/dsh-client-locale@${{ matrix.version }} \
+            @deepseek-ai/dsh-client-ui-slots@${{ matrix.version }} \
+            @deepseek-ai/dsh-client-ui-renderer@${{ matrix.version }} \
+            @deepseek-ai/dsh-client-ui-sidebar@${{ matrix.version }} \
+            @deepseek-ai/dsh-client-ui-layout@${{ matrix.version }} \
+            @deepseek-ai/dsh-typert-protocol@${{ matrix.version }} \
+            @types/react@18.3.31 \
+            react@18.3.1 \
+            react-dom@18.3.1 \
+            react-test-renderer@18.3.1
+      - name: Strict retained declaration preflight
+        run: |
+          pnpm exec tsc --ignoreConfig --noEmit --strict --skipLibCheck \
+            --module NodeNext --moduleResolution NodeNext --target ES2024 \
+            src/client/css-modules.d.ts \
+            src/client/context.ts src/client-contract.ts \
+            src/client/model-types.ts src/client/mutation-types.ts src/client/remote-port.ts \
+            src/client/mutation-controller.ts src/client/model.ts src/client/business-face.ts src/client/plugin.ts \
+            tests/client-upstream-contract.ts tests/client-generated-remote-contract.ts
+      - name: Actual published DSH React Renderer / F01-SR1 old-callback regression
+        run: node ./tests/client-profile-drawer-runtime.mjs
+
+  b13-skill-renderer:
+    name: F01-SR5 full Skill Renderer regression (${{ matrix.version }})
+    needs: oldest-built-client
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        version: [0.1.2-rc.1, 0.1.5-rc.1, 0.1.5-rc.2, 0.1.6-alpha.2]
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22.20.0
+      - name: Enable pinned pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.7.0 --activate
+      - run: pnpm install --frozen-lockfile
+      - name: Restore exact pinned-oldest artifact
+        run: rm -rf lib
+      - uses: actions/download-artifact@v4
+        with:
+          name: m8b-b12b-oldest-lib
+          path: lib
+      - name: Install actual selected Published Client/React generation
+        run: |
+          pnpm add --ignore-scripts --save-dev --save-exact \
+            @deepseek-ai/cordis@4.0.2 \
+            @deepseek-ai/dsh-invariants@${{ matrix.version }} \
+            @deepseek-ai/dsh-client-store@${{ matrix.version }} \
+            @deepseek-ai/dsh-client-locale@${{ matrix.version }} \
+            @deepseek-ai/dsh-client-ui-slots@${{ matrix.version }} \
+            @deepseek-ai/dsh-client-ui-renderer@${{ matrix.version }} \
+            @deepseek-ai/dsh-client-ui-sidebar@${{ matrix.version }} \
+            @deepseek-ai/dsh-client-ui-layout@${{ matrix.version }} \
+            @deepseek-ai/dsh-typert-protocol@${{ matrix.version }} \
+            @types/react@18.3.31 \
+            react@18.3.1 \
+            react-dom@18.3.1 \
+            react-test-renderer@18.3.1
+      - name: Strict retained declaration preflight
+        run: |
+          pnpm exec tsc --ignoreConfig --noEmit --strict --skipLibCheck \
+            --module NodeNext --moduleResolution NodeNext --target ES2024 \
+            src/client/css-modules.d.ts \
+            src/client/context.ts src/client-contract.ts \
+            src/client/model-types.ts src/client/mutation-types.ts src/client/remote-port.ts \
+            src/client/mutation-controller.ts src/client/model.ts src/client/business-face.ts src/client/plugin.ts \
+            tests/client-upstream-contract.ts tests/client-generated-remote-contract.ts
+      - name: Execute shared 36-case published Skill Renderer suite as official Full
+        run: node ./tests/m8b/run-skill-renderer-probes.mjs
+

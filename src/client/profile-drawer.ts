@@ -7,6 +7,9 @@ import {
 import {
   mayDispatchImmediateProfileWrite,
   ownsLiveProfileDraft,
+  isLiveDrawerOpenSession,
+  mayApplyCurrentDraftEvent,
+  mayApplyCurrentNavigationEvent,
   readLivePresentationForActions,
   terminalProfileNotice,
   type ContextManagerPresentationStoreHandle,
@@ -29,7 +32,9 @@ import {
   type ProfileListRow,
 } from './profile-view.js'
 import { ContextManagerPromptBindingSection } from './prompt-binding-section.js'
+import { ContextManagerSkillPolicySection } from './skill-policy-section.js'
 import { isPromptBindingDraft } from './prompt-binding-editor.js'
+import { isSkillDraft } from './skill-policy-editor.js'
 import styles from './plugin.module.css'
 
 export type ContextManagerDrawerProps = ComposedProps<
@@ -87,6 +92,7 @@ export function ContextManagerProfileDrawerContent(props: ContextManagerDrawerPr
   const { useStore, actions, t } = props
   const snapshot = props.useContextManager(s => s)
   const operation = props.useProfileMutation(s => s.profile)
+  const renderedOpenSessionEpoch = useStore(s => s.openSessionEpoch)
   const requestedId = useStore(s => s.selectedProfileId)
   const draft = useStore(s => s.draft)
   const resourceDraft = useStore(s => s.resourceDraft)
@@ -125,6 +131,21 @@ export function ContextManagerProfileDrawerContent(props: ContextManagerDrawerPr
     }
   }, [])
 
+  // This value is captured by each render's callbacks, not read afresh when
+  // a pre-Close handler is invoked after a different Drawer opening.
+  const ownsRenderSession = () => mounted.current
+    && mayApplyCurrentNavigationEvent(actions, renderedOpenSessionEpoch, 'profiles')
+  // F01-SR5: current render's target must still be the actual selected
+  // Profile, even if raw selectedProfileId remains null across fallback.
+  const ownsSelectedProfile = () => {
+    const live = readLivePresentationForActions(actions)
+    return ownsRenderSession()
+      && live?.selectedProfileId === requestedId
+      && latestSelection.current === view.selectedId
+  }
+  const applyDraftEvent = (token: number, event: () => void): void => {
+    if (mayApplyCurrentDraftEvent(actions, renderedOpenSessionEpoch, 'profiles', token)) event()
+  }
   const notifyUnavailable = (): void => {
     actions.setNotice({ code: 'noticeUnavailable', kind: 'warning' })
   }
@@ -141,6 +162,7 @@ export function ContextManagerProfileDrawerContent(props: ContextManagerDrawerPr
     actions.setNotice({ code: 'noticeDraftStale', kind: 'warning' })
   }
   const startCreate = () => {
+    if (!ownsRenderSession()) return
     if (draft !== null) {
       actions.setNotice({ code: 'noticeDraftActive', kind: 'warning' })
       return
@@ -151,6 +173,7 @@ export function ContextManagerProfileDrawerContent(props: ContextManagerDrawerPr
     actions.beginCreate(basis)
   }
   const startEdit = (row: ProfileListRow, field: ProfileEditField, original: string | undefined) => {
+    if (!ownsSelectedProfile() || row.id !== view.selectedId) return
     if (row.id === '__proto__') return actions.setNotice({ code: 'noticeNotEditable', kind: 'warning' })
     if (draft !== null) {
       actions.setNotice({ code: 'noticeDraftActive', kind: 'warning' })
@@ -162,6 +185,7 @@ export function ContextManagerProfileDrawerContent(props: ContextManagerDrawerPr
     actions.beginFieldEdit({ profileId: row.id, field, original, basis })
   }
   const startDelete = (row: ProfileListRow) => {
+    if (!ownsSelectedProfile() || row.id !== view.selectedId) return
     if (row.id === '__proto__') return actions.setNotice({ code: 'noticeNotEditable', kind: 'warning' })
     if (draft !== null) {
       actions.setNotice({ code: 'noticeDraftActive', kind: 'warning' })
@@ -200,8 +224,10 @@ export function ContextManagerProfileDrawerContent(props: ContextManagerDrawerPr
   }
   const commitDraft = async () => {
     const original = draft
+    const live = readLivePresentationForActions(actions)
     if (!canSubmit || original === null
-      || !ownsLiveProfileDraft(readLivePresentationForActions(actions), original)) return
+      || !isLiveDrawerOpenSession(live, renderedOpenSessionEpoch)
+      || !ownsLiveProfileDraft(live, original)) return
     if (original.kind === 'create') {
       const validation = validateCreateDraft(original, new Set(view.rows.map(row => row.id)))
       if (validation !== 'valid') {
@@ -255,9 +281,9 @@ export function ContextManagerProfileDrawerContent(props: ContextManagerDrawerPr
     }
   }
   const changeDefault = async (id: string | null) => {
-    if (!canStart || !mayDispatchImmediateProfileWrite(
-      readLivePresentationForActions(actions), requestedId,
-    )) return
+    const live = readLivePresentationForActions(actions)
+    if (!canStart || !ownsSelectedProfile()
+      || !mayDispatchImmediateProfileWrite(live, requestedId)) return
     const basis = captureBasis()
     if (!basis) return
     // Even an immediate default toggle carries an intent from this render.
@@ -267,6 +293,7 @@ export function ContextManagerProfileDrawerContent(props: ContextManagerDrawerPr
   }
 
   const refresh = () => {
+    if (!mayApplyCurrentNavigationEvent(actions, renderedOpenSessionEpoch, 'profiles')) return
     const selectionAtStart = latestSelection.current
     const tokenAtStart = latestDraftToken.current
     const report = (code: 'noticeUnavailable' | 'noticeRefreshFailed') => {
@@ -326,20 +353,20 @@ export function ContextManagerProfileDrawerContent(props: ContextManagerDrawerPr
     },
     h('h3', null, t('createTitle')),
     labelFor('cm-create-id', t('fieldId')),
-    fieldInput('cm-create-id', draft.id, value => actions.updateCreate(draft.token, 'id', value), !canSubmit),
+    fieldInput('cm-create-id', draft.id, value => applyDraftEvent(draft.token, () => actions.updateCreate(draft.token, 'id', value)), !canSubmit),
     h('p', { className: styles.hint }, t('idImmutableHint')),
     labelFor('cm-create-name', t('fieldName')),
-    fieldInput('cm-create-name', draft.name, value => actions.updateCreate(draft.token, 'name', value), !canSubmit),
+    fieldInput('cm-create-name', draft.name, value => applyDraftEvent(draft.token, () => actions.updateCreate(draft.token, 'name', value)), !canSubmit),
     labelFor('cm-create-description', t('fieldDescription')),
-    fieldInput('cm-create-description', draft.description, value => actions.updateCreate(draft.token, 'description', value), !canSubmit, true),
+    fieldInput('cm-create-description', draft.description, value => applyDraftEvent(draft.token, () => actions.updateCreate(draft.token, 'description', value)), !canSubmit, true),
     labelFor('cm-create-preset', t('fieldBasePreset')),
-    fieldInput('cm-create-preset', draft.basePreset, value => actions.updateCreate(draft.token, 'basePreset', value), !canSubmit, false, view.catalogAvailable ? 'cm-profile-preset-choices' : undefined),
+    fieldInput('cm-create-preset', draft.basePreset, value => applyDraftEvent(draft.token, () => actions.updateCreate(draft.token, 'basePreset', value)), !canSubmit, false, view.catalogAvailable ? 'cm-profile-preset-choices' : undefined),
     h('p', { className: styles.hint }, t('createDefaultHint')),
     h('div', { className: styles.actions },
       h('button', { type: 'submit', className: styles.primary,
         disabled: !canSubmit || validateCreateDraft(draft, new Set(view.rows.map(row => row.id))) !== 'valid',
       }, t('create')),
-      button(t('cancel'), () => actions.cancelDraft(draft.token), running || draft.submitting === true),
+      button(t('cancel'), () => applyDraftEvent(draft.token, () => actions.cancelDraft(draft.token)), running || draft.submitting === true),
     ),
     )
     : null
@@ -348,16 +375,19 @@ export function ContextManagerProfileDrawerContent(props: ContextManagerDrawerPr
     ? h('div', { role: 'alert', className: styles.warning },
       h('strong', null, t(
         draft.blocked === 'unknown' ? 'draftUnknown'
-          : isPromptBindingDraft(draft) && draft.blocked === 'unverified' ? 'noticeSavedDegraded'
-            : isPromptBindingDraft(draft) && draft.blocked === 'conflict' ? 'noticeConflict'
+          : (isPromptBindingDraft(draft) || isSkillDraft(draft))
+            && draft.blocked === 'unverified' ? 'noticeSavedDegraded'
+            : (isPromptBindingDraft(draft) || isSkillDraft(draft))
+              && draft.blocked === 'conflict' ? 'noticeConflict'
               : 'draftNeedsReload',
       )),
       h('p', null, t('draftPreservedHint')),
       h('div', { className: styles.actions },
         button(t('refresh'), refresh, running),
-        button(t('discardDraft'), () => draft.blocked !== undefined
-          ? actions.discardBlockedDraft(draft.token) : actions.cancelDraft(draft.token),
-          running || draft.submitting === true),
+        button(t('discardDraft'), () => applyDraftEvent(draft.token, () => {
+          if (draft.blocked !== undefined) actions.discardBlockedDraft(draft.token)
+          else actions.cancelDraft(draft.token)
+        }), running || draft.submitting === true),
       ),
     )
     : null
@@ -387,11 +417,11 @@ export function ContextManagerProfileDrawerContent(props: ContextManagerDrawerPr
         },
         labelFor(fieldId, label),
         fieldInput(fieldId, draft.removeDescription ? '' : draft.value,
-          next => actions.updateField(draft.token, next), !canSubmit,
+          next => applyDraftEvent(draft.token, () => actions.updateField(draft.token, next)), !canSubmit,
           field === 'description',
           field === 'basePreset' && view.catalogAvailable ? 'cm-profile-preset-choices' : undefined),
         field === 'description'
-          ? button(t('removeDescription'), () => actions.markDescriptionRemoved(draft.token),
+          ? button(t('removeDescription'), () => applyDraftEvent(draft.token, () => actions.markDescriptionRemoved(draft.token)),
             !canSubmit || draft.original === undefined)
           : null,
         draft.removeDescription
@@ -401,7 +431,7 @@ export function ContextManagerProfileDrawerContent(props: ContextManagerDrawerPr
           h('button', { type: 'submit', className: styles.primary,
             disabled: !canSubmit || !editValueChanged(draft),
           }, t('save')),
-          button(t('cancel'), () => actions.cancelDraft(draft.token), running || draft.submitting === true),
+          button(t('cancel'), () => applyDraftEvent(draft.token, () => actions.cancelDraft(draft.token)), running || draft.submitting === true),
         ),
         )
         : h('p', { className: styles.value }, value === undefined
@@ -449,6 +479,10 @@ export function ContextManagerProfileDrawerContent(props: ContextManagerDrawerPr
                   unverified: 'presetUnverified',
                 } as const)[resolveProfilePreset(snapshot, selected.id)])),
               ),
+              h(ContextManagerSkillPolicySection, {
+                ...props, profileId: selected.id, profile: selected.profile,
+                writable: view.writable,
+              }),
               h(ContextManagerPromptBindingSection, {
                 ...props, profileId: selected.id, profile: selected.profile,
                 writable: view.writable,
@@ -462,7 +496,7 @@ export function ContextManagerProfileDrawerContent(props: ContextManagerDrawerPr
               ? h('p', null, t('deleteDefaultHint')) : null,
             h('div', { className: styles.actions },
               button(t('confirmDelete'), () => { void commitDraft() }, !canSubmit, 'danger'),
-              button(t('cancel'), () => actions.cancelDraft(draft.token), running || draft.submitting === true),
+              button(t('cancel'), () => applyDraftEvent(draft.token, () => actions.cancelDraft(draft.token)), running || draft.submitting === true),
             ),
           )
           : h('div', { className: styles.actions },
@@ -520,7 +554,11 @@ export function ContextManagerProfileDrawerContent(props: ContextManagerDrawerPr
                 className: row.id === view.selectedId ? styles.selectedRow : styles.profileRow,
                 'aria-current': row.id === view.selectedId ? 'true' : undefined,
                 disabled: draft !== null && row.id !== view.selectedId,
-                onClick: () => actions.selectProfile(row.id),
+                onClick: () => {
+                  if (mayApplyCurrentNavigationEvent(actions, renderedOpenSessionEpoch, 'profiles')) {
+                    actions.selectProfile(row.id)
+                  }
+                },
               },
               h('span', { className: styles.rowTitle }, row.profile?.name || row.id),
               row.configuredDefault ? h('span', { className: styles.tag }, t('defaultLabel')) : null,

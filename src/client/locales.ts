@@ -120,6 +120,18 @@ export type ContextManagerLocaleKey =
   | 'noticeDraftActive'
   | 'noticeRefreshFailed'
   | 'noticeRefreshRequested'
+  | 'skillTitle'
+  | 'skillNew'
+  | 'skillConfiguredOnly'
+  | 'skillNoItems'
+  | 'skillMode'
+  | 'skillEdit'
+  | 'skillDelete'
+  | 'skillUnsafePath'
+  | 'skillEffectivenessDisclaimer'
+  | 'skillIdDuplicate'
+  | 'skillExactIdHint'
+  | 'skillDeleteWholeHint'
   | 'bindingTitle'
   | 'bindingNew'
   | 'bindingNoItems'
@@ -155,6 +167,7 @@ export type ContextManagerLocaleKey =
   | 'bindingPathReadOnly'
   | 'noticeBindingExists'
   | 'noticeBindingMissing'
+  | 'noticeSkillMissing'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface LocaleNamespaceMap {
@@ -280,6 +293,18 @@ export const CONTEXT_MANAGER_LOCALES = Object.freeze({
     noticeDraftActive: "请先保存或取消当前草稿。",
     noticeRefreshFailed: "刷新请求失败。",
     noticeRefreshRequested: "已请求刷新。",
+    skillTitle: "Skill 策略",
+    skillNew: "配置新 Skill",
+    skillConfiguredOnly: "仅展示本 Profile 中已有的显式 Skill 配置；不代表该 Skill 对具体 Agent 已生效。",
+    skillNoItems: "暂无显式 Skill 绑定。",
+    skillMode: "已配置模式",
+    skillEdit: "编辑模式",
+    skillDelete: "移除绑定",
+    skillUnsafePath: "__proto__ 是无法安全修改的 Settings 路径键；保留现有配置只读展示。",
+    skillEffectivenessDisclaimer: "仅显示明确配置的 Skill；修改须经 Save 和 Host CAS 确认，不代表某个 Agent 已生效。",
+    skillIdDuplicate: "此 Profile 中已经存在完全相同的 Skill ID；请使用 Edit Mode 而不是 Configure。",
+    skillExactIdHint: "Skill ID 精确保留空字符串、空白和 Unicode；只有 __proto__ 不可写入。",
+    skillDeleteWholeHint: "确认后将删除整个 Skill 绑定，包括未知的 Stored 扩展字段；不等于改为 Auto。",
     bindingTitle: "PromptBinding 绑定",
     bindingNew: "新增绑定",
     bindingNoItems: "此 Profile 尚无 PromptBinding。",
@@ -315,6 +340,7 @@ export const CONTEXT_MANAGER_LOCALES = Object.freeze({
     bindingPathReadOnly: "此 Profile 或 Binding 使用 Settings 无法安全修改的 __proto__ 路径键；保留原样只读展示。",
     noticeBindingExists: "Binding ID 已存在，请保留草稿核对。",
     noticeBindingMissing: "绑定或 Profile 已不存在；请刷新并重新开始。",
+    noticeSkillMissing: "Skill 绑定或 Profile 已不存在；请刷新权威配置并重新开始。",
   }),
   en: Object.freeze({
     title: "Context Manager",
@@ -431,6 +457,18 @@ export const CONTEXT_MANAGER_LOCALES = Object.freeze({
     noticeDraftActive: "Save or cancel the current draft first.",
     noticeRefreshFailed: "Refresh request failed.",
     noticeRefreshRequested: "Refresh requested.",
+    skillTitle: "Skill policy",
+    skillNew: "Configure Skill",
+    skillConfiguredOnly: "Shows only explicitly configured Skills in this Profile; actual effect for a specific Agent is unverified.",
+    skillNoItems: "No explicit Skill bindings.",
+    skillMode: "Configured mode",
+    skillEdit: "Edit mode",
+    skillDelete: "Remove binding",
+    skillUnsafePath: "The __proto__ Settings path key cannot be safely edited; existing configuration stays visible read-only.",
+    skillEffectivenessDisclaimer: "Only explicitly configured Skills are shown. Save uses Host CAS; this does not establish Agent effectiveness.",
+    skillIdDuplicate: "This exact Skill ID is already configured in the Profile. Use Edit Mode.",
+    skillExactIdHint: "Skill IDs preserve empty strings, whitespace and Unicode exactly; only __proto__ is unsafe.",
+    skillDeleteWholeHint: "Confirmation removes the entire Skill binding, including unknown Stored extension fields; it is not Auto.",
     bindingTitle: "Prompt bindings",
     bindingNew: "New binding",
     bindingNoItems: "No PromptBindings in this profile.",
@@ -466,5 +504,6 @@ export const CONTEXT_MANAGER_LOCALES = Object.freeze({
     bindingPathReadOnly: "This Profile or Binding has an unsafe __proto__ Settings path key. The stored record remains visible but read-only.",
     noticeBindingExists: "Binding ID already exists; review the retained draft.",
     noticeBindingMissing: "Binding or Profile no longer exists; refresh and begin again.",
+    noticeSkillMissing: "Skill binding or Profile no longer exists; refresh and begin again.",
   }),
 }) satisfies Readonly<Record<'zh' | 'en', LocaleDictOf<typeof CONTEXT_MANAGER_LOCALE>>>

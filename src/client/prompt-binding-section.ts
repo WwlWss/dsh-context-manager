@@ -1,4 +1,4 @@
-import { createElement as h, useRef } from 'react'
+import { createElement as h, useEffect, useRef } from 'react'
 import type {
   ContextManagerRemoteProfile,
   ContextManagerRemotePromptBinding,
@@ -20,7 +20,7 @@ import {
   sortedPromptBindings,
   validatePromptBindingCreate,
 } from './prompt-binding-editor.js'
-import { ownsLiveProfileDraft, readLivePresentationForActions } from './presentation-store.js'
+import { isLiveDrawerOpenSession, mayApplyCurrentDraftEvent, mayApplyCurrentNavigationEvent, ownsLiveProfileDraft, readLivePresentationForActions } from './presentation-store.js'
 import styles from './plugin.module.css'
 
 interface PromptBindingSectionProps extends ContextManagerDrawerProps {
@@ -84,6 +84,8 @@ export function ContextManagerPromptBindingSection(props: PromptBindingSectionPr
   const { profileId, profile, t, actions, writable } = props
   const snapshot = props.useContextManager(s => s)
   const operation = props.useProfileMutation(s => s.profile)
+  const renderedOpenSessionEpoch = props.useStore(s => s.openSessionEpoch)
+  const renderedSelectedProfileId = props.useStore(s => s.selectedProfileId)
   const draft = props.useStore(s => s.draft)
   const resourceDraft = props.useStore(s => s.resourceDraft)
   const running = operation.status === 'running'
@@ -96,6 +98,13 @@ export function ContextManagerPromptBindingSection(props: PromptBindingSectionPr
   // Synchronous guard for duplicate same-render Save events; Profile Controller
   // provides the independent global mutation single-flight and authority checks.
   const committing = useRef<number | null>(null)
+  const mounted = useRef(false)
+  const latestEffectiveProfileId = useRef(profileId)
+  latestEffectiveProfileId.current = profileId
+  useEffect(() => {
+    mounted.current = true
+    return () => { mounted.current = false }
+  }, [])
   const rows = sortedPromptBindings(profile)
   const reservedIds = new Set(Object.keys(profile.prompts))
   const resourceList = snapshot.resources.list
@@ -103,9 +112,23 @@ export function ContextManagerPromptBindingSection(props: PromptBindingSectionPr
     ? resourceList.data?.filter(row => row.status === 'usable') ?? []
     : []
 
+  const applyDraftEvent = (token: number, event: () => void): void => {
+    if (mayApplyCurrentDraftEvent(actions, renderedOpenSessionEpoch, 'profiles', token)) event()
+  }
   const unavailable = () =>
     actions.setNotice({ code: 'noticeUnavailable', kind: 'warning' })
+  // F01-SR5: the effective profile may change without the raw Store
+  // selectedProfileId changing (e.g. configured default/roster updates).
+  // A stale callback must not regain authority after a same-opening switch.
+  const ownsCurrentProfileEvent = (): boolean => {
+    const live = readLivePresentationForActions(actions)
+    return mounted.current
+      && mayApplyCurrentNavigationEvent(actions, renderedOpenSessionEpoch, 'profiles')
+      && live?.selectedProfileId === renderedSelectedProfileId
+      && latestEffectiveProfileId.current === profileId
+  }
   const begin = (bindingId?: string, renderedBinding?: ContextManagerRemotePromptBinding) => {
+    if (!ownsCurrentProfileEvent()) return undefined
     if (!isWritablePromptBindingPath(profileId, bindingId)) {
       actions.setNotice({ code: 'noticeNotEditable', kind: 'warning' })
       return undefined
@@ -162,6 +185,7 @@ export function ContextManagerPromptBindingSection(props: PromptBindingSectionPr
   // No automatic eager read, no body fetch, no Agent polling, no notice races:
   // only the explicitly clicked suggestions control starts a metadata-only read.
   const requestSuggestions = () => {
+    if (!ownsCurrentProfileEvent()) return
     void props.loadPromptResourceList().catch(() => {
       // The Client surface exposes read failures as unverified advisory state.
       // Never replace a blocked mutation notice with a late read failure.
@@ -170,8 +194,10 @@ export function ContextManagerPromptBindingSection(props: PromptBindingSectionPr
 
   const commit = async () => {
     const original = active
+    const live = readLivePresentationForActions(actions)
     if (!canSubmit || original === null || committing.current !== null
-      || !ownsLiveProfileDraft(readLivePresentationForActions(actions), original)) return
+      || !isLiveDrawerOpenSession(live, renderedOpenSessionEpoch)
+      || !ownsLiveProfileDraft(live, original)) return
     if (!isWritablePromptBindingPath(original.profileId, original.bindingId)) {
       actions.blockDraft(original.token, 'stale', {
         code: 'noticeNotEditable', kind: 'warning',
@@ -253,27 +279,27 @@ export function ContextManagerPromptBindingSection(props: PromptBindingSectionPr
     h('h4', null, t('bindingCreateTitle')),
     labeled('cm-binding-create-id', t('bindingId'),
       input('cm-binding-create-id', active.bindingId,
-        value => actions.updatePromptBindingCreate(active.token, 'bindingId', value), !canSubmit)),
+        value => applyDraftEvent(active.token, () => actions.updatePromptBindingCreate(active.token, 'bindingId', value)), !canSubmit)),
     h('p', { className: styles.hint }, t('bindingExactIdHint')),
     labeled('cm-binding-create-resource', t('bindingResourceId'),
       input('cm-binding-create-resource', active.resourceId,
-        value => actions.updatePromptBindingCreate(active.token, 'resourceId', value), !canSubmit,
+        value => applyDraftEvent(active.token, () => actions.updatePromptBindingCreate(active.token, 'resourceId', value)), !canSubmit,
         'cm-binding-resource-suggestions')),
     labeled('cm-binding-create-enabled', t('bindingEnabled'),
       booleanSelect('cm-binding-create-enabled', active.enabled, !canSubmit,
-        value => actions.updatePromptBindingCreate(active.token, 'enabled', value))),
+        value => applyDraftEvent(active.token, () => actions.updatePromptBindingCreate(active.token, 'enabled', value)))),
     labeled('cm-binding-create-placement', t('bindingPlacement'),
       placementSelect('cm-binding-create-placement', active.placement, !canSubmit,
-        value => actions.updatePromptBindingCreate(active.token, 'placement', value))),
+        value => applyDraftEvent(active.token, () => actions.updatePromptBindingCreate(active.token, 'placement', value)))),
     labeled('cm-binding-create-order', t('bindingOrder'),
       input('cm-binding-create-order', active.orderText,
-        value => actions.updatePromptBindingCreate(active.token, 'orderText', value), !canSubmit)),
+        value => applyDraftEvent(active.token, () => actions.updatePromptBindingCreate(active.token, 'orderText', value)), !canSubmit)),
     h('div', { className: styles.actions },
       h('button', { type: 'submit', className: styles.primary,
         disabled: !canSubmit || validatePromptBindingCreate(active, reservedIds) !== 'valid',
         'data-context-manager-binding-save': '',
       }, t('create')),
-      button(t('cancel'), () => actions.cancelDraft(active.token), running || active.submitting === true)),
+      button(t('cancel'), () => applyDraftEvent(active.token, () => actions.cancelDraft(active.token)), running || active.submitting === true)),
     ) : null
 
   const editForm = active?.kind === 'prompt-binding-edit-field'
@@ -283,26 +309,26 @@ export function ContextManagerPromptBindingSection(props: PromptBindingSectionPr
     active.field === 'resourceId'
       ? labeled('cm-binding-edit-resourceId', t('bindingResourceId'),
         input('cm-binding-edit-resourceId', active.value,
-          v => actions.updatePromptBindingField(active.token, v), !canSubmit,
+          v => applyDraftEvent(active.token, () => actions.updatePromptBindingField(active.token, v)), !canSubmit,
           'cm-binding-resource-suggestions'))
       : active.field === 'enabled'
         ? labeled('cm-binding-edit-enabled', t('bindingEnabled'),
           booleanSelect('cm-binding-edit-enabled', active.value, !canSubmit,
-            v => actions.updatePromptBindingField(active.token, v)))
+            v => applyDraftEvent(active.token, () => actions.updatePromptBindingField(active.token, v))))
         : active.field === 'placement'
           ? labeled('cm-binding-edit-placement', t('bindingPlacement'),
             placementSelect('cm-binding-edit-placement', active.value, !canSubmit,
-              v => actions.updatePromptBindingField(active.token, v)))
+              v => applyDraftEvent(active.token, () => actions.updatePromptBindingField(active.token, v))))
           : labeled('cm-binding-edit-order', t('bindingOrder'),
             input('cm-binding-edit-order', active.value,
-              v => actions.updatePromptBindingField(active.token, v), !canSubmit)),
+              v => applyDraftEvent(active.token, () => actions.updatePromptBindingField(active.token, v)), !canSubmit)),
     h('p', { className: styles.hint }, t('bindingOneFieldHint')),
     h('div', { className: styles.actions },
       h('button', { type: 'submit', className: styles.primary,
         disabled: !canSubmit || !promptBindingEditChanged(active),
         'data-context-manager-binding-save': '',
       }, t('save')),
-      button(t('cancel'), () => actions.cancelDraft(active.token), running || active.submitting === true)),
+      button(t('cancel'), () => applyDraftEvent(active.token, () => actions.cancelDraft(active.token)), running || active.submitting === true)),
     ) : null
 
   const deleteConfirmation = active?.kind === 'prompt-binding-delete'
@@ -314,7 +340,7 @@ export function ContextManagerPromptBindingSection(props: PromptBindingSectionPr
     h('div', { className: styles.actions },
       button(t('confirmDelete'), () => { void commit() }, !canSubmit,
         { 'data-context-manager-binding-save': '' }, true),
-      button(t('cancel'), () => actions.cancelDraft(active.token), running || active.submitting === true)),
+      button(t('cancel'), () => applyDraftEvent(active.token, () => actions.cancelDraft(active.token)), running || active.submitting === true)),
     ) : null
 
   return h('section', { className: styles.bindingSection,

@@ -715,6 +715,8 @@ jobs:
         run: node ./tests/client-renderer-bridge-runtime.mjs
       - name: Execute M7C real retained Profile Drawer interactions
         run: node ./tests/client-profile-drawer-runtime.mjs
+      - name: Execute M8B real Skill Renderer qualification
+        run: node ./tests/m8b/run-skill-renderer-probes.mjs
 
   package:
     name: verify packed bundle
