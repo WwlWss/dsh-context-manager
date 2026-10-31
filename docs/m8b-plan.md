@@ -1,8 +1,8 @@
 # M8B — Profile Skill Policy Editor (Capability & Implementation Contract)
 
-**Status (2026-10-31):** **M8B B0/B1/B2 Skill Policy Editor implemented on PR #42 (Draft/unmerged); F01-SR2 old-event lifecycle Fix A RED→Fix B GREEN qualified, permanent official Full Skill Renderer gate Fix C qualified in four DSH versions; F4 documentation cleanup underway.** Historical B1 staged RED in §§15–18 remains immutable; final executed Fix A–C evidence in §19. Original pre-review Ready Full [#41125921741](https://github.com/WwlWss/dsh-context-manager/actions/runs/41125921741) passed 86/86 at old HEAD `c4de841d`; it **does not qualify the modified branch**. New independent Final Strict Review and exact-head Ready 86-job Full, merge, and post-merge main Full remain pending.
+**Status (2026-10-31):** **M8B Profile-local Skill Policy Editor is implemented on PR #42 (Draft/unmerged); F01-SR2, SR3 and SR4 read/nav/draft callback repairs have executable Published Renderer RED→GREEN and four-version scoped qualification.** §19 archives F01-SR2, §20 archives SR3 (25 cases), §21 archives SR4/R14 (28 cases). Historical [Ready 86-job Full #41125921741](https://github.com/WwlWss/dsh-context-manager/actions/runs/41125921741) was for old HEAD `c4de841d` **only**; latest repairs require a **new independent Final Strict Review and protected exact-head Ready 86-job Full** before merge and independent post-merge main qualification.
 **Baseline:** merged M8A2 PR #41, main commit `5a21df1b5f27fbcc22cdb389de3c1d765b96a95d`; independent main Full [#41009808239](https://github.com/WwlWss/dsh-context-manager/actions/runs/41009808239), 86/86 SUCCESS, 0 failed/skipped.
-**Branch:** `feat/m8b-skill-policy-editor`, PR #42, Draft/unmerged. The original frozen B0/B1 preflight gates are qualified and archived. Keep Draft through F01-SR2 Final Strict Review and all-code qualification; update to Ready only for the required new exact-head Full, never treat the prior 86/86 run as a post-fix result.
+**Branch:** `feat/m8b-skill-policy-editor` / PR #42, **Draft, unmerged**. Keep all earlier RED and GREEN evidence in its original exact-HEAD context. Do not mark Ready or merge until independent Final Strict Review closes and the repaired exact-HEAD Full gate is requalified.
 **Purpose:** edit explicit Profile-local Skill policy configuration with the existing Profile Settings authority; explain known native/Agent effectiveness separately, never infer an Agent's behavior from a reusable Profile record alone.
 
 ## 1. Frozen outcome and non-goals
@@ -989,3 +989,86 @@ was introduced in this repair.
   tests in the official four-version Client matrix, then separate
   merge approval and post-merge independent main Full.
   PR remains **Draft/unmerged** until these gates pass.
+
+## 20. F01-SR3 — stale Drawer navigation and close, RED→GREEN
+
+Independent source review after F01-SR2 found that retained React Tab,
+Profile/Resource selection, Backdrop/Header Close and Escape callbacks could
+still mutate a *new* Drawer opening or consume a stale Escape event.
+This was **UI navigation/closing authority**, not another Host/Settings CAS.
+
+1. Test-only RED commit `4ae75ba846342791a739a80cd862fb59c9d4678d`;
+   [four-generation actual published Renderer #41185067011](https://github.com/WwlWss/dsh-context-manager/actions/runs/41185067011)
+   recorded R13T/P/R/C intentional failures in all four generations at the
+   old-callback state assertions, retaining earlier controls.
+2. Production GREEN commit `93a3f3668bfcb7cb865ab3b96583e9a1483ff239`.
+   One `mayApplyCurrentNavigationEvent` check uses actual registered root
+   Store, render-captured `openSessionEpoch`, and expected pane (for
+   Tab/row selection) to revoke old user-originated navigation. Permanent
+   sidebar trigger `toggle` remains unchanged; Host/Remote v3, Draft
+   Basis/Token and Controller receipts remain untouched.
+3. [Exact-head Draft Quick #41186577761](https://github.com/WwlWss/dsh-context-manager/actions/runs/41186577761):
+   187/187 Client, 271/271 Node, 1/1 Slot PASS.
+   [Four-generation actual Renderer #41186577637](https://github.com/WwlWss/dsh-context-manager/actions/runs/41186577637):
+   **10/10 scoped jobs PASS; four versions × 25 actual independent cases =
+   100/100 PASS**.
+4. Independent next-head review accepted R13's scoped navigation/close
+   behavior but found three more **manual Read dispatch** gaps (F5/P2).
+   Proceeded to F01-SR4/R14 below; the above is **not** a new protected
+   Ready 86-job Full.
+
+## 21. F01-SR4 / R14 — obsolete user-requested Read callbacks, RED→GREEN
+
+### 21.1 Root cause and bounded change
+
+Even after stale navigation and draft events were fenced, old React callbacks
+could still call `props.refresh()` or `props.loadPromptResourceList()`
+from Profile Refresh, Resource Refresh and PromptBinding Load Suggestions.
+The shared Client Model's `runLazy('list','')` increments keyed request
+ownership before read completion; an obsolete callback could supersede a
+legitimate current-session same-key reader. Profile Refresh could initiate
+a new baseline `reconcile`. Post-read notice guards are **not** pre-dispatch
+authority and were therefore insufficient.
+
+The production repair checks the *original rendered* Drawer epoch, actual
+root Store identity and pane before dispatch. Resource Refresh also checks
+the retained Resource selection; Binding Suggestions checks the originally
+rendered requested Profile selection. This is a guard on **new user events**,
+not an abort of already issued reads or legitimate current-session
+Unknown/Degraded manual recovery. Automatic Resource List/document
+`useEffect` reads, Host/Remote, Draft Tokens, Profile Basis, Controller
+single-flight, and first-terminal mutation receipts are unchanged.
+
+### 21.2 Executable evidence, immutable exact HEADs
+
+- **R14 test-only RED:** `4adb79c5ee651f52c910ad3372ef98020aa4a2de`.
+  [Actual four-generation Published Renderer #41202104864](https://github.com/WwlWss/dsh-context-manager/actions/runs/41202104864):
+  each version **25 old cases PASS, R14P/R14R/R14B intentional RED** at
+  the exact old callback read-dispatch assertion, 12 expected RED total.
+  Fixture instrumentation counts injected UI read dispatches *and real
+  Remote profiles/Resource-list reads*. All three cases have a fresh
+  same-session positive control. This commit did not modify production.
+- **R14 production GREEN:** `0ada21b4f79d05c1d21b02944dfe4355daaf98cc`.
+  [Actual four-generation Published Renderer #41202244270](https://github.com/WwlWss/dsh-context-manager/actions/runs/41202244270):
+  **10/10 scoped jobs PASS**, each published version independently reports
+  `M8B_PUBLISHED_RENDERER_FULL_PASS`, `expected:28`, `passed:28`,
+  `failures:[]`: **4 × 28 = 112/112 real interaction cases PASS**.
+  All R14 fresh controls reached actual Remote read endpoints and no
+  Profile/Resource mutation RPC was introduced.
+- [Exact-head Draft Quick #41202244378](https://github.com/WwlWss/dsh-context-manager/actions/runs/41202244378):
+  **187/187 Client, 271/271 Node, 1/1 Slot PASS**, 0 failed/skipped.
+- The canonical `tests/m8b/run-skill-renderer-probes.mjs` now requires **28
+  distinct cases** including R14, and the **existing four-version** official
+  `client-presentation-contract` invokes it after the historical default
+  Drawer test without creating additional Full jobs. The formal protected
+  **new exact-head 86-job Full has not yet been run**.
+
+### 21.3 Remaining qualification boundary
+
+This section and historical §§19–20 record independently qualified RED and
+scoped GREEN at their precise code HEADs. Any subsequent doc/code changes
+produce a new HEAD requiring their own scoped verification. **PR #42 stays
+Draft/unmerged** until a new independent Final Strict Code Review resolves
+all P1/P2, followed by an explicit Ready transition and new **86/86
+protected Full on the repaired exact HEAD**. Merge approval and independent
+post-merge main Full remain separate gates.
