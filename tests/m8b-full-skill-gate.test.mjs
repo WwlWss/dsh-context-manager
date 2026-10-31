@@ -5,9 +5,29 @@ import { test } from 'node:test'
 // F01-SR5 / M8B: a passing protected Full must actually execute the
 // published Skill Editor interaction probes. The historical default Drawer
 // script does NOT enter its M8B_SKILL_PROBE branch without this runner.
-const workflow = readFileSync('.github/workflows/ci.yml', 'utf8')
-const client = workflow.split('\n  client-presentation-contract:\n')[1]?.split('\n  package:\n')[0]
-const full = workflow.split('\n  full-qualification:\n')[1]
+// Windows checkout can materialize workflow YAML with CRLF while Linux uses LF.
+// Normalize *before* applying the required (deliberately exact) job anchors.
+const workflowSource = readFileSync('.github/workflows/ci.yml', 'utf8')
+function extractFullGateSections(source) {
+  const normalized = source.replace(/\r\n?/g, '\n')
+  return {
+    client: normalized.split('\n  client-presentation-contract:\n')[1]?.split('\n  package:\n')[0],
+    full: normalized.split('\n  full-qualification:\n')[1],
+  }
+}
+const { client, full } = extractFullGateSections(workflowSource)
+
+test('M8B Full gate recognizes identical Client and Full jobs under LF, Windows CRLF and CR', () => {
+  const lf = workflowSource.replace(/\r\n?/g, '\n')
+  const baseline = extractFullGateSections(lf)
+  assert.ok(baseline.client)
+  assert.ok(baseline.full)
+  for (const ending of ['\n', '\r\n', '\r']) {
+    const result = extractFullGateSections(lf.replace(/\n/g, ending))
+    assert.deepEqual(result, baseline,
+      'a checkout line-ending conversion must not erase required Full job anchors')
+  }
+})
 
 test('M8B full qualification requires real Skill Renderer probes in the existing Client matrix', () => {
   assert.ok(client, 'the protected four-generation Client Renderer job must exist')
