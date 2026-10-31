@@ -12,11 +12,12 @@ export const SKILL_RENDERER_PROBES = Object.freeze([
   'R11P', 'R11B', 'R11R', 'R11T', 'R11TR',
   'R12S', 'R12P', 'R12B', 'R12R',
   'R13T', 'R13P', 'R13R', 'R13C',
+  'R14P', 'R14R', 'R14B',
 ])
 
-if (SKILL_RENDERER_PROBES.length !== 25
+if (SKILL_RENDERER_PROBES.length !== 28
   || new Set(SKILL_RENDERER_PROBES).size !== SKILL_RENDERER_PROBES.length) {
-  throw new Error('Published Skill Renderer probe inventory must have 25 distinct cases')
+  throw new Error('Published Skill Renderer probe inventory must have 28 distinct cases')
 }
 
 const entry = fileURLToPath(new URL('../client-profile-drawer-runtime.mjs', import.meta.url))

@@ -124,6 +124,7 @@ function createWritableRemoteFixture() {
   let readOnly = false
   const writes = []
   const resourceWrites = []
+  const readCalls = { protocol: 0, profiles: 0, resourceLists: 0 }
   const resources = new Map()
   let resourceCursor = 0
   let unknownNextResourceWrite = false
@@ -212,7 +213,7 @@ function createWritableRemoteFixture() {
   }
 
   const face = {
-    async protocol() { return okRead({ apiVersion: 3 }) },
+    async protocol() { readCalls.protocol++; return okRead({ apiVersion: 3 }) },
     async changes() {
       return okRead({
         instanceId,
@@ -225,6 +226,7 @@ function createWritableRemoteFixture() {
       })
     },
     async profiles() {
+      readCalls.profiles++
       if (failProfileReads > 0) {
         failProfileReads -= 1
         // profiles() is a single-layer RemoteResult, unlike mutation RPCs.
@@ -254,6 +256,7 @@ function createWritableRemoteFixture() {
     },
     async promptPlacement() { return okRead({ status: 'unavailable' }) },
     async listPromptResources() {
+      readCalls.resourceLists++
       if (failNextResourceListRead) {
         failNextResourceListRead = false
         return rejected('prompt-library-not-ready', 'simulated read-back failure')
@@ -386,7 +389,7 @@ function createWritableRemoteFixture() {
     },
   }
   return {
-    face, profiles, writes, resources, resourceWrites,
+    face, profiles, writes, resources, resourceWrites, readCalls,
     getDefault: () => defaultId,
     // The chosen Profile snapshot is seeded before the real Renderer is
     // mounted. Special names are own Settings-style keys, not native catalog.
@@ -550,6 +553,8 @@ let injectedBusiness
 let registeredOverlayStore
 let registeredSidebarStore
 let delayNextUiRefresh = false
+let uiRefreshDispatches = 0
+let uiListDispatches = 0
 let rejectDelayedUiRefresh
 slotFace.register = (options, component) => {
   if (options.name === 'shell.overlay') {
@@ -564,12 +569,19 @@ slotFace.register = (options, component) => {
           ...face,
           // Test-only delayed UI read failure: Controller reads continue on
           // their actual paths, so no invented Host/Remote mutation response.
-          refresh: () => delayNextUiRefresh
-            ? new Promise((_resolve, reject) => {
-              delayNextUiRefresh = false
-              rejectDelayedUiRefresh = reject
-            })
-            : face.refresh(),
+          refresh: () => {
+            uiRefreshDispatches++
+            return delayNextUiRefresh
+              ? new Promise((_resolve, reject) => {
+                delayNextUiRefresh = false
+                rejectDelayedUiRefresh = reject
+              })
+              : face.refresh()
+          },
+          loadPromptResourceList: () => {
+            uiListDispatches++
+            return face.loadPromptResourceList()
+          },
         }
       },
     }, component)
@@ -1465,6 +1477,122 @@ if (process.env.M8B_SKILL_PROBE) {
       })
       assert.equal(live()?.open, false, 'F01-R13C: fresh Escape still closes Drawer')
       assert.equal(prevented, 1)
+      assert.equal(remoteFixture.writes.length, beforeWrites)
+      assert.equal(remoteFixture.resourceWrites.length, 0)
+      break
+    }
+
+
+    // F01-SR4: obsolete user-requested Read callbacks may not start even a
+    // READ RPC after Close->Reopen; same-key Resource reads share Model owners.
+    // The remote read counters prove that the fresh current-session control
+    // really runs the published Host/Client read chain, not a stubbed no-op.
+    case 'R14P': {
+      const oldRefresh = buttonByLabel(tree, 'Refresh').props.onClick
+      const originalEpoch = live()?.openSessionEpoch
+      const beforeClose = uiRefreshDispatches
+      await act(async () => { trigger().props.onClick() })
+      await act(async () => { oldRefresh() })
+      await settleUI()
+      assert.equal(uiRefreshDispatches, beforeClose,
+        'F01-R14P RED: old Profile Refresh must not dispatch while Drawer is closed')
+      await act(async () => { trigger().props.onClick() })
+      await settleUI()
+      assert.ok(live()?.openSessionEpoch > originalEpoch)
+      const beforeReopen = uiRefreshDispatches
+      await act(async () => { oldRefresh() })
+      await settleUI()
+      assert.equal(uiRefreshDispatches, beforeReopen,
+        'F01-R14P: old Profile Refresh must not start baseline reconcile in a new session')
+      const beforeRemote = remoteFixture.readCalls.profiles
+      await act(async () => {
+        buttonByLabel(tree, 'Refresh').props.onClick()
+        for (let i = 0; i < 30; i++) await Promise.resolve()
+      })
+      await settleUI()
+      assert.equal(uiRefreshDispatches, beforeReopen + 1,
+        'F01-R14P: a fresh current-session Profile Refresh must dispatch')
+      assert.ok(remoteFixture.readCalls.profiles > beforeRemote,
+        'F01-R14P: a fresh Profile Refresh must actually read Remote profiles')
+      assert.equal(remoteFixture.writes.length, beforeWrites)
+      assert.equal(remoteFixture.resourceWrites.length, 0)
+      break
+    }
+
+    case 'R14R': {
+      await act(async () => {
+        tree.root.findByProps({ 'data-context-manager-tab': 'resources' }).props.onClick()
+      })
+      await settleUI()
+      assert.equal(live()?.pane, 'resources')
+      const oldRefresh = buttonByLabel(tree, 'Refresh').props.onClick
+      const beforeClose = uiListDispatches
+      await act(async () => { trigger().props.onClick() })
+      await act(async () => { oldRefresh() })
+      await settleUI()
+      assert.equal(uiListDispatches, beforeClose,
+        'F01-R14R RED: old Resource Refresh cannot begin a keyed read while closed')
+      await act(async () => { trigger().props.onClick() })
+      await settleUI()
+      const beforeReopen = uiListDispatches
+      await act(async () => { oldRefresh() })
+      await settleUI()
+      assert.equal(uiListDispatches, beforeReopen,
+        'F01-R14R: old Resource Refresh cannot supersede a new same-key read')
+      const beforeRemote = remoteFixture.readCalls.resourceLists
+      await act(async () => {
+        buttonByLabel(tree, 'Refresh').props.onClick()
+        for (let i = 0; i < 30; i++) await Promise.resolve()
+      })
+      await settleUI()
+      assert.equal(uiListDispatches, beforeReopen + 1,
+        'F01-R14R: fresh Resource Refresh must dispatch exactly once')
+      assert.ok(remoteFixture.readCalls.resourceLists > beforeRemote,
+        'F01-R14R: fresh Resource Refresh must reach the real Remote list')
+      assert.equal(remoteFixture.writes.length, beforeWrites)
+      assert.equal(remoteFixture.resourceWrites.length, 0)
+      break
+    }
+
+    case 'R14B': {
+      const oldSuggestions = buttonByLabel(tree, 'Load resource suggestions').props.onClick
+      const beforeClose = uiListDispatches
+      await act(async () => { trigger().props.onClick() })
+      await act(async () => { oldSuggestions() })
+      await settleUI()
+      assert.equal(uiListDispatches, beforeClose,
+        'F01-R14B RED: old Binding Suggestions must not read while Drawer is closed')
+      await act(async () => { trigger().props.onClick() })
+      await settleUI()
+      const beforeReopen = uiListDispatches
+      await act(async () => { oldSuggestions() })
+      await settleUI()
+      assert.equal(uiListDispatches, beforeReopen,
+        'F01-R14B: old Binding Suggestions cannot read after Reopen')
+      await act(async () => {
+        tree.root.findByProps({ 'data-context-manager-tab': 'resources' }).props.onClick()
+      })
+      await settleUI()
+      const otherPane = uiListDispatches
+      await act(async () => { oldSuggestions() })
+      await settleUI()
+      assert.equal(uiListDispatches, otherPane,
+        'F01-R14B: stale Binding Suggestions cannot steal Resource Pane list owner')
+      await act(async () => {
+        tree.root.findByProps({ 'data-context-manager-tab': 'profiles' }).props.onClick()
+      })
+      await settleUI()
+      const beforeFresh = uiListDispatches
+      const beforeRemote = remoteFixture.readCalls.resourceLists
+      await act(async () => {
+        buttonByLabel(tree, 'Load resource suggestions').props.onClick()
+        for (let i = 0; i < 30; i++) await Promise.resolve()
+      })
+      await settleUI()
+      assert.equal(uiListDispatches, beforeFresh + 1,
+        'F01-R14B: new current-session Suggestions still dispatches one read')
+      assert.ok(remoteFixture.readCalls.resourceLists > beforeRemote,
+        'F01-R14B: new Suggestions must reach real Remote Resource metadata')
       assert.equal(remoteFixture.writes.length, beforeWrites)
       assert.equal(remoteFixture.resourceWrites.length, 0)
       break
