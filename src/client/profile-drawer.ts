@@ -9,6 +9,7 @@ import {
   ownsLiveProfileDraft,
   isLiveDrawerOpenSession,
   mayApplyCurrentDraftEvent,
+  mayApplyCurrentNavigationEvent,
   readLivePresentationForActions,
   terminalProfileNotice,
   type ContextManagerPresentationStoreHandle,
@@ -545,7 +546,11 @@ export function ContextManagerProfileDrawerContent(props: ContextManagerDrawerPr
                 className: row.id === view.selectedId ? styles.selectedRow : styles.profileRow,
                 'aria-current': row.id === view.selectedId ? 'true' : undefined,
                 disabled: draft !== null && row.id !== view.selectedId,
-                onClick: () => actions.selectProfile(row.id),
+                onClick: () => {
+                  if (mayApplyCurrentNavigationEvent(actions, renderedOpenSessionEpoch, 'profiles')) {
+                    actions.selectProfile(row.id)
+                  }
+                },
               },
               h('span', { className: styles.rowTitle }, row.profile?.name || row.id),
               row.configuredDefault ? h('span', { className: styles.tag }, t('defaultLabel')) : null,

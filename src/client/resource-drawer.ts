@@ -12,7 +12,7 @@ import {
   resourceEditChanges,
   validateResourceCreateDraft,
 } from './resource-editor.js'
-import { isLiveDrawerOpenSession, mayApplyCurrentDraftEvent, ownsLiveResourceDraft, readLivePresentationForActions, terminalResourceNotice } from './presentation-store.js'
+import { isLiveDrawerOpenSession, mayApplyCurrentDraftEvent, mayApplyCurrentNavigationEvent, ownsLiveResourceDraft, readLivePresentationForActions, terminalResourceNotice } from './presentation-store.js'
 import styles from './plugin.module.css'
 
 function button(
@@ -408,7 +408,11 @@ export function ContextManagerResourceDrawerContent(props: ContextManagerDrawerP
                 className: row.id === selectedId ? styles.selectedRow : styles.profileRow,
                 disabled: draft !== null && row.id !== selectedId,
                 'aria-current': row.id === selectedId ? 'true' : undefined,
-                onClick: () => actions.selectResource(row.id),
+                onClick: () => {
+                  if (mayApplyCurrentNavigationEvent(actions, renderedOpenSessionEpoch, 'resources')) {
+                    actions.selectResource(row.id)
+                  }
+                },
               },
               h('span', { className: styles.rowTitle },
                 row.status === 'usable' ? row.name || row.id : row.id),

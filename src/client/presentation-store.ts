@@ -115,6 +115,26 @@ export function mayApplyCurrentDraftEvent(
     : current.resourceDraft?.token === token && current.draft === null
 }
 
+/** F01-SR3: user-originated navigation/close events must belong to the
+ * Drawer opening that rendered their callback. This includes Tab switches,
+ * selected Profile/Resource rows, backdrop/header Close and Escape.
+ *
+ * A navigation event has no Draft Token: unlike editable fields, it must
+ * instead match the original openSessionEpoch and (for panes/rows) the
+ * active pane. The sidebar trigger is permanently mounted and intentionally
+ * retains its existing toggle semantics. Never apply this guard to an
+ * already dispatched Host/Controller result.
+ */
+export function mayApplyCurrentNavigationEvent(
+  actions: object,
+  renderedOpenSessionEpoch: number,
+  pane?: 'profiles' | 'resources',
+): boolean {
+  const current = readLivePresentationForActions(actions)
+  return isLiveDrawerOpenSession(current, renderedOpenSessionEpoch)
+    && (pane === undefined || current?.pane === pane)
+}
+
 export function mayDispatchImmediateProfileWrite(
   current: ContextManagerPresentationState | undefined,
   selectedProfileId: string | null,
