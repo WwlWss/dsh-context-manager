@@ -710,6 +710,13 @@ slotFace.register = (options, component) => {
           },
           readCurrentPresetState: () => {
             const actual = face.readCurrentPresetState()
+            if (m8cLiveObservationOverride === 'new-instance') {
+              return { ...actual,
+                instanceId: 'm8c-replaced-host',
+                changes: actual.changes === undefined ? undefined
+                  : { ...actual.changes, instanceId: 'm8c-replaced-host' },
+              }
+            }
             if (m8cLiveObservationOverride === 'detached') {
               return { ...actual, attachment: 'detached' }
             }
@@ -1159,6 +1166,28 @@ if (process.env.M8C_PRESET_PROBE) {
       assert.equal(remoteFixture.presetWrites.length, 0,
         'Remove Submit must fail closed when live authorable hint has been withdrawn')
       assert.equal(remoteFixture.nativePresets.has('user-one'), true)
+      break
+    }
+
+    case 'R25': {
+      await goPresets()
+      const oldCopy = tree.root.findByProps({ 'data-context-manager-preset-copy': '' }).props.onClick
+      m8cLiveObservationOverride = 'new-instance'
+      await act(async () => { oldCopy() })
+      await settleUI()
+      assert.equal(live()?.presetDraft, null,
+        'old rendered Begin cannot transfer a native Preset intent to a replacement Host')
+      assert.equal(remoteFixture.presetWrites.length, 0)
+      break
+    }
+    case 'R26': {
+      await startCopy('native')
+      await changeInput('cm-preset-copy-id', 'old-intent-new-host')
+      m8cLiveObservationOverride = 'new-instance'
+      await submitCopy()
+      assert.equal(remoteFixture.presetWrites.length, 0,
+        'submitting an old Host draft against identical new-Host catalog must be denied')
+      assert.equal(live()?.presetDraft?.kind, 'copy')
       break
     }
     default: throw new Error('Unknown M8C published Renderer probe: ' + probe)

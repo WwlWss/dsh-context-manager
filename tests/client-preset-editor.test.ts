@@ -147,3 +147,28 @@ test('M8C B3-B P13/15 obsolete callbacks lose opened-session authority despite d
   assert.equal(store.getSnapshot().presetDraft?.token, token)
   handle.revokeSnapshotReader()
 })
+
+
+test('M8C Strict P24: retained copy and remove drafts cannot migrate to a replacement Host with identical catalog', () => {
+  const store = createContextManagerPresentationStore().create()
+  store.actions.open()
+  store.actions.selectPane('presets')
+  const original = snapshot()
+  const replacement = {
+    ...original,
+    instanceId: 'host-replaced',
+    changes: { ...original.changes!, instanceId: 'host-replaced' },
+  }
+  assert.deepEqual(derivePresetView(original, 'native').rows.map(row => row.id),
+    derivePresetView(replacement, 'native').rows.map(row => row.id))
+  assert.equal(derivePresetView(replacement, 'native').directoryFresh, true)
+  store.actions.beginPresetCopy(SYSTEM, 5, 'native')
+  assert.equal(isPresetDraftCurrent(original, store.getSnapshot().presetDraft), true)
+  assert.equal(isPresetDraftCurrent(replacement, store.getSnapshot().presetDraft), false,
+    'an old copy intent cannot target a different Host with numerically identical native cursor')
+  store.actions.cancelPresetDraft(store.getSnapshot().presetDraft!.token)
+  store.actions.beginPresetRemove(USER, 5, 'native')
+  assert.equal(isPresetDraftCurrent(original, store.getSnapshot().presetDraft), true)
+  assert.equal(isPresetDraftCurrent(replacement, store.getSnapshot().presetDraft), false,
+    'an old remove intent cannot target a different Host with identical user-row metadata')
+})
