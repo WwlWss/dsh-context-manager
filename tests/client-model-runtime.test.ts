@@ -3061,3 +3061,27 @@ test('M8C B3-C old view response or old cleanup never publishes over newer view 
   detach()
   model.dispose()
 })
+
+
+test('M8C Strict P23: Host instance rotation revokes the native view lease before any new-Host read', async () => {
+  const remote = new ScriptedRemote()
+  remote.defaultPresets = {
+    directory: { status: 'available', defaultId: 'source', authorable: true,
+      presets: [{ id: 'source', trust: 'system', isDefault: true }] },
+    profiles: {},
+  }
+  const { model, detach } = await attachAndReady(remote)
+  // Browser still displays host-a's fresh directory, but the next lazy
+  // changes() discovers host-b. No old explicit View may be silently
+  // reauthorized to fetch host-b's composition.
+  remote.defaultChanges = changes('host-b', 2, 1, 1)
+  const lease = model.beginNativePresetView('source')
+  assert.equal((await lease.result).status, 'superseded')
+  assert.equal(remote.calls.readPreset, 0,
+    'old view lease must never dispatch readPreset after Host instance rotation')
+  assert.equal(model.state.getSnapshot().nativePresetDocuments?.size, 0,
+    'recovery of a new Host must never repopulate the old sensitive view')
+  model.releaseNativePresetView(lease.leaseId)
+  detach()
+  model.dispose()
+})

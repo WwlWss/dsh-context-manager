@@ -1140,6 +1140,27 @@ if (process.env.M8C_PRESET_PROBE) {
       assert.equal(remoteFixture.presetWrites.length, 0)
       break
     }
+
+    case 'R23': {
+      await startCopy('native')
+      await changeInput('cm-preset-copy-id', 'not-authorized-copy')
+      m8cLiveObservationOverride = 'non-authorable'
+      await submitCopy()
+      assert.equal(remoteFixture.presetWrites.length, 0,
+        'Copy Submit must fail closed when live authorable hint has been withdrawn')
+      assert.equal(live()?.presetDraft?.kind, 'copy')
+      break
+    }
+    case 'R24': {
+      await startRemove('user-one')
+      await changeInput('cm-preset-remove-confirm', 'user-one')
+      m8cLiveObservationOverride = 'non-authorable'
+      await click('data-context-manager-preset-remove-submit')
+      assert.equal(remoteFixture.presetWrites.length, 0,
+        'Remove Submit must fail closed when live authorable hint has been withdrawn')
+      assert.equal(remoteFixture.nativePresets.has('user-one'), true)
+      break
+    }
     default: throw new Error('Unknown M8C published Renderer probe: ' + probe)
   }
   if (probe !== 'R19') {
