@@ -736,6 +736,46 @@ if (process.env.M8C_PRESET_PROBE) {
   const probe = process.env.M8C_PRESET_PROBE
   const live = () => registeredOverlayStore.readLiveSnapshot()
   const row = (id) => tree.root.findByProps({ 'data-context-manager-preset-row': id })
+  const tab = (pane) => tree.root.findByProps({ 'data-context-manager-tab': pane })
+  const cm = () => injectedBusiness?.()?.hooks.contextManager.getSnapshot()
+  const goPresets = async () => {
+    if (live()?.pane !== 'presets') {
+      await act(async () => { tab('presets').props.onClick() })
+      await settleUI()
+    }
+    assert.equal(live()?.pane, 'presets')
+  }
+  const click = async (hook) => {
+    await act(async () => { tree.root.findByProps({ [hook]: '' }).props.onClick() })
+    await settleUI()
+  }
+  const selectPreset = async (id) => {
+    await act(async () => { row(id).props.onClick() })
+    await settleUI()
+  }
+  const changeInput = async (id, value) => {
+    await act(async () => {
+      tree.root.findByProps({ id }).props.onChange({ currentTarget: { value } })
+    })
+    await settleUI()
+  }
+  const startCopy = async (sourceId='native') => {
+    await goPresets()
+    await selectPreset(sourceId)
+    await click('data-context-manager-preset-copy')
+    assert.equal(live()?.presetDraft?.kind, 'copy')
+  }
+  const submitCopy = async () => {
+    const form = tree.root.findByProps({ 'data-context-manager-preset-copy-form': '' })
+    await act(async () => { form.props.onSubmit({ preventDefault() {} }) })
+    await settleUI()
+  }
+  const startRemove = async (id='user-one') => {
+    await goPresets()
+    await selectPreset(id)
+    await click('data-context-manager-preset-remove')
+    assert.equal(live()?.presetDraft?.kind, 'confirm-remove')
+  }
   switch (probe) {
     case 'R01': {
       const tab = tree.root.findByProps({ 'data-context-manager-tab': 'presets' })
@@ -747,6 +787,120 @@ if (process.env.M8C_PRESET_PROBE) {
         'M8C RED: only actual registered overlay contains native Preset pane')
       assert.ok(row('native'), 'M8C native system preset must be listed')
       assert.equal(remoteFixture.writes.length, 0)
+      break
+    }
+
+    case 'R02': {
+      await goPresets()
+      assert.equal(remoteFixture.readCalls.nativeBodies, 0, 'pane mount never eagerly reads composition')
+      await selectPreset('user-one')
+      await selectPreset('native')
+      assert.equal(remoteFixture.readCalls.nativeBodies, 0, 'directory navigation is metadata-only')
+      assert.equal(remoteFixture.presetWrites.length, 0)
+      break
+    }
+    case 'R03': {
+      await goPresets()
+      await click('data-context-manager-preset-view')
+      assert.equal(remoteFixture.readCalls.nativeBodies, 1)
+      const visible = tree.root.findByProps({ 'data-context-manager-preset-body': '' })
+      assert.equal(renderedText(visible), remoteFixture.nativePresets.get('native').content)
+      assert.equal(tree.root.findAll(node => node.type === 'script').length, 0,
+        'raw script must be inert React text, never a DOM element')
+      assert.equal(cm().nativePresetDocuments.get('native').data?.id, 'native')
+      break
+    }
+    case 'R04': {
+      await goPresets()
+      const releaseOld = remoteFixture.holdNextNativeBodyRead('native')
+      await click('data-context-manager-preset-view')
+      assert.equal(remoteFixture.readCalls.nativeBodies, 1)
+      await selectPreset('user-one')
+      await click('data-context-manager-preset-view')
+      assert.equal(remoteFixture.readCalls.nativeBodies, 2)
+      const currentBody = remoteFixture.nativePresets.get('user-one').content
+      assert.equal(renderedText(tree.root.findByProps({ 'data-context-manager-preset-body': '' })), currentBody)
+      releaseOld('stale private contents from native')
+      await settleUI()
+      assert.equal(renderedText(tree.root.findByProps({ 'data-context-manager-preset-body': '' })), currentBody)
+      assert.equal(cm().nativePresetDocuments.has('native'), false)
+      break
+    }
+    case 'R05': {
+      await goPresets()
+      await click('data-context-manager-preset-view')
+      assert.equal(cm().nativePresetDocuments.size, 1)
+      await act(async () => { trigger().props.onClick() })
+      await settleUI()
+      assert.equal(live()?.open, false)
+      assert.equal(cm().nativePresetDocuments.size, 0, 'close must revoke and erase cached body')
+      await act(async () => { trigger().props.onClick() })
+      await settleUI()
+      assert.equal(live()?.pane, 'presets')
+      assert.equal(tree.root.findAllByProps({ 'data-context-manager-preset-body': '' }).length, 0)
+      await click('data-context-manager-preset-view')
+      assert.equal(cm().nativePresetDocuments.size, 1)
+      await act(async () => { tab('resources').props.onClick() })
+      await settleUI()
+      assert.equal(live()?.pane, 'resources')
+      assert.equal(cm().nativePresetDocuments.size, 0, 'pane exit must erase body')
+      break
+    }
+    case 'R06': {
+      await startCopy()
+      await changeInput('cm-preset-copy-id', 'new-native')
+      await submitCopy()
+      assert.deepEqual(remoteFixture.presetWrites, [
+        { kind: 'copy', from: 'native', id: 'new-native', name: null },
+      ])
+      assert.equal(remoteFixture.nativePresets.get('new-native').content,
+        remoteFixture.nativePresets.get('native').content)
+      assert.equal(live()?.presetDraft, null)
+      assert.ok(row('new-native'))
+      break
+    }
+    case 'R07': {
+      await startCopy()
+      await changeInput('cm-preset-copy-id', 'empty-name')
+      await act(async () => { tree.root.findByProps({ id: 'cm-preset-copy-name-mode' })
+        .props.onChange({ currentTarget: { value: 'explicit' } }) })
+      await settleUI()
+      await changeInput('cm-preset-copy-name', '')
+      await submitCopy()
+      assert.deepEqual(remoteFixture.presetWrites, [
+        { kind: 'copy', from: 'native', id: 'empty-name', name: '' },
+      ], 'explicit empty display name must NOT become null')
+      assert.equal(remoteFixture.nativePresets.get('empty-name').name, '')
+      break
+    }
+    case 'R08': {
+      await startCopy()
+      await changeInput('cm-preset-copy-id', 'user-one')
+      assert.equal(tree.root.findByProps({ 'data-context-manager-preset-copy-submit': '' }).props.disabled, true)
+      await submitCopy()
+      assert.equal(remoteFixture.presetWrites.length, 0, 'collisions never reach native Host')
+      assert.equal(live()?.presetDraft?.kind, 'copy')
+      break
+    }
+    case 'R09': {
+      await startRemove()
+      assert.equal(remoteFixture.presetWrites.length, 0, 'remove begin cannot dispatch')
+      assert.equal(tree.root.findByProps({ 'data-context-manager-preset-remove-submit': '' }).props.disabled, true)
+      await changeInput('cm-preset-remove-confirm', 'user-on')
+      assert.equal(tree.root.findByProps({ 'data-context-manager-preset-remove-submit': '' }).props.disabled, true)
+      await click('data-context-manager-preset-remove-submit')
+      assert.equal(remoteFixture.presetWrites.length, 0)
+      break
+    }
+    case 'R10': {
+      await startRemove()
+      await changeInput('cm-preset-remove-confirm', 'user-one')
+      assert.equal(tree.root.findByProps({ 'data-context-manager-preset-remove-submit': '' }).props.disabled, false)
+      await click('data-context-manager-preset-remove-submit')
+      assert.deepEqual(remoteFixture.presetWrites, [{ kind: 'remove', id: 'user-one' }])
+      assert.equal(remoteFixture.nativePresets.has('user-one'), false)
+      assert.equal(live()?.presetDraft, null)
+      assert.equal(remoteFixture.profiles.main.basePreset, 'native')
       break
     }
     default: throw new Error('Unknown M8C published Renderer probe: ' + probe)
