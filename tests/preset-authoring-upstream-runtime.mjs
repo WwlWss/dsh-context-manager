@@ -113,7 +113,8 @@ try {
     ok: true, value: { id: 'remote-mine' },
   })
   assert.equal(existsSync(join(userRoot, 'remote-mine')), false,
-    'real @Remote removal must call published native AgentPreset.remove'),
+    'real @Remote removal must call published native AgentPreset.remove',
+  )
 } finally {
   await remoteFiber?.dispose()
   await authoringFiber?.dispose()
