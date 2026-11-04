@@ -5,6 +5,7 @@ import type {
   ContextManagerClientBusinessRemote,
   ContextManagerClientReadRemote,
   ContextManagerClientResourceMutationRemote,
+  ContextManagerClientNativePresetReadRemote,
 } from '../src/client/remote-port.js'
 
 type Assert<T extends true> = T
@@ -30,3 +31,9 @@ type GeneratedRemoteSatisfiesResourceMutationPort = Assert<
 >
 const _generatedResourcePort: GeneratedRemoteSatisfiesResourceMutationPort = true
 void _generatedResourcePort
+
+type GeneratedRemoteSatisfiesNativePresetRead = Assert<
+  GeneratedContextManagerRemote extends ContextManagerClientNativePresetReadRemote ? true : false
+>
+const _generatedNativePresetRead: GeneratedRemoteSatisfiesNativePresetRead = true
+void _generatedNativePresetRead

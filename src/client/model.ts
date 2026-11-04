@@ -8,6 +8,7 @@ import {
   CONTEXT_MANAGER_REMOTE_API_VERSION,
   type ContextManagerRemoteChangeSnapshot,
   type ContextManagerRemotePresetSnapshot,
+  type ContextManagerRemotePresetDocument,
   type ContextManagerRemoteProfilesSnapshot,
   type ContextManagerRemotePromptPlacementCapability,
   type ContextManagerRemoteResult,
@@ -95,6 +96,7 @@ export interface ContextManagerClientModel {
   readonly resourceMutations: ContextManagerClientResourceMutationController
   loadPromptResourceList(): Promise<ContextManagerClientLazyReadResult>
   loadPromptResource(id: string): Promise<ContextManagerClientLazyReadResult>
+  loadNativePresetDocument(id: string): Promise<ContextManagerClientLazyReadResult>
   loadSessionPreset(id: string): Promise<ContextManagerClientLazyReadResult>
   loadAgentPromptRuntime(id: string): Promise<ContextManagerClientLazyReadResult>
   loadAgentSkillRuntime(id: string): Promise<ContextManagerClientLazyReadResult>
@@ -128,6 +130,7 @@ function initialSnapshot(): ContextManagerClientSnapshot {
     presets: idleSurface(),
     promptPlacement: idleSurface(),
     resources: { list: idleSurface(), documents: new Map() },
+    nativePresetDocuments: new Map(),
     diagnostics: { sessions: new Map(), prompts: new Map(), skills: new Map(), pinned: new Map() },
   }
 }
@@ -243,8 +246,9 @@ function detachedSurface<T>(
   }
 }
 
-type KeyedKind = 'document' | 'session' | 'prompt' | 'skill' | 'pinned'
-type KeyedValue = ContextManagerRemotePromptResource
+type KeyedKind = 'document' | 'nativePreset' | 'session' | 'prompt' | 'skill' | 'pinned'
+type KeyedValue = ContextManagerRemotePresetDocument
+  | ContextManagerRemotePromptResource
   | ContextManagerRemoteSessionPresetIdentity
   | ContextManagerRemotePromptRuntimeInspection
   | ContextManagerRemoteSkillRuntimeInspection
@@ -460,8 +464,10 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
       protocol,
       profiles: idleSurface(),
       presets: idleSurface(),
+      nativePresetDocuments: new Map(),
       promptPlacement: idleSurface(),
       resources: { list: idleSurface(), documents: new Map() },
+      nativePresetDocuments: new Map(),
       diagnostics: { sessions: new Map(), prompts: new Map(), skills: new Map(), pinned: new Map() },
     })
     resetMutationController()
@@ -529,6 +535,9 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
       presets: sameInstance && previous.presets !== next.presets
         ? markSurfaceStale(current.presets)
         : current.presets,
+      nativePresetDocuments: sameInstance && previous.presets !== next.presets
+        ? new Map()
+        : current.nativePresetDocuments,
       promptPlacement: sameInstance && previous.runtime !== next.runtime
         ? markSurfaceStale(current.promptPlacement)
         : current.promptPlacement,
@@ -985,7 +994,8 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
   const lazyResult = (status: ContextManagerClientLazyReadResult['status']): ContextManagerClientLazyReadResult => ({ status })
   const keyOf = (kind: string, id: string): string => JSON.stringify([kind, id])
   const cursorForKind = (kind: 'list' | KeyedKind, c: ContextManagerRemoteChangeSnapshot): number => (
-    kind === 'list' || kind === 'document' ? c.promptResources : c.runtime
+    kind === 'list' || kind === 'document' ? c.promptResources
+      : kind === 'nativePreset' ? c.presets : c.runtime
   )
 
   const publishList = (surface: ContextManagerClientSurface<readonly ContextManagerRemotePromptResourceListItem[]>): void => {
@@ -999,6 +1009,14 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
     surface: ContextManagerClientSurface<KeyedValue>,
   ): void => {
     const current = state.getSnapshot()
+    if (kind === 'nativePreset') {
+      state.set({
+        ...current,
+        nativePresetDocuments: setBoundedEntry(current.nativePresetDocuments ?? new Map(), id,
+          surface as ContextManagerClientSurface<ContextManagerRemotePresetDocument>, 8),
+      })
+      return
+    }
     if (kind === 'document') {
       state.set({
         ...current,
@@ -1025,6 +1043,7 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
     const snapshot = state.getSnapshot()
     switch (kind) {
       case 'document': return snapshot.resources.documents.get(id)
+      case 'nativePreset': return snapshot.nativePresetDocuments?.get(id)
       case 'session': return snapshot.diagnostics.sessions.get(id)
       case 'prompt': return snapshot.diagnostics.prompts.get(id)
       case 'skill': return snapshot.diagnostics.skills.get(id)
@@ -1132,6 +1151,7 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
         const read: ReadOutcome<unknown> = await (kind === 'list'
           ? invokeBusinessRead(() => currentRemote.listPromptResources())
           : kind === 'document' ? invokeBusinessRead(() => currentRemote.getPromptResource(id))
+          : kind === 'nativePreset' ? invokeBusinessRead(() => currentRemote.readPreset(id))
           : kind === 'session' ? invokeRead(() => currentRemote.sessionPreset(id))
           : kind === 'prompt' ? invokeRead(() => currentRemote.inspectPromptRuntime(id))
           : kind === 'skill' ? invokeRead(() => currentRemote.inspectSkillRuntime(id))
@@ -1348,6 +1368,7 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
         sync: { status: 'idle' },
         profiles: detachedSurface(current.profiles),
         presets: detachedSurface(current.presets),
+        nativePresetDocuments: new Map(),
         promptPlacement: detachedSurface(current.promptPlacement),
         resources: { list: detachedSurface(current.resources.list), documents: detachMap(current.resources.documents) },
         diagnostics: { sessions: detachMap(current.diagnostics.sessions), prompts: detachMap(current.diagnostics.prompts), skills: detachMap(current.diagnostics.skills), pinned: detachMap(current.diagnostics.pinned) },
@@ -1373,6 +1394,7 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
         sync: { status: 'idle' },
         profiles: detachedSurface(current.profiles),
         presets: detachedSurface(current.presets),
+        nativePresetDocuments: new Map(),
         promptPlacement: detachedSurface(current.promptPlacement),
         resources: { list: detachedSurface(current.resources.list), documents: detachMap(current.resources.documents) },
         diagnostics: { sessions: detachMap(current.diagnostics.sessions), prompts: detachMap(current.diagnostics.prompts), skills: detachMap(current.diagnostics.skills), pinned: detachMap(current.diagnostics.pinned) },
@@ -1468,6 +1490,7 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
       ...current,
       attachment: 'detached',
       resources: { list: idleSurface(), documents: new Map() },
+      nativePresetDocuments: new Map(),
       diagnostics: { sessions: new Map(), prompts: new Map(), skills: new Map(), pinned: new Map() },
       protocol: { status: 'unchecked' },
       sync: { status: 'idle' },
@@ -1485,6 +1508,7 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
     resourceMutations,
     loadPromptResourceList: () => runLazy('list', ''),
     loadPromptResource: (id: string) => runLazy('document', id),
+    loadNativePresetDocument: (id: string) => runLazy('nativePreset', id),
     loadSessionPreset: (id: string) => runLazy('session', id),
     loadAgentPromptRuntime: (id: string) => runLazy('prompt', id),
     loadAgentSkillRuntime: (id: string) => runLazy('skill', id),
