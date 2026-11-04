@@ -914,6 +914,140 @@ if (process.env.M8C_PRESET_PROBE) {
       assert.equal(remoteFixture.profiles.main.basePreset, 'native')
       break
     }
+
+    case 'R11': {
+      await goPresets()
+      assert.equal(tree.root.findByProps({ 'data-context-manager-preset-remove': '' }).props.disabled, true,
+        'system native preset cannot be removed through UI')
+      remoteFixture.externalPresetDefault('user-one')
+      await act(async () => { await injectedBusiness().refreshNativePresets() })
+      await settleUI()
+      await selectPreset('user-one')
+      assert.equal(tree.root.findByProps({ 'data-context-manager-preset-remove': '' }).props.disabled, true,
+        'user trust does not authorize removal of current default')
+      await startCopy('native')
+      await changeInput('cm-preset-copy-id', 'refused-target')
+      remoteFixture.refuseNextPresetWrite()
+      await submitCopy()
+      assert.equal(remoteFixture.presetWrites.length, 1)
+      assert.equal(live()?.presetDraft?.blocked, 'refused', 'native denial must not be successful')
+      assert.equal(live()?.presetDraft?.terminalNotice?.code, 'presetNoticeRejected')
+      assert.equal(remoteFixture.nativePresets.has('refused-target'), false)
+      break
+    }
+    case 'R12': {
+      await startCopy()
+      await changeInput('cm-preset-copy-id', 'single-flight')
+      const release = remoteFixture.holdNextNativeCopyReply()
+      const form = tree.root.findByProps({ 'data-context-manager-preset-copy-form': '' })
+      await act(async () => {
+        form.props.onSubmit({ preventDefault() {} })
+        form.props.onSubmit({ preventDefault() {} })
+      })
+      await settleUI()
+      assert.equal(remoteFixture.presetWrites.length, 1,
+        'same-render double submit must be claimed synchronously')
+      assert.equal(live()?.presetDraft?.submitting, true)
+      release()
+      await settleUI()
+      assert.equal(remoteFixture.presetWrites.length, 1)
+      assert.equal(remoteFixture.nativePresets.has('single-flight'), true)
+      break
+    }
+    case 'R13': {
+      await goPresets()
+      assert.equal(live()?.selectedPresetId, null)
+      const oldView = tree.root.findByProps({ 'data-context-manager-preset-view': '' }).props.onClick
+      const oldCopy = tree.root.findByProps({ 'data-context-manager-preset-copy': '' }).props.onClick
+      remoteFixture.externalPresetDefault('user-one')
+      await act(async () => { await injectedBusiness().refreshNativePresets() })
+      await settleUI()
+      assert.equal(live()?.selectedPresetId, null, 'raw selection remains implicit')
+      assert.equal(cm().presets.data.directory.defaultId, 'user-one')
+      await act(async () => { oldView(); oldCopy() })
+      await settleUI()
+      assert.equal(remoteFixture.readCalls.nativeBodies, 0, 'old fallback cannot read another source')
+      assert.equal(remoteFixture.presetWrites.length, 0)
+      assert.equal(live()?.presetDraft, null, 'old fallback cannot open a different source draft')
+      break
+    }
+    case 'R14': {
+      await goPresets()
+      const epoch = live().openSessionEpoch
+      const oldView = tree.root.findByProps({ 'data-context-manager-preset-view': '' }).props.onClick
+      const oldCopy = tree.root.findByProps({ 'data-context-manager-preset-copy': '' }).props.onClick
+      await act(async () => { tab('profiles').props.onClick() })
+      await settleUI()
+      await goPresets()
+      assert.equal(live()?.openSessionEpoch, epoch, 'same opening, re-mounted Preset pane')
+      await act(async () => { oldView(); oldCopy() })
+      await settleUI()
+      assert.equal(remoteFixture.readCalls.nativeBodies, 0)
+      assert.equal(live()?.presetDraft, null, 'unmounted callbacks cannot claim the fresh pane')
+      break
+    }
+    case 'R15': {
+      await goPresets()
+      const epoch = live().openSessionEpoch
+      const oldView = tree.root.findByProps({ 'data-context-manager-preset-view': '' }).props.onClick
+      const oldCopy = tree.root.findByProps({ 'data-context-manager-preset-copy': '' }).props.onClick
+      await act(async () => { trigger().props.onClick() })
+      await settleUI()
+      await act(async () => { trigger().props.onClick() })
+      await settleUI()
+      assert.notEqual(live()?.openSessionEpoch, epoch)
+      await act(async () => { oldView(); oldCopy() })
+      await settleUI()
+      assert.equal(remoteFixture.readCalls.nativeBodies, 0)
+      assert.equal(live()?.presetDraft, null)
+      break
+    }
+    case 'R16': {
+      await startCopy()
+      await act(async () => { tab('profiles').props.onClick(); tab('resources').props.onClick() })
+      await settleUI()
+      assert.equal(live()?.pane, 'presets', 'occupied Preset draft blocks cross-pane switch')
+      assert.equal(live()?.presetDraft?.kind, 'copy')
+      await act(async () => { buttonByLabel(tree, 'Cancel').props.onClick() })
+      await settleUI()
+      assert.equal(live()?.presetDraft, null)
+      await act(async () => { tab('resources').props.onClick() })
+      await settleUI()
+      assert.equal(live()?.pane, 'resources')
+      assert.equal(remoteFixture.presetWrites.length, 0)
+      break
+    }
+    case 'R17': {
+      await startCopy()
+      await changeInput('cm-preset-copy-id', 'degraded-copy')
+      remoteFixture.failNextPresetReadBack()
+      await submitCopy()
+      assert.equal(remoteFixture.presetWrites.length, 1, 'native call must occur exactly once')
+      assert.equal(remoteFixture.nativePresets.has('degraded-copy'), true)
+      assert.equal(live()?.presetDraft?.blocked, 'unverified')
+      assert.equal(live()?.presetDraft?.terminalNotice?.code, 'presetNoticeDegraded')
+      await submitCopy()
+      assert.equal(remoteFixture.presetWrites.length, 1, 'degraded receipt prevents replay')
+      break
+    }
+    case 'R18': {
+      await startCopy()
+      await changeInput('cm-preset-copy-id', 'unknown-copy')
+      remoteFixture.makeUnknownNextPresetWrite()
+      await submitCopy()
+      assert.equal(remoteFixture.presetWrites.length, 1)
+      assert.equal(remoteFixture.nativePresets.has('unknown-copy'), true,
+        'transport unknown may still have committed')
+      assert.equal(live()?.presetDraft?.blocked, 'unknown')
+      assert.equal(live()?.presetDraft?.terminalNotice?.code, 'presetNoticeUnknown')
+      await act(async () => { buttonByLabel(tree, 'Refresh').props.onClick() })
+      await settleUI()
+      assert.equal(live()?.presetDraft?.terminalNotice?.code, 'presetNoticeUnknown',
+        'fresh read-back cannot relabel first unknown receipt')
+      await submitCopy()
+      assert.equal(remoteFixture.presetWrites.length, 1, 'outcome-unknown must not retry')
+      break
+    }
     default: throw new Error('Unknown M8C published Renderer probe: ' + probe)
   }
   await act(async () => { tree.unmount() })
