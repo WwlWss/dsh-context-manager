@@ -464,7 +464,6 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
       protocol,
       profiles: idleSurface(),
       presets: idleSurface(),
-      nativePresetDocuments: new Map(),
       promptPlacement: idleSurface(),
       resources: { list: idleSurface(), documents: new Map() },
       nativePresetDocuments: new Map(),
