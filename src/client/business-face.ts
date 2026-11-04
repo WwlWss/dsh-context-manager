@@ -5,12 +5,17 @@ import type {
   ContextManagerClientProfileMutations,
 } from './mutation-types.js'
 import type { ContextManagerClientResourceMutations } from './resource-mutation-types.js'
+import type { ContextManagerClientPresetMutations } from './preset-mutation-types.js'
 
 export type ContextManagerClientBusinessSource = Pick<
   ContextManagerClientModel,
   | 'state'
   | 'mutations'
   | 'resourceMutations'
+  | 'presetMutations'
+  | 'readCurrentPresetState'
+  | 'refreshNativePresets'
+  | 'loadNativePresetDocument'
   | 'refresh'
   | 'captureProfileMutationBasis'
   | 'capturePromptResourceCreateBasis'
@@ -24,6 +29,7 @@ export interface ContextManagerClientBusinessFace {
     readonly contextManager: ContextManagerClientBusinessSource['state']
     readonly profileMutation: ContextManagerClientBusinessSource['mutations']['state']
     readonly resourceMutation: ContextManagerClientBusinessSource['resourceMutations']['state']
+    readonly presetMutation: ContextManagerClientBusinessSource['presetMutations']['state']
   }
   readonly refresh: () => Promise<ContextManagerClientReconcileResult>
   readonly captureProfileMutationBasis:
@@ -36,6 +42,10 @@ export interface ContextManagerClientBusinessFace {
   readonly loadPromptResource: ContextManagerClientBusinessSource['loadPromptResource']
   readonly profileMutations: ContextManagerClientProfileMutations
   readonly resourceMutations: ContextManagerClientResourceMutations
+  readonly presetMutations: ContextManagerClientPresetMutations
+  readonly loadNativePresetDocument: ContextManagerClientBusinessSource['loadNativePresetDocument']
+  readonly refreshNativePresets: ContextManagerClientBusinessSource['refreshNativePresets']
+  readonly readCurrentPresetState: ContextManagerClientBusinessSource['readCurrentPresetState']
 }
 
 export function createContextManagerClientBusinessFace(
@@ -109,11 +119,21 @@ export function createContextManagerClientBusinessFace(
     ) => source.resourceMutations.setPromptResourceContent(...args),
   } satisfies ContextManagerClientResourceMutations)
 
+  const presetMutations = Object.freeze({
+    copyPreset: (
+      ...args: Parameters<ContextManagerClientPresetMutations['copyPreset']>
+    ) => source.presetMutations.copyPreset(...args),
+    removePreset: (
+      ...args: Parameters<ContextManagerClientPresetMutations['removePreset']>
+    ) => source.presetMutations.removePreset(...args),
+  } satisfies ContextManagerClientPresetMutations)
+
   return Object.freeze({
     hooks: Object.freeze({
       contextManager: source.state,
       profileMutation: source.mutations.state,
       resourceMutation: source.resourceMutations.state,
+      presetMutation: source.presetMutations.state,
     }),
     refresh: () => source.refresh(),
     captureProfileMutationBasis: () => source.captureProfileMutationBasis(),
@@ -121,7 +141,11 @@ export function createContextManagerClientBusinessFace(
     capturePromptResourceReadStamp: (id, from) => source.capturePromptResourceReadStamp(id, from),
     loadPromptResourceList: () => source.loadPromptResourceList(),
     loadPromptResource: id => source.loadPromptResource(id),
+    loadNativePresetDocument: id => source.loadNativePresetDocument(id),
+    refreshNativePresets: () => source.refreshNativePresets(),
+    readCurrentPresetState: () => source.readCurrentPresetState(),
     profileMutations,
     resourceMutations,
+    presetMutations,
   } satisfies ContextManagerClientBusinessFace)
 }

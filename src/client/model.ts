@@ -109,6 +109,9 @@ export interface ContextManagerClientModel {
 
   attach(remote: ContextManagerClientBusinessRemote): () => void
   refresh(): Promise<ContextManagerClientReconcileResult>
+  refreshNativePresets(): Promise<ContextManagerClientReconcileResult>
+  /** A live read-only projection; not another authority or mutable Store. */
+  readCurrentPresetState(): Pick<ContextManagerClientSnapshot, 'attachment' | 'protocol' | 'changes' | 'instanceId' | 'presets'>
   reconcile(
     scopes: readonly ContextManagerClientBaselineSurface[],
   ): Promise<ContextManagerClientReconcileResult>
@@ -1566,6 +1569,14 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
     capturePromptResourceCreateBasis,
     attach,
     refresh: () => reconcile(CONTEXT_MANAGER_BASELINE_SURFACES),
+    refreshNativePresets: () => reconcile(['presets']),
+    readCurrentPresetState: () => {
+      const current = state.getSnapshot()
+      return Object.freeze({
+        attachment: current.attachment, protocol: current.protocol,
+        instanceId: current.instanceId, changes: current.changes, presets: current.presets,
+      })
+    },
     reconcile,
     getProfileRevision,
     captureProfileMutationBasis,
