@@ -1,3 +1,4 @@
+import type { ContextManagerClientPresetMutationRemote } from '../src/client/preset-remote-port.js'
 import type { TypertRemoteNamespaceMap } from '@deepseek-ai/dsh-typert-protocol'
 import type {} from '../lib/typert.remote-client.js'
 
@@ -37,3 +38,9 @@ type GeneratedRemoteSatisfiesNativePresetRead = Assert<
 >
 const _generatedNativePresetRead: GeneratedRemoteSatisfiesNativePresetRead = true
 void _generatedNativePresetRead
+
+type GeneratedRemoteSatisfiesNativePresetMutation = Assert<
+  GeneratedContextManagerRemote extends ContextManagerClientPresetMutationRemote ? true : false
+>
+const _generatedNativePresetMutation: GeneratedRemoteSatisfiesNativePresetMutation = true
+void _generatedNativePresetMutation
