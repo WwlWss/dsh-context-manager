@@ -55,14 +55,15 @@ export function ContextManagerResourceDrawerContent(props: ContextManagerDrawerP
   const requestedId = useStore(s => s.selectedResourceId)
   const draft = useStore(s => s.resourceDraft)
   const profileDraft = useStore(s => s.draft)
+  const presetDraft = useStore(s => s.presetDraft)
   const notice = useStore(s => s.resourceNotice)
   const displayedNotice = terminalResourceNotice({ resourceDraft: draft }) ?? notice
   const view = deriveResourceView(snapshot, requestedId)
   const running = operation.status === 'running'
-  const canStart = view.writable && !running && draft === null && profileDraft === null
+  const canStart = view.writable && !running && draft === null && profileDraft === null && presetDraft === null
   const draftCurrent = draft === null || isResourceDraftCurrent(snapshot, draft)
   const canSubmit = draft !== null && draft.blocked === undefined
-    && !draft.submitting && draftCurrent && view.writable && !running
+    && !draft.submitting && draftCurrent && view.writable && !running && presetDraft === null
   const selectedId = view.selectedId
   const mounted = useRef(false)
   const latestSelection = useRef(selectedId)

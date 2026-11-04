@@ -96,14 +96,15 @@ export function ContextManagerProfileDrawerContent(props: ContextManagerDrawerPr
   const requestedId = useStore(s => s.selectedProfileId)
   const draft = useStore(s => s.draft)
   const resourceDraft = useStore(s => s.resourceDraft)
+  const presetDraft = useStore(s => s.presetDraft)
   const notice = useStore(s => s.notice)
   const displayedNotice = terminalProfileNotice({ draft }) ?? notice
   const view = deriveProfileView(snapshot, requestedId)
   const running = operation.status === 'running'
-  const canStart = view.writable && !running && draft === null && resourceDraft === null
+  const canStart = view.writable && !running && draft === null && resourceDraft === null && presetDraft === null
   const draftCurrent = draft === null || isProfileDraftCurrent(snapshot, draft)
   const canSubmit = draft !== null && draft.blocked === undefined
-    && !draft.submitting && draftCurrent && view.writable && !running
+    && !draft.submitting && draftCurrent && view.writable && !running && presetDraft === null
   const contentRef = useRef<HTMLElement | null>(null)
   const mounted = useRef(false)
   const latestSelection = useRef(view.selectedId)

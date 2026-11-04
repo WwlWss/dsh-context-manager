@@ -88,13 +88,14 @@ export function ContextManagerPromptBindingSection(props: PromptBindingSectionPr
   const renderedSelectedProfileId = props.useStore(s => s.selectedProfileId)
   const draft = props.useStore(s => s.draft)
   const resourceDraft = props.useStore(s => s.resourceDraft)
+  const presetDraft = props.useStore(s => s.presetDraft)
   const running = operation.status === 'running'
   const active = isPromptBindingDraft(draft) && draft.profileId === profileId ? draft : null
-  const canStart = writable && !running && draft === null && resourceDraft === null
+  const canStart = writable && !running && draft === null && resourceDraft === null && presetDraft === null
     && isWritablePromptBindingPath(profileId)
   const current = active !== null && isProfileDraftCurrent(snapshot, active)
   const canSubmit = active !== null && active.blocked === undefined && !active.submitting && current
-    && writable && !running
+    && writable && !running && presetDraft === null
   // Synchronous guard for duplicate same-render Save events; Profile Controller
   // provides the independent global mutation single-flight and authority checks.
   const committing = useRef<number | null>(null)

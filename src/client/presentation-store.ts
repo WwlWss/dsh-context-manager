@@ -807,7 +807,7 @@ export function createContextManagerPresentationStore() {
         if (notice !== null) state.presetDraft.terminalNotice = { ...notice }
         state.presetNotice = notice
       },
-      completePresetDraft(state, token: number, notice: PresetNotice | null, selectId?: string) {
+      completePresetDraft(state, token: number, notice: PresetNotice | null, selectId?: string | null) {
         if (state.presetDraft?.token !== token || state.presetDraft.blocked !== undefined) return
         state.presetDraft = null
         if (selectId !== undefined) state.selectedPresetId = selectId
