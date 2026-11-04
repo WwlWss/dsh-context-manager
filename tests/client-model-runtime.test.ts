@@ -3003,3 +3003,61 @@ test('M8C B2.3 model authoring uses native lane and recovers authoritative Prese
   detach()
   model.dispose()
 })
+
+test('M8C B3-C composition view lease is explicit and release removes sensitive bytes', async () => {
+  const remote = new ScriptedRemote()
+  remote.defaultPresets = {
+    directory: {
+      status: 'available', defaultId: 'source', authorable: true,
+      presets: [{ id: 'source', trust: 'system', isDefault: true }],
+    },
+    profiles: {},
+  }
+  const { model, detach } = await attachAndReady(remote)
+  const before = remote.calls.readPreset
+  const opened = model.beginNativePresetView('source')
+  assert.equal(remote.calls.readPreset, before, 'a lease claim itself must not eagerly publish a body')
+  assert.equal((await opened.result).status, 'completed')
+  assert.equal(remote.calls.readPreset, before + 1)
+  assert.equal(model.state.getSnapshot().nativePresetDocuments?.get('source')?.data?.content, 'native body:source')
+  model.releaseNativePresetView(opened.leaseId)
+  assert.equal(model.state.getSnapshot().nativePresetDocuments?.size, 0)
+  const denied = model.beginNativePresetView('not-in-directory')
+  assert.notEqual((await denied.result).status, 'completed')
+  assert.equal(remote.calls.readPreset, before + 1, 'no native read for an absent source')
+  model.releaseNativePresetView(denied.leaseId)
+  detach()
+  model.dispose()
+})
+
+test('M8C B3-C old view response or old cleanup never publishes over newer view lease', async () => {
+  const remote = new ScriptedRemote()
+  remote.defaultPresets = {
+    directory: {
+      status: 'available', defaultId: 'source', authorable: true,
+      presets: [{ id: 'source', trust: 'system', isDefault: true }],
+    },
+    profiles: {},
+  }
+  const gate = deferred<RemoteResult<ContextManagerRemoteResult<ContextManagerRemotePresetDocument>>>()
+  remote.presetBodySteps.push(
+    async () => gate.promise,
+    async () => ok(businessOk({ id: 'source', content: 'fresh lease body' })),
+  )
+  const { model, detach } = await attachAndReady(remote)
+  const stale = model.beginNativePresetView('source')
+  await waitFor(() => remote.calls.readPreset === 1, 'old leased native body request')
+  model.releaseNativePresetView(stale.leaseId)
+  const fresh = model.beginNativePresetView('source')
+  assert.equal((await fresh.result).status, 'completed')
+  assert.equal(model.state.getSnapshot().nativePresetDocuments?.get('source')?.data?.content, 'fresh lease body')
+  model.releaseNativePresetView(stale.leaseId)
+  assert.equal(model.state.getSnapshot().nativePresetDocuments?.get('source')?.data?.content, 'fresh lease body')
+  gate.resolve(ok(businessOk({ id: 'source', content: 'obsolete sensitive content' })))
+  assert.equal((await stale.result).status, 'superseded')
+  assert.equal(model.state.getSnapshot().nativePresetDocuments?.get('source')?.data?.content, 'fresh lease body')
+  model.releaseNativePresetView(fresh.leaseId)
+  assert.equal(model.state.getSnapshot().nativePresetDocuments?.size, 0)
+  detach()
+  model.dispose()
+})
