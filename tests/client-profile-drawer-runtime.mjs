@@ -636,7 +636,32 @@ assert.equal(remoteFixture.writes.length, 0)
 // B1-3 uses this same Published Renderer + root Store + real Business Face.
 // The probe branch isolates each intentional RED from the long historical
 // M7C/M8A1/M8A2 green scenario; it never substitutes a fake UI renderer.
-if (process.env.M8B_SKILL_PROBE) {
+if (process.env.M8C_PRESET_PROBE) {
+  const probe = process.env.M8C_PRESET_PROBE
+  const live = () => registeredOverlayStore.readLiveSnapshot()
+  const row = (id) => tree.root.findByProps({ 'data-context-manager-preset-row': id })
+  switch (probe) {
+    case 'R01': {
+      const tab = tree.root.findByProps({ 'data-context-manager-tab': 'presets' })
+      assert.ok(tab, 'M8C RED: real published Renderer must mount third Presets tab')
+      await act(async () => { tab.props.onClick() })
+      await settleUI()
+      assert.equal(live()?.pane, 'presets')
+      assert.equal(tree.root.findAllByProps({ 'data-context-manager-preset-editor': '' }).length, 1,
+        'M8C RED: only actual registered overlay contains native Preset pane')
+      assert.ok(row('native'), 'M8C native system preset must be listed')
+      assert.equal(remoteFixture.writes.length, 0)
+      break
+    }
+    default: throw new Error('Unknown M8C published Renderer probe: ' + probe)
+  }
+  await act(async () => { tree.unmount() })
+  disposeRoot()
+  await disposePlugin()
+  assert.equal(registeredOverlayStore.readLiveSnapshot(), undefined)
+  await sessionFiber.dispose()
+  await rendererFiber.dispose()
+} else if (process.env.M8B_SKILL_PROBE) {
   const probe = process.env.M8B_SKILL_PROBE
   const live = () => registeredOverlayStore.readLiveSnapshot()
   const skillRows = () => tree.root.findAll(node =>

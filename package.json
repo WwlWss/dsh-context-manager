@@ -45,7 +45,7 @@
     "build": "pnpm run build:host && pnpm run build:client",
     "prepare": "tsdown --config tsdown.prepare.config.ts && node ./scripts/generate-typert.mjs && tsdown --config tsdown.client.config.ts",
     "typecheck": "pnpm run typecheck:host && pnpm run typecheck:client",
-    "test": "pnpm run test:client-model && node --test ./tests/*.test.mjs && pnpm run test:client-upstream-runtime",
+    "test": "pnpm run test:client-model && node --test ./tests/*.test.mjs && pnpm run test:client-upstream-runtime && node ./tests/m8c/run-preset-renderer-probes.mjs",
     "check": "pnpm run typecheck && pnpm run clean && pnpm run build && pnpm run test",
     "build:host": "tsdown --config tsdown.config.ts && node ./scripts/generate-typert.mjs",
     "build:client": "tsdown --config tsdown.client.config.ts",
