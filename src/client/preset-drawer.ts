@@ -87,9 +87,26 @@ export function ContextManagerPresetDrawerContent(props: ContextManagerDrawerPro
   const ownsSelection = () => {
     const live = readLivePresentationForActions(actions)
     const actual = props.readCurrentPresetState()
+    const fresh = derivePresetView(actual, live?.selectedPresetId ?? null)
+    const original = view.selected
+    const current = fresh.selected
+    // A retained, enabled React callback cannot inherit authority from a
+    // detached Host, a changed authorability hint or an identically keyed row
+    // whose native metadata has changed before the next React render.
     return ownsOpening()
       && live?.selectedPresetId === requestedId
-      && derivePresetView(actual, live?.selectedPresetId ?? null).selectedId === selectedId
+      && fresh.directoryFresh
+      && fresh.selectedId === selectedId
+      && fresh.cursor === view.cursor
+      && fresh.defaultId === view.defaultId
+      && fresh.authorable === view.authorable
+      && original !== undefined && current !== undefined
+      && original.id === current.id
+      && original.trust === current.trust
+      && original.isDefault === current.isDefault
+      && original.name === current.name
+      && original.description === current.description
+      && original.broken === current.broken
       && latestEffectiveId.current === selectedId
       && actual.changes?.presets === snapshot.changes?.presets
   }
