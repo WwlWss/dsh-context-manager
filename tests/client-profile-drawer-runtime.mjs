@@ -133,6 +133,7 @@ function createWritableRemoteFixture() {
   let refuseNextNativeWrite = false
   let unknownNextNativeWrite = false
   let heldNativeRead = null
+  let nextCopyReplyGate = null
   const presetWrites = []
   const nativePresets = new Map([
     ['native', { id: 'native', trust: 'system', name: 'Native Root',
@@ -314,6 +315,11 @@ function createWritableRemoteFixture() {
       })
       presetCursor++
       change++
+      if (nextCopyReplyGate !== null) {
+        const pending = nextCopyReplyGate
+        nextCopyReplyGate = null
+        await pending
+      }
       if (unknownNextNativeWrite) {
         unknownNextNativeWrite = false
         throw new Error('native copy completed; transport reply dropped')
@@ -481,6 +487,11 @@ function createWritableRemoteFixture() {
     failNextPresetReadBack(count = 12) { failPresetReads = count },
     makeNativeAuthorable(value) { nativeAuthorable = value; presetCursor++; change++ },
     externalPresetDefault(id) { nativeDefaultId = id; presetCursor++; change++ },
+    holdNextNativeCopyReply() {
+      let release
+      nextCopyReplyGate = new Promise(resolve => { release = resolve })
+      return () => release()
+    },
     holdNextNativeBodyRead(id) {
       let release
       const promise = new Promise(resolve => { release = resolve })
