@@ -241,6 +241,9 @@ test('business face exposes only the frozen renderer-facing capability projectio
   assert.equal(face.hooks.profileMutation, fixture.mutationState)
   assert.equal(face.hooks.resourceMutation, fixture.resourceState)
   assert.equal(face.hooks.presetMutation, fixture.presetState)
+  // M8C privacy boundary: raw composition may be fetched only through a
+  // revocable view lease; an unleased renderer-facing reader is forbidden.
+  assert.equal('loadNativePresetDocument' in face, false)
   assert.equal('state' in face.presetMutations, false)
   assert.notEqual(face.presetMutations, fixture.source.presetMutations)
   assert.equal('state' in face.resourceMutations, false)
