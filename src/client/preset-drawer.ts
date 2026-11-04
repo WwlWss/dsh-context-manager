@@ -176,7 +176,7 @@ export function ContextManagerPresetDrawerContent(props: ContextManagerDrawerPro
     }
     actions.beginPresetSubmission(original.token)
     const claimed = readLivePresentationForActions(actions)?.presetDraft
-    if (claimed !== original || claimed.submitting !== true) return
+    if (claimed?.token !== original.token || claimed.submitting !== true) return
     committing.current = original.token
 
     try {
