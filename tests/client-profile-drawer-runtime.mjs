@@ -1048,12 +1048,54 @@ if (process.env.M8C_PRESET_PROBE) {
       assert.equal(remoteFixture.presetWrites.length, 1, 'outcome-unknown must not retry')
       break
     }
+
+    case 'R19': {
+      await goPresets()
+      await click('data-context-manager-preset-view')
+      assert.equal(cm().nativePresetDocuments.size, 1)
+      const oldView = tree.root.findByProps({ 'data-context-manager-preset-view': '' }).props.onClick
+      const oldCopy = tree.root.findByProps({ 'data-context-manager-preset-copy': '' }).props.onClick
+      const beforeReads = remoteFixture.readCalls.nativeBodies
+      const beforeWrites = remoteFixture.presetWrites.length
+      const oldBusiness = injectedBusiness()
+      await act(async () => { tree.unmount() })
+      disposeRoot()
+      await disposePlugin()
+      assert.equal(registeredOverlayStore.readLiveSnapshot(), undefined,
+        'published Store reader must be revoked on plugin disposal')
+      assert.equal(oldBusiness.hooks.contextManager.getSnapshot().nativePresetDocuments.size, 0,
+        'model disposal must purge revealed composition')
+      await act(async () => { oldView(); oldCopy() })
+      assert.equal(remoteFixture.readCalls.nativeBodies, beforeReads)
+      assert.equal(remoteFixture.presetWrites.length, beforeWrites)
+      break
+    }
+    case 'R20': {
+      await goPresets()
+      await act(async () => { tab('profiles').props.onClick() })
+      await settleUI()
+      assert.equal(live()?.pane, 'profiles')
+      assert.equal(tree.root.findAllByProps({ 'data-context-manager-new-profile': '' }).length, 1)
+      assert.equal(tree.root.findAllByProps({ 'data-context-manager-prompt-bindings': '' }).length, 1)
+      await act(async () => { tab('resources').props.onClick() })
+      await settleUI()
+      assert.equal(live()?.pane, 'resources')
+      assert.equal(tree.root.findAllByProps({ 'data-context-manager-resource-editor': '' }).length, 1)
+      await goPresets()
+      assert.equal(tree.root.findAllByProps({ 'data-context-manager-preset-editor': '' }).length, 1)
+      assert.equal(remoteFixture.writes.length, 0)
+      assert.equal(remoteFixture.resourceWrites.length, 0)
+      assert.equal(remoteFixture.presetWrites.length, 0)
+      break
+    }
     default: throw new Error('Unknown M8C published Renderer probe: ' + probe)
   }
-  await act(async () => { tree.unmount() })
-  disposeRoot()
-  await disposePlugin()
-  assert.equal(registeredOverlayStore.readLiveSnapshot(), undefined)
+  if (probe !== 'R19') {
+    await act(async () => { tree.unmount() })
+    disposeRoot()
+    await disposePlugin()
+    assert.equal(registeredOverlayStore.readLiveSnapshot(), undefined)
+  }
   await sessionFiber.dispose()
   await rendererFiber.dispose()
 } else if (process.env.M8B_SKILL_PROBE) {
