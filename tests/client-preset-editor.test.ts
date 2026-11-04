@@ -22,6 +22,7 @@ function snapshot(): ContextManagerClientSnapshot {
   return {
     attachment: 'attached',
     protocol: { status: 'compatible', apiVersion: 3 },
+    sync: { status: 'idle' },
     changes: {
       instanceId: 'host',
       resourceAuthorityId: 'library',
