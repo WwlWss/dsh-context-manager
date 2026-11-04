@@ -735,6 +735,100 @@ export function createContextManagerPresentationStore() {
         state.resourceDraft = null
         state.resourceNotice = null
       },
+      selectPreset(state, id: string | null) {
+        if (!state.open || state.pane !== 'presets'
+          || state.presetDraft !== null || state.draft !== null || state.resourceDraft !== null) {
+          notifyOccupiedPresetDraft(state)
+          return
+        }
+        state.selectedPresetId = id
+        state.presetNotice = null
+      },
+      beginPresetCopy(state, row: ContextManagerRemotePresetRow, cursor: number, defaultId: string) {
+        if (!canBeginPresetDraft(state)) {
+          notifyOccupiedPresetDraft(state)
+          return
+        }
+        state.nextPresetDraftToken += 1
+        state.selectedPresetId = row.id
+        state.presetDraft = {
+          kind: 'copy', token: state.nextPresetDraftToken, sourceId: row.id,
+          observedRow: Object.freeze({ ...row }), observedCursor: cursor,
+          observedDefaultId: defaultId, targetId: '', nameMode: 'inherit', explicitName: '',
+        }
+        state.presetNotice = null
+      },
+      beginPresetRemove(state, row: ContextManagerRemotePresetRow, cursor: number, defaultId: string) {
+        if (!canBeginPresetDraft(state)) {
+          notifyOccupiedPresetDraft(state)
+          return
+        }
+        state.nextPresetDraftToken += 1
+        state.selectedPresetId = row.id
+        state.presetDraft = {
+          kind: 'confirm-remove', token: state.nextPresetDraftToken, targetId: row.id,
+          observedRow: Object.freeze({ ...row }), observedCursor: cursor,
+          observedDefaultId: defaultId, confirmationText: '',
+        }
+        state.presetNotice = null
+      },
+      updatePresetCopy(state, token: number, field: 'targetId' | 'explicitName', value: string) {
+        if (state.presetDraft?.kind !== 'copy' || state.presetDraft.token !== token
+          || state.presetDraft.blocked !== undefined || state.presetDraft.submitting) return
+        state.presetDraft[field] = value
+        state.presetNotice = null
+      },
+      setPresetNameMode(state, token: number, value: 'inherit' | 'explicit') {
+        if (state.presetDraft?.kind !== 'copy' || state.presetDraft.token !== token
+          || state.presetDraft.blocked !== undefined || state.presetDraft.submitting) return
+        state.presetDraft.nameMode = value
+        state.presetNotice = null
+      },
+      updatePresetRemoveConfirmation(state, token: number, value: string) {
+        if (state.presetDraft?.kind !== 'confirm-remove' || state.presetDraft.token !== token
+          || state.presetDraft.blocked !== undefined || state.presetDraft.submitting) return
+        state.presetDraft.confirmationText = value
+        state.presetNotice = null
+      },
+      beginPresetSubmission(state, token: number) {
+        if (!state.open || state.pane !== 'presets'
+          || state.draft !== null || state.resourceDraft !== null
+          || state.presetDraft?.token !== token
+          || state.presetDraft.blocked !== undefined || state.presetDraft.submitting) return
+        state.presetDraft.submitting = true
+      },
+      finishPresetSubmission(state, token: number) {
+        if (state.presetDraft?.token === token) state.presetDraft.submitting = false
+      },
+      blockPresetDraft(state, token: number, block: PresetDraftBlock, notice: PresetNotice | null) {
+        if (state.presetDraft?.token !== token || state.presetDraft.blocked !== undefined) return
+        state.presetDraft.blocked = block
+        state.presetDraft.submitting = false
+        if (notice !== null) state.presetDraft.terminalNotice = { ...notice }
+        state.presetNotice = notice
+      },
+      completePresetDraft(state, token: number, notice: PresetNotice | null, selectId?: string) {
+        if (state.presetDraft?.token !== token || state.presetDraft.blocked !== undefined) return
+        state.presetDraft = null
+        if (selectId !== undefined) state.selectedPresetId = selectId
+        state.presetNotice = notice
+      },
+      cancelPresetDraft(state, token: number) {
+        if (state.presetDraft?.token !== token
+          || state.presetDraft.blocked !== undefined || state.presetDraft.submitting) return
+        state.presetDraft = null
+        state.presetNotice = null
+      },
+      discardBlockedPresetDraft(state, token: number) {
+        if (state.presetDraft?.token !== token
+          || state.presetDraft.blocked === undefined || state.presetDraft.submitting) return
+        state.presetDraft = null
+        state.presetNotice = null
+      },
+      setPresetNotice(state, notice: PresetNotice | null) {
+        if (terminalPresetNotice(state) !== undefined) return
+        state.presetNotice = notice
+      },
       setResourceNotice(state, notice: ResourceNotice | null) {
         if (terminalResourceNotice(state) !== undefined) return
         state.resourceNotice = notice
