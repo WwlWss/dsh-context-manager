@@ -110,7 +110,7 @@ export function isPresetDraftCurrent(
   const view = derivePresetView(snapshot, draft.kind === 'copy' ? draft.sourceId : draft.targetId)
   const row = view.selected
   const original = draft.observedRow
-  return view.directoryFresh && view.cursor === draft.observedCursor
+  return view.directoryFresh && view.authorable && view.cursor === draft.observedCursor
     && view.defaultId === draft.observedDefaultId
     && row !== undefined && row.id === original.id
     && row.trust === original.trust && row.isDefault === original.isDefault

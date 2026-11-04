@@ -175,7 +175,11 @@ export function ContextManagerPresetDrawerContent(props: ContextManagerDrawerPro
 
     const liveModel = props.readCurrentPresetState()
     const now = derivePresetView(liveModel, live?.selectedPresetId ?? null)
-    if (now.selectedId !== selected || !isPresetDraftCurrent(liveModel, original)) {
+    // A live capability may be withdrawn without a Preset cursor change.
+    // Reject both a stale row and a stale Copy/Remove authorization before
+    // the controller can dispatch the native RPC.
+    if (now.selectedId !== selected || !isPresetDraftCurrent(liveModel, original)
+      || (original.kind === 'copy' ? !now.canCopy : !now.canRemove)) {
       actions.setPresetNotice({ code: 'presetNoticeStale', kind: 'warning' })
       return
     }

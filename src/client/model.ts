@@ -1165,6 +1165,11 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
         if (transition.status === 'changed') {
           authority = transition.authority
           scheduleBaselineRecovery(attachment, authority)
+          // An explicit native composition View is bound to the Host that
+          // authorized it. Reclaiming a generic keyed-read owner after the
+          // Host instance changes would silently fetch new-Host private bytes.
+          // Other keyed families keep their legacy bounded authority restart.
+          if (kind === 'nativePreset') return staleResult()
           // clearAuthority publishes synchronously: an observer may already have
           // replaced this key, but it cannot cancel model-wide recovery.
           if ((keyedOwners.get(key) ?? 0) > request) return staleResult()
@@ -1199,6 +1204,9 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
         if (afterTransition.status === 'changed') {
           authority = afterTransition.authority
           scheduleBaselineRecovery(attachment, authority)
+          // The current lease was revoked by clearAuthority; never reissue a
+          // native composition read under a replacement Host instance.
+          if (kind === 'nativePreset') return staleResult()
           if ((keyedOwners.get(key) ?? 0) > request) return staleResult()
           keyedOwners.set(key, request)
           needsAuthorityRestart = true
