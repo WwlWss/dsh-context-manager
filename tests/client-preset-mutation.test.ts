@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
 import { createContextManagerPresetMutationController } from '../src/client/preset-mutation-controller.js'
+import type { ContextManagerClientPresetMutationRemote } from '../src/client/preset-remote-port.js'
 
 const accepted = (id: string) => ({
   ok: true as const,
@@ -44,7 +45,7 @@ function fixture() {
     },
   }
   const controller = createContextManagerPresetMutationController({
-    getRemote: () => remote,
+    getRemote: () => remote as unknown as ContextManagerClientPresetMutationRemote,
     getLifecycle: () => lifetime,
     getProtocolStatus: () => 'compatible' as const,
     getRoster: () => allow ? ({
