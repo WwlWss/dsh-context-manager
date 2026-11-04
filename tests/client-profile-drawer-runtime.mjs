@@ -680,6 +680,9 @@ let injectedBusiness
 let registeredOverlayStore
 let registeredSidebarStore
 let delayNextUiRefresh = false
+// Independent Final Strict Review: simulate a newly observed live Host state
+// before React rerenders a previously enabled Preset action.
+let m8cLiveObservationOverride = null
 let uiRefreshDispatches = 0
 let uiListDispatches = 0
 let rejectDelayedUiRefresh
@@ -704,6 +707,28 @@ slotFace.register = (options, component) => {
                 rejectDelayedUiRefresh = reject
               })
               : face.refresh()
+          },
+          readCurrentPresetState: () => {
+            const actual = face.readCurrentPresetState()
+            if (m8cLiveObservationOverride === 'detached') {
+              return { ...actual, attachment: 'detached' }
+            }
+            const directory = actual.presets.data?.directory
+            if (directory?.status !== 'available') return actual
+            if (m8cLiveObservationOverride === 'non-authorable') {
+              return { ...actual, presets: { ...actual.presets, data: {
+                ...actual.presets.data, directory: { ...directory, authorable: false },
+              } } }
+            }
+            if (m8cLiveObservationOverride === 'trust-changed') {
+              return { ...actual, presets: { ...actual.presets, data: {
+                ...actual.presets.data, directory: { ...directory,
+                  presets: directory.presets.map(row => row.id === 'user-one'
+                    ? { ...row, trust: 'system' } : row),
+                },
+              } } }
+            }
+            return actual
           },
           loadPromptResourceList: () => {
             uiListDispatches++
@@ -1085,6 +1110,33 @@ if (process.env.M8C_PRESET_PROBE) {
       assert.equal(tree.root.findAllByProps({ 'data-context-manager-preset-editor': '' }).length, 1)
       assert.equal(remoteFixture.writes.length, 0)
       assert.equal(remoteFixture.resourceWrites.length, 0)
+      assert.equal(remoteFixture.presetWrites.length, 0)
+      break
+    }
+
+    case 'R21': {
+      await goPresets()
+      const oldCopy = tree.root.findByProps({ 'data-context-manager-preset-copy': '' }).props.onClick
+      m8cLiveObservationOverride = 'detached'
+      await act(async () => { oldCopy() })
+      assert.equal(live()?.presetDraft, null,
+        'stale render must fail closed when current Host has detached')
+      m8cLiveObservationOverride = 'non-authorable'
+      await act(async () => { oldCopy() })
+      assert.equal(live()?.presetDraft, null,
+        'stale render must reject a live non-authorable directory')
+      assert.equal(remoteFixture.presetWrites.length, 0)
+      break
+    }
+    case 'R22': {
+      await goPresets()
+      await selectPreset('user-one')
+      const oldRemove = tree.root.findByProps({ 'data-context-manager-preset-remove': '' }).props.onClick
+      assert.equal(tree.root.findByProps({ 'data-context-manager-preset-remove': '' }).props.disabled, false)
+      m8cLiveObservationOverride = 'trust-changed'
+      await act(async () => { oldRemove() })
+      assert.equal(live()?.presetDraft, null,
+        'render-time user trust must not override changed live directory metadata')
       assert.equal(remoteFixture.presetWrites.length, 0)
       break
     }
