@@ -65,7 +65,7 @@ test('M8C B3-B P19 all three panes preserve exclusive live draft ownership', () 
   assert.equal(store.getSnapshot().pane, 'presets')
   store.actions.beginPresetCopy(USER, 5, 'native')
   const draft = store.getSnapshot().presetDraft
-  assert.equal(draft?.kind, 'copy')
+  if (draft?.kind !== 'copy') throw new Error('expected copy draft')
   assert.equal(draft.sourceId, 'user-one')
   assert.equal(store.getSnapshot().nextPresetDraftToken, 1)
   assert.equal(ownsLivePresetDraft(store.getSnapshot(), draft), true)
@@ -90,10 +90,12 @@ test('M8C B3-B P09 remove requires target-matching acknowledgment and blocked re
   store.actions.selectPane('presets')
   store.actions.beginPresetRemove(USER, 5, 'native')
   const draft = store.getSnapshot().presetDraft
-  assert.equal(draft?.kind, 'confirm-remove')
-  assert.equal(draft?.confirmationText, '')
+  if (draft?.kind !== 'confirm-remove') throw new Error('expected removal draft')
+  assert.equal(draft.confirmationText, '')
   store.actions.updatePresetRemoveConfirmation(draft.token, 'wrong')
-  assert.equal(store.getSnapshot().presetDraft?.confirmationText, 'wrong')
+  const pending = store.getSnapshot().presetDraft
+  if (pending?.kind !== 'confirm-remove') throw new Error('expected removal draft')
+  assert.equal(pending.confirmationText, 'wrong')
   store.actions.blockPresetDraft(draft.token, 'unknown', {
     kind: 'warning', code: 'presetNoticeUnknown',
   })
@@ -113,13 +115,17 @@ test('M8C B3-B P07 Copy mode preserves null versus deliberately empty display na
   store.actions.selectPane('presets')
   store.actions.beginPresetCopy(SYSTEM, 5, 'native')
   const draft = store.getSnapshot().presetDraft
-  assert.equal(draft?.kind, 'copy')
+  if (draft?.kind !== 'copy') throw new Error('expected copy draft')
   store.actions.updatePresetCopy(draft.token, 'targetId', '  exact ')
   assert.equal(validatePresetCopyDraft(store.getSnapshot().presetDraft, new Set(['native'])), 'valid')
-  assert.equal(store.getSnapshot().presetDraft?.nameMode, 'inherit')
+  const beforeName = store.getSnapshot().presetDraft
+  if (beforeName?.kind !== 'copy') throw new Error('expected copy draft')
+  assert.equal(beforeName.nameMode, 'inherit')
   store.actions.setPresetNameMode(draft.token, 'explicit')
   store.actions.updatePresetCopy(draft.token, 'explicitName', '')
-  assert.equal(store.getSnapshot().presetDraft?.explicitName, '')
+  const afterName = store.getSnapshot().presetDraft
+  if (afterName?.kind !== 'copy') throw new Error('expected copy draft')
+  assert.equal(afterName.explicitName, '')
   const current = isPresetDraftCurrent(snapshot(), store.getSnapshot().presetDraft)
   assert.equal(current, true)
 })
