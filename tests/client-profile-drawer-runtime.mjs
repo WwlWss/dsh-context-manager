@@ -124,7 +124,26 @@ function createWritableRemoteFixture() {
   let readOnly = false
   const writes = []
   const resourceWrites = []
-  const readCalls = { protocol: 0, profiles: 0, resourceLists: 0 }
+  const readCalls = { protocol: 0, profiles: 0, resourceLists: 0, presetLists: 0, nativeBodies: 0 }
+  const presetProbe = Boolean(process.env.M8C_PRESET_PROBE)
+  let presetCursor = 10
+  let nativeDefaultId = 'native'
+  let nativeAuthorable = true
+  let failPresetReads = 0
+  let refuseNextNativeWrite = false
+  let unknownNextNativeWrite = false
+  let heldNativeRead = null
+  const presetWrites = []
+  const nativePresets = new Map([
+    ['native', { id: 'native', trust: 'system', name: 'Native Root',
+      description: 'Built-in preset', content: 'Exact native\\n<script>no execution</script>\\n' }],
+    ['user-one', { id: 'user-one', trust: 'user', name: 'User One',
+      description: 'User-owned preset', content: 'User one text\\n' }],
+    ['user-two', { id: 'user-two', trust: 'user', name: 'User Two',
+      content: 'User two text\\n' }],
+    ['broken', { id: 'broken', trust: 'user', name: 'Broken',
+      broken: 'cannot parse native source', content: 'Not readable' }],
+  ])
   const resources = new Map()
   let resourceCursor = 0
   let unknownNextResourceWrite = false
@@ -221,7 +240,7 @@ function createWritableRemoteFixture() {
         generation: change,
         profiles: profileCursor,
         promptResources: resourceCursor,
-        presets: change,
+        presets: presetProbe ? presetCursor : change,
         runtime: change,
       })
     },
@@ -237,6 +256,11 @@ function createWritableRemoteFixture() {
       return okRead(profileSnapshot())
     },
     async presets() {
+      readCalls.presetLists++
+      if (presetProbe && failPresetReads > 0) {
+        failPresetReads -= 1
+        throw new Error('native preset directory read unavailable')
+      }
       const resolutions = Object.create(null)
       for (const [id, profile] of Object.entries(profiles)) {
         resolutions[id] = {
@@ -246,13 +270,74 @@ function createWritableRemoteFixture() {
           },
         }
       }
+      const rows = presetProbe
+        ? Array.from(nativePresets.values(), entry => ({
+          id: entry.id, trust: entry.trust, isDefault: entry.id === nativeDefaultId,
+          ...(entry.name === undefined ? {} : { name: entry.name }),
+          ...(entry.description === undefined ? {} : { description: entry.description }),
+          ...(entry.broken === undefined ? {} : { broken: entry.broken }),
+        }))
+        : [{ id: 'native', trust: 'system', isDefault: true }]
       return okRead({
         directory: {
-          status: 'available', defaultId: 'native', authorable: false,
-          presets: [{ id: 'native', trust: 'system', isDefault: true }],
+          status: 'available', defaultId: presetProbe ? nativeDefaultId : 'native',
+          authorable: presetProbe && nativeAuthorable, presets: rows,
         },
         profiles: resolutions,
       })
+    },
+    async readPreset(id) {
+      readCalls.nativeBodies++
+      if (heldNativeRead?.id === id) {
+        const held = heldNativeRead
+        heldNativeRead = null
+        return held.promise
+      }
+      const item = nativePresets.get(id)
+      return item ? accepted({ id, content: item.content })
+        : rejected('preset-authoring-unavailable', 'native source missing')
+    },
+    async copyPreset(from, id, name) {
+      presetWrites.push({ kind: 'copy', from, id, name })
+      if (refuseNextNativeWrite) {
+        refuseNextNativeWrite = false
+        return rejected('preset-authoring-unavailable', 'refused by native host')
+      }
+      if (!nativeAuthorable) return rejected('preset-authoring-unavailable', 'native authoring disabled')
+      const source = nativePresets.get(from)
+      if (!source || nativePresets.has(id) || !id.length) {
+        return rejected('preset-authoring-unavailable', 'native copy rejected')
+      }
+      nativePresets.set(id, {
+        ...source, id, trust: 'user',
+        name: name === null ? source.name : name,
+      })
+      presetCursor++
+      change++
+      if (unknownNextNativeWrite) {
+        unknownNextNativeWrite = false
+        throw new Error('native copy completed; transport reply dropped')
+      }
+      return accepted({ id })
+    },
+    async removePreset(id) {
+      presetWrites.push({ kind: 'remove', id })
+      if (refuseNextNativeWrite) {
+        refuseNextNativeWrite = false
+        return rejected('preset-authoring-unavailable', 'refused by native host')
+      }
+      const item = nativePresets.get(id)
+      if (!nativeAuthorable || item?.trust !== 'user' || id === nativeDefaultId) {
+        return rejected('preset-authoring-unavailable', 'native remove rejected')
+      }
+      nativePresets.delete(id)
+      presetCursor++
+      change++
+      if (unknownNextNativeWrite) {
+        unknownNextNativeWrite = false
+        throw new Error('native remove completed; transport reply dropped')
+      }
+      return accepted({ id })
     },
     async promptPlacement() { return okRead({ status: 'unavailable' }) },
     async listPromptResources() {
@@ -389,8 +474,19 @@ function createWritableRemoteFixture() {
     },
   }
   return {
-    face, profiles, writes, resources, resourceWrites, readCalls,
+    face, profiles, writes, resources, resourceWrites, readCalls, presetWrites, nativePresets,
     getDefault: () => defaultId,
+    makeUnknownNextPresetWrite() { unknownNextNativeWrite = true },
+    refuseNextPresetWrite() { refuseNextNativeWrite = true },
+    failNextPresetReadBack(count = 12) { failPresetReads = count },
+    makeNativeAuthorable(value) { nativeAuthorable = value; presetCursor++; change++ },
+    externalPresetDefault(id) { nativeDefaultId = id; presetCursor++; change++ },
+    holdNextNativeBodyRead(id) {
+      let release
+      const promise = new Promise(resolve => { release = resolve })
+      heldNativeRead = { id, promise }
+      return (content) => release(accepted({ id, content }))
+    },
     // The chosen Profile snapshot is seeded before the real Renderer is
     // mounted. Special names are own Settings-style keys, not native catalog.
     seedSkillsForProbe() {
