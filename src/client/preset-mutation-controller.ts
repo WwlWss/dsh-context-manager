@@ -175,11 +175,11 @@ export function createContextManagerPresetMutationController(
   }
   const controller: ContextManagerClientPresetMutationController = Object.freeze({
     state,
-    copyPreset(from, id, name) {
+    copyPreset(from: string, id: string, name: string | null) {
       // null and '' intentionally differ. Neither IDs nor display name are normalized.
       return run('copy', [from, id, name ?? ''], remote => remote.copyPreset(from, id, name))
     },
-    removePreset(id) {
+    removePreset(id: string) {
       return run('remove', [id], remote => remote.removePreset(id))
     },
   })
