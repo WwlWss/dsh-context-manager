@@ -744,7 +744,7 @@ export function createContextManagerPresentationStore() {
         state.selectedPresetId = id
         state.presetNotice = null
       },
-      beginPresetCopy(state, row: ContextManagerRemotePresetRow, cursor: number, defaultId: string) {
+      beginPresetCopy(state, row: ContextManagerRemotePresetRow, cursor: number, defaultId: string, instanceId: string) {
         if (!canBeginPresetDraft(state)) {
           notifyOccupiedPresetDraft(state)
           return
@@ -754,11 +754,12 @@ export function createContextManagerPresentationStore() {
         state.presetDraft = {
           kind: 'copy', token: state.nextPresetDraftToken, sourceId: row.id,
           observedRow: Object.freeze({ ...row }), observedCursor: cursor,
-          observedDefaultId: defaultId, targetId: '', nameMode: 'inherit', explicitName: '',
+          observedDefaultId: defaultId, observedInstanceId: instanceId,
+          targetId: '', nameMode: 'inherit', explicitName: '',
         }
         state.presetNotice = null
       },
-      beginPresetRemove(state, row: ContextManagerRemotePresetRow, cursor: number, defaultId: string) {
+      beginPresetRemove(state, row: ContextManagerRemotePresetRow, cursor: number, defaultId: string, instanceId: string) {
         if (!canBeginPresetDraft(state)) {
           notifyOccupiedPresetDraft(state)
           return
@@ -768,7 +769,8 @@ export function createContextManagerPresentationStore() {
         state.presetDraft = {
           kind: 'confirm-remove', token: state.nextPresetDraftToken, targetId: row.id,
           observedRow: Object.freeze({ ...row }), observedCursor: cursor,
-          observedDefaultId: defaultId, confirmationText: '',
+          observedDefaultId: defaultId, observedInstanceId: instanceId,
+          confirmationText: '',
         }
         state.presetNotice = null
       },

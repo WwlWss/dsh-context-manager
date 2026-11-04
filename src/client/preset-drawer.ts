@@ -96,6 +96,7 @@ export function ContextManagerPresetDrawerContent(props: ContextManagerDrawerPro
     return ownsOpening()
       && live?.selectedPresetId === requestedId
       && fresh.directoryFresh
+      && actual.instanceId === snapshot.instanceId
       && fresh.selectedId === selectedId
       && fresh.cursor === view.cursor
       && fresh.defaultId === view.defaultId
@@ -156,13 +157,15 @@ export function ContextManagerPresetDrawerContent(props: ContextManagerDrawerPro
   }
   const startCopy = () => {
     if (!canBegin || !view.canCopy || !ownsSelection()
-      || view.selected === undefined || view.cursor === undefined || view.defaultId === undefined) return
-    actions.beginPresetCopy(view.selected, view.cursor, view.defaultId)
+      || view.selected === undefined || view.cursor === undefined
+      || view.defaultId === undefined || snapshot.instanceId === undefined) return
+    actions.beginPresetCopy(view.selected, view.cursor, view.defaultId, snapshot.instanceId)
   }
   const startRemove = () => {
     if (!canBegin || !view.canRemove || !ownsSelection()
-      || view.selected === undefined || view.cursor === undefined || view.defaultId === undefined) return
-    actions.beginPresetRemove(view.selected, view.cursor, view.defaultId)
+      || view.selected === undefined || view.cursor === undefined
+      || view.defaultId === undefined || snapshot.instanceId === undefined) return
+    actions.beginPresetRemove(view.selected, view.cursor, view.defaultId, snapshot.instanceId)
   }
 
   const commit = async () => {

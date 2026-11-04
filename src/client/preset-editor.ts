@@ -32,6 +32,8 @@ interface PresetDraftBase {
   readonly observedRow: Readonly<ContextManagerRemotePresetRow>
   readonly observedCursor: number
   readonly observedDefaultId: string
+  /** A conservative draft-opening Host-generation fence; NOT native CAS or root authority. */
+  readonly observedInstanceId: string
   submitting?: boolean
   blocked?: PresetDraftBlock
   terminalNotice?: PresetNotice
@@ -110,7 +112,10 @@ export function isPresetDraftCurrent(
   const view = derivePresetView(snapshot, draft.kind === 'copy' ? draft.sourceId : draft.targetId)
   const row = view.selected
   const original = draft.observedRow
-  return view.directoryFresh && view.authorable && view.cursor === draft.observedCursor
+  return view.directoryFresh && view.authorable
+    && snapshot.instanceId === draft.observedInstanceId
+    && snapshot.changes?.instanceId === draft.observedInstanceId
+    && view.cursor === draft.observedCursor
     && view.defaultId === draft.observedDefaultId
     && row !== undefined && row.id === original.id
     && row.trust === original.trust && row.isDefault === original.isDefault

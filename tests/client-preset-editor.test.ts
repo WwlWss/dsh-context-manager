@@ -64,7 +64,7 @@ test('M8C B3-B P19 all three panes preserve exclusive live draft ownership', () 
   store.actions.open()
   store.actions.selectPane('presets')
   assert.equal(store.getSnapshot().pane, 'presets')
-  store.actions.beginPresetCopy(USER, 5, 'native')
+  store.actions.beginPresetCopy(USER, 5, 'native', 'host')
   const draft = store.getSnapshot().presetDraft
   if (draft?.kind !== 'copy') throw new Error('expected copy draft')
   assert.equal(draft.sourceId, 'user-one')
@@ -89,7 +89,7 @@ test('M8C B3-B P09 remove requires target-matching acknowledgment and blocked re
   const store = createContextManagerPresentationStore().create()
   store.actions.open()
   store.actions.selectPane('presets')
-  store.actions.beginPresetRemove(USER, 5, 'native')
+  store.actions.beginPresetRemove(USER, 5, 'native', 'host')
   const draft = store.getSnapshot().presetDraft
   if (draft?.kind !== 'confirm-remove') throw new Error('expected removal draft')
   assert.equal(draft.confirmationText, '')
@@ -114,7 +114,7 @@ test('M8C B3-B P07 Copy mode preserves null versus deliberately empty display na
   const store = createContextManagerPresentationStore().create()
   store.actions.open()
   store.actions.selectPane('presets')
-  store.actions.beginPresetCopy(SYSTEM, 5, 'native')
+  store.actions.beginPresetCopy(SYSTEM, 5, 'native', 'host')
   const draft = store.getSnapshot().presetDraft
   if (draft?.kind !== 'copy') throw new Error('expected copy draft')
   store.actions.updatePresetCopy(draft.token, 'targetId', '  exact ')
@@ -136,7 +136,7 @@ test('M8C B3-B P13/15 obsolete callbacks lose opened-session authority despite d
   const store = handle.create()
   store.actions.open()
   store.actions.selectPane('presets')
-  store.actions.beginPresetCopy(SYSTEM, 5, 'native')
+  store.actions.beginPresetCopy(SYSTEM, 5, 'native', 'host')
   const token = store.getSnapshot().presetDraft?.token
   assert.ok(token)
   const opening = store.getSnapshot().openSessionEpoch
@@ -162,12 +162,12 @@ test('M8C Strict P24: retained copy and remove drafts cannot migrate to a replac
   assert.deepEqual(derivePresetView(original, 'native').rows.map(row => row.id),
     derivePresetView(replacement, 'native').rows.map(row => row.id))
   assert.equal(derivePresetView(replacement, 'native').directoryFresh, true)
-  store.actions.beginPresetCopy(SYSTEM, 5, 'native')
+  store.actions.beginPresetCopy(SYSTEM, 5, 'native', 'host')
   assert.equal(isPresetDraftCurrent(original, store.getSnapshot().presetDraft), true)
   assert.equal(isPresetDraftCurrent(replacement, store.getSnapshot().presetDraft), false,
     'an old copy intent cannot target a different Host with numerically identical native cursor')
   store.actions.cancelPresetDraft(store.getSnapshot().presetDraft!.token)
-  store.actions.beginPresetRemove(USER, 5, 'native')
+  store.actions.beginPresetRemove(USER, 5, 'native', 'host')
   assert.equal(isPresetDraftCurrent(original, store.getSnapshot().presetDraft), true)
   assert.equal(isPresetDraftCurrent(replacement, store.getSnapshot().presetDraft), false,
     'an old remove intent cannot target a different Host with identical user-row metadata')
