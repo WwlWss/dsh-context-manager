@@ -8,6 +8,7 @@ import {
   type ContextManagerRemoteChangeSnapshot,
   type ContextManagerRemoteErrorCode,
   type ContextManagerRemotePresetSnapshot,
+  type ContextManagerRemotePresetDocument,
   type ContextManagerRemoteProfilesSnapshot,
   type ContextManagerRemoteProfileInput,
   type ContextManagerRemoteProfileMutationBasis,
@@ -164,6 +165,7 @@ class ScriptedRemote implements ContextManagerClientBusinessRemote {
     changes: 0,
     profiles: 0,
     presets: 0,
+    readPreset: 0,
     promptPlacement: 0,
     profileMutation: 0,
     resourceMutation: 0,
@@ -185,6 +187,7 @@ class ScriptedRemote implements ContextManagerClientBusinessRemote {
   readonly changesSteps: Array<Step<ContextManagerRemoteChangeSnapshot>> = []
   readonly profilesSteps: Array<Step<ContextManagerRemoteProfilesSnapshot>> = []
   readonly presetsSteps: Array<Step<ContextManagerRemotePresetSnapshot>> = []
+  readonly presetBodySteps: Array<Step<ContextManagerRemoteResult<ContextManagerRemotePresetDocument>>> = []
   readonly placementSteps: Array<Step<ContextManagerRemotePromptPlacementCapability>> = []
   readonly profileMutationSteps: ProfileMutationStep[] = []
 
@@ -222,6 +225,19 @@ class ScriptedRemote implements ContextManagerClientBusinessRemote {
   presets(): Promise<RemoteResult<ContextManagerRemotePresetSnapshot>> {
     this.calls.presets += 1
     return this.take(this.presetsSteps, this.defaultPresets)
+  }
+
+  readPreset(id: string): Promise<RemoteResult<ContextManagerRemoteResult<ContextManagerRemotePresetDocument>>> {
+    this.calls.readPreset += 1
+    return this.take(this.presetBodySteps, businessOk({ id, content: 'native body:' + id }))
+  }
+
+  copyPreset(_from: string, id: string, _name: string | null) {
+    return Promise.resolve(ok(businessOk({ id })))
+  }
+
+  removePreset(id: string) {
+    return Promise.resolve(ok(businessOk({ id })))
   }
 
   promptPlacement(): Promise<RemoteResult<ContextManagerRemotePromptPlacementCapability>> {
@@ -2887,4 +2903,40 @@ test('the baseline surface list stays explicit and mutation-free', () => {
     'presets',
     'promptPlacement',
   ])
+})
+
+test('M8C P03 composition is an explicit keyed lazy read, never a baseline or profile-side effect', async () => {
+  const { model, remote, detach } = await attachAndReady()
+  assert.equal(remote.calls.readPreset, 0, 'initial authoritative hydration must not read composition')
+  const report = await model.loadNativePresetDocument('source')
+  assert.equal(report.status, 'completed')
+  assert.equal(remote.calls.readPreset, 1)
+  const body = model.state.getSnapshot().nativePresetDocuments?.get('source')
+  assert.equal(body?.status, 'ready')
+  assert.equal(body.data?.content, 'native body:source')
+  assert.equal(model.state.getSnapshot().profiles.status, 'ready')
+  detach()
+  assert.equal(model.state.getSnapshot().nativePresetDocuments?.size, 0,
+    'host detach must purge sensitive native composition data')
+  model.dispose()
+})
+
+test('M8C P04 concurrent same-ID native composition read must not publish old response over new', async () => {
+  const remote = new ScriptedRemote()
+  const gate = deferred<RemoteResult<ContextManagerRemoteResult<ContextManagerRemotePresetDocument>>>()
+  remote.presetBodySteps.push(
+    async () => gate.promise,
+    async () => ok(businessOk({ id: 'source', content: 'newest' })),
+  )
+  const { model, detach } = await attachAndReady(remote)
+  const old = model.loadNativePresetDocument('source')
+  await waitFor(() => remote.calls.readPreset === 1, 'first native composition request')
+  const latest = model.loadNativePresetDocument('source')
+  assert.equal((await latest).status, 'completed')
+  gate.resolve(ok(businessOk({ id: 'source', content: 'obsolete' })))
+  const oldResult = await old
+  assert.ok(oldResult.status === 'superseded' || oldResult.status === 'detached')
+  assert.equal(model.state.getSnapshot().nativePresetDocuments?.get('source')?.data?.content, 'newest')
+  detach()
+  model.dispose()
 })
