@@ -11,6 +11,7 @@ export default defineConfig({
     'client-prompt-binding-editor.test': 'tests/client-prompt-binding-editor.test.ts',
     'client-skill-policy-editor.test': 'tests/client-skill-policy-editor.test.ts',
     'client-preset-mutation.test': 'tests/client-preset-mutation.test.ts',
+    'client-preset-editor.test': 'tests/client-preset-editor.test.ts',
   },
   outDir: '.artifacts/client-model-tests',
   format: 'esm',
