@@ -7,6 +7,12 @@ on:
       - '.github/workflows/m8b-b12b-renderer-red.yml'
       - '.github/workflows/ci.yml'
       - 'tests/m8b/run-skill-renderer-probes.mjs'
+      - 'tests/m8c/**'
+      - 'src/client/preset-drawer.ts'
+      - 'src/client/preset-editor.ts'
+      - 'src/client/preset-mutation-controller.ts'
+      - 'src/client/business-face.ts'
+      - 'src/client/plugin.ts'
       - 'tests/m8b-full-skill-gate.test.mjs'
       - 'src/client/profile-editor.ts'
       - 'docs/m8b-plan.md'
@@ -202,4 +208,6 @@ jobs:
             tests/client-upstream-contract.ts tests/client-generated-remote-contract.ts
       - name: Execute shared 36-case published Skill Renderer suite as official Full
         run: node ./tests/m8b/run-skill-renderer-probes.mjs
+      - name: Execute M8C 20-case native Preset Renderer suite per retained version
+        run: node ./tests/m8c/run-preset-renderer-probes.mjs
 
