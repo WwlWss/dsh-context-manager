@@ -14,6 +14,7 @@
     "tests/client-resource-editor.test.ts",
     "tests/client-prompt-binding-editor.test.ts",
     "tests/client-skill-policy-editor.test.ts",
+    "tests/client-preset-mutation.test.ts",
     "tests/m8b-client-contract-preflight.ts"
   ]
 }

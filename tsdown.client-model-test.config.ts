@@ -10,6 +10,7 @@ export default defineConfig({
     'client-resource-editor.test': 'tests/client-resource-editor.test.ts',
     'client-prompt-binding-editor.test': 'tests/client-prompt-binding-editor.test.ts',
     'client-skill-policy-editor.test': 'tests/client-skill-policy-editor.test.ts',
+    'client-preset-mutation.test': 'tests/client-preset-mutation.test.ts',
   },
   outDir: '.artifacts/client-model-tests',
   format: 'esm',
