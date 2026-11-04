@@ -190,7 +190,6 @@ test('M7B0 loader artifact mounts Remote and locale before registering two addit
     'capturePromptResourceReadStamp',
     'hooks',
     'beginNativePresetView',
-    'loadNativePresetDocument',
     'loadPromptResource',
     'loadPromptResourceList',
     'presetMutations',
@@ -201,6 +200,7 @@ test('M7B0 loader artifact mounts Remote and locale before registering two addit
     'refreshNativePresets',
     'resourceMutations',
   ].sort())
+  assert.equal('loadNativePresetDocument' in businessFace, false)
   assert.equal('state' in businessFace.presetMutations, false)
   assert.equal(typeof businessFace.hooks.presetMutation.getSnapshot, 'function')
   assert.equal('state' in businessFace.profileMutations, false)

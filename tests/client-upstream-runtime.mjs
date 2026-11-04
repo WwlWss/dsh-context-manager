@@ -228,7 +228,6 @@ assert.deepEqual(businessKeys, [
   'capturePromptResourceReadStamp',
   'hooks',
   'beginNativePresetView',
-  'loadNativePresetDocument',
   'loadPromptResource',
   'loadPromptResourceList',
   'presetMutations',
@@ -239,6 +238,7 @@ assert.deepEqual(businessKeys, [
   'refreshNativePresets',
   'resourceMutations',
 ].sort())
+assert.equal('loadNativePresetDocument' in businessFace, false)
 assert.deepEqual(Object.keys(businessFace.hooks).sort(), [
   'contextManager',
   'presetMutation',

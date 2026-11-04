@@ -142,7 +142,6 @@ function createFixture() {
         instanceId: snap.instanceId, changes: snap.changes, presets: snap.presets }
     },
     async refreshNativePresets() { lazyReads.push('presets-refresh'); return refreshResult },
-    async loadNativePresetDocument(id) { lazyReads.push('native:' + id); return { status: 'completed' } },
     beginNativePresetView(id) { lazyReads.push('view:' + id); return { leaseId: 11, result: Promise.resolve({ status: 'completed' as const }) } },
     releaseNativePresetView(leaseId) { lazyReads.push('release:' + leaseId) },
     async loadPromptResourceList() { lazyReads.push('list'); return { status: 'completed' } },
@@ -198,7 +197,6 @@ test('business face exposes only the frozen renderer-facing capability projectio
     'loadPromptResource',
     'loadPromptResourceList',
     'beginNativePresetView',
-    'loadNativePresetDocument',
     'releaseNativePresetView',
     'readCurrentPresetState',
     'refreshNativePresets',
@@ -400,7 +398,6 @@ test('Resource Business Face preserves edit-time stamp and explicitly forwards a
 test('M8C B3-A Frozen Native Preset Business Face forwards exact copy/remove and on-demand read only', async () => {
   const f = createFixture()
   const face = createContextManagerClientBusinessFace(f.source)
-  assert.equal((await face.loadNativePresetDocument('raw')).status, 'completed')
   const view = face.beginNativePresetView('source')
   assert.equal((await view.result).status, 'completed')
   face.releaseNativePresetView(view.leaseId)
@@ -409,7 +406,7 @@ test('M8C B3-A Frozen Native Preset Business Face forwards exact copy/remove and
   assert.deepEqual(await face.presetMutations.copyPreset('source', ' target ', null), APPLIED)
   assert.deepEqual(await face.presetMutations.copyPreset('source', 'target', ''), APPLIED)
   assert.deepEqual(await face.presetMutations.removePreset('user-id'), APPLIED)
-  assert.deepEqual(f.lazyReads, ['native:raw', 'view:source', 'release:11', 'presets-refresh'])
+  assert.deepEqual(f.lazyReads, ['view:source', 'release:11', 'presets-refresh'])
   assert.deepEqual(f.presetCalls, [
     { kind: 'copy', args: ['source', ' target ', null] },
     { kind: 'copy', args: ['source', 'target', ''] },

@@ -15,7 +15,6 @@ export type ContextManagerClientBusinessSource = Pick<
   | 'presetMutations'
   | 'readCurrentPresetState'
   | 'refreshNativePresets'
-  | 'loadNativePresetDocument'
   | 'beginNativePresetView'
   | 'releaseNativePresetView'
   | 'refresh'
@@ -45,7 +44,6 @@ export interface ContextManagerClientBusinessFace {
   readonly profileMutations: ContextManagerClientProfileMutations
   readonly resourceMutations: ContextManagerClientResourceMutations
   readonly presetMutations: ContextManagerClientPresetMutations
-  readonly loadNativePresetDocument: ContextManagerClientBusinessSource['loadNativePresetDocument']
   readonly beginNativePresetView: ContextManagerClientBusinessSource['beginNativePresetView']
   readonly releaseNativePresetView: ContextManagerClientBusinessSource['releaseNativePresetView']
   readonly refreshNativePresets: ContextManagerClientBusinessSource['refreshNativePresets']
@@ -145,7 +143,6 @@ export function createContextManagerClientBusinessFace(
     capturePromptResourceReadStamp: (id, from) => source.capturePromptResourceReadStamp(id, from),
     loadPromptResourceList: () => source.loadPromptResourceList(),
     loadPromptResource: id => source.loadPromptResource(id),
-    loadNativePresetDocument: id => source.loadNativePresetDocument(id),
     beginNativePresetView: id => source.beginNativePresetView(id),
     releaseNativePresetView: leaseId => source.releaseNativePresetView(leaseId),
     refreshNativePresets: () => source.refreshNativePresets(),
