@@ -1,4 +1,5 @@
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
+import type { ContextManagerClientPresetMutationRemote } from './preset-remote-port.js'
 
 import type {
   ContextManagerRemoteChangeSnapshot,
@@ -87,4 +88,5 @@ export interface ContextManagerClientBusinessRemote
     ContextManagerClientRuntimeReadRemote,
     ContextManagerClientResourceMutationRemote,
     ContextManagerClientNativePresetReadRemote,
+    ContextManagerClientPresetMutationRemote,
     ContextManagerClientProfileMutationRemote {}

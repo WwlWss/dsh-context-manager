@@ -39,6 +39,8 @@ import {
   type ContextManagerResourceRecoveryRequest,
 } from './resource-mutation-controller.js'
 import type { ContextManagerClientResourceCreateBasis } from './resource-mutation-types.js'
+import { createContextManagerPresetMutationController } from './preset-mutation-controller.js'
+import type { ContextManagerClientPresetMutationController } from './preset-mutation-types.js'
 import { mapSurfaces, setBoundedEntry } from './keyed-cache.js'
 import type {
   ContextManagerClientBusinessRemote,
@@ -94,6 +96,7 @@ export interface ContextManagerClientModel {
   readonly state: SnapshotStore<ContextManagerClientSnapshot>
   readonly mutations: ContextManagerClientMutationController
   readonly resourceMutations: ContextManagerClientResourceMutationController
+  readonly presetMutations: ContextManagerClientPresetMutationController
   loadPromptResourceList(): Promise<ContextManagerClientLazyReadResult>
   loadPromptResource(id: string): Promise<ContextManagerClientLazyReadResult>
   loadNativePresetDocument(id: string): Promise<ContextManagerClientLazyReadResult>
@@ -293,6 +296,7 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
   let disposed = false
   let resetMutationController = (): void => {}
   let resetResourceMutationController = (): void => {}
+  let resetPresetMutationController = (): void => {}
   let observeResourceAuthority = (_id: string | null): void => {}
   let attachmentEpoch = 0
   const surfaceEpochs: SurfaceEpochs = {
@@ -472,7 +476,10 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
     resetMutationController()
     // Profile Settings source changes alone do NOT revoke an independent
     // PromptLibrary mutation. A verified incompatible protocol does.
-    if (protocol.status === 'incompatible') resetResourceMutationController()
+    if (protocol.status === 'incompatible') {
+      resetResourceMutationController()
+      resetPresetMutationController()
+    }
   }
 
   const transitionAuthority = (
@@ -1375,6 +1382,7 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
     }
     resetMutationController()
     resetResourceMutationController()
+    resetPresetMutationController()
 
     void reconcile(CONTEXT_MANAGER_BASELINE_SURFACES)
 
@@ -1400,6 +1408,7 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
       })
       resetMutationController()
       resetResourceMutationController()
+      resetPresetMutationController()
     }
   }
 
@@ -1476,6 +1485,45 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
   resetResourceMutationController = resourceHandle.reset
   observeResourceAuthority = resourceHandle.observeResourceAuthority
 
+  const presetHandle = createContextManagerPresetMutationController({
+    getRemote: () => remote,
+    getLifecycle: () => (
+      disposed ? 'disposed' : remote === undefined ? 'detached' : 'attached'
+    ),
+    getProtocolStatus: () => state.getSnapshot().protocol.status,
+    getRoster: () => {
+      const current = state.getSnapshot()
+      const surface = current.presets
+      if (current.attachment !== 'attached' || current.protocol.status !== 'compatible'
+        || current.changes?.instanceId !== current.instanceId
+        || surface.status !== 'ready' || surface.stale
+        || surface.data?.directory.status !== 'available') return undefined
+      return {
+        status: 'ready',
+        authorable: surface.data.directory.authorable,
+        ids: surface.data.directory.presets.map(row => row.id),
+      }
+    },
+    invalidate: () => {
+      const current = state.getSnapshot()
+      state.set({ ...current, presets: markSurfaceStale(current.presets), nativePresetDocuments: new Map() })
+    },
+    rehydrate: async request => {
+      const result = await reconcile(['presets'])
+      if (result.status !== 'completed') return false
+      const current = state.getSnapshot()
+      const surface = current.presets
+      if (current.attachment !== 'attached' || current.protocol.status !== 'compatible'
+        || current.changes?.instanceId !== current.instanceId
+        || surface.status !== 'ready' || surface.stale
+        || surface.data?.directory.status !== 'available') return false
+      const exists = surface.data.directory.presets.some(row => row.id === request.id)
+      return request.kind === 'copy' ? exists : !exists
+    },
+  })
+  const presetMutations = presetHandle.controller
+  resetPresetMutationController = presetHandle.reset
+
   const dispose = (): void => {
     if (disposed) return
     disposed = true
@@ -1499,12 +1547,14 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
     })
     resetMutationController()
     resetResourceMutationController()
+    resetPresetMutationController()
   }
 
   return Object.freeze({
     state,
     mutations,
     resourceMutations,
+    presetMutations,
     loadPromptResourceList: () => runLazy('list', ''),
     loadPromptResource: (id: string) => runLazy('document', id),
     loadNativePresetDocument: (id: string) => runLazy('nativePreset', id),

@@ -25,7 +25,8 @@ export interface ContextManagerPresetMutationControllerDeps {
   /** Source-of-truth read observation, not a native revision or write lock. */
   readonly getRoster: () => ContextManagerPresetRosterObservation | undefined
   /** Only one authoritative *read-back*. Never dispatch another native write. */
-  readonly rehydrate: () => Promise<boolean>
+  readonly rehydrate: (request: { readonly kind: ContextManagerClientPresetMutationKind; readonly id: string }) => Promise<boolean>
+  readonly invalidate?: () => void
 }
 
 type RpcResult = RemoteResult<ContextManagerRemoteResult<ContextManagerRemotePresetReceipt>>
@@ -151,6 +152,9 @@ export function createContextManagerPresetMutationController(
     const afterClaim = check(kind, args)
     if (afterClaim) return settle(e, id, kind, afterClaim)
 
+    // Fence an earlier composition read before dispatch; never recheck an invalidated roster.
+    deps.invalidate?.()
+    if (!current(e, id)) return obsolete()
     // Exactly one dispatched write, with the captured exact strings.
     const result = await invoke(() => invokeNative(remote))
     if (!current(e, id)) return obsolete()
@@ -158,7 +162,7 @@ export function createContextManagerPresetMutationController(
     if (!current(e, id)) return obsolete()
     let fresh = false
     try {
-      fresh = await deps.rehydrate()
+      fresh = await deps.rehydrate({ kind, id: args[kind === 'copy' ? 1 : 0] ?? '' })
     } catch {
       fresh = false
     }
