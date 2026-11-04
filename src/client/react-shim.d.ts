@@ -7,6 +7,8 @@ declare module 'react' {
 
   export function useRef<T>(initialValue: T): { current: T }
 
+  export function useState<T>(initialValue: T): [T, (next: T) => void]
+
   export function useEffect(
     effect: () => void | (() => void),
     deps?: readonly unknown[],
