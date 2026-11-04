@@ -1,6 +1,6 @@
 # M8C — Native AgentPreset UX (Capability & Implementation Contract)
 
-**Status:** B0 source-contract audit and design; published-package M8C-specific preflight not yet completed. No M8C Client production behavior has been qualified.
+**Status:** B2 Client Controller/Model integrated and Draft Quick GREEN on `3c52f1af`; B3 detailed design is in [m8c-b3-implementation-plan.md](m8c-b3-implementation-plan.md). Published-package M8C-specific preflight and B4 Full remain pending. (Sections below retain original B0 provenance and design intent.)
 **Immutable baseline:** merged `main` `39b46b2603ed749b8fda80f4748bff4a84c4d14f` (PR #42); independent Post-Merge Full #41237721472, 86/86 successful, **baseline only**.
 **Branch:** `feat/m8c-native-preset-ux`; one Draft PR per implementation slice.
 **Scope:** a third, additive Presets pane inside the existing Drawer for exact native roster browsing, on-demand read-only composition inspection, explicit copy and explicit remove.
