@@ -166,6 +166,7 @@ class ScriptedRemote implements ContextManagerClientBusinessRemote {
     profiles: 0,
     presets: 0,
     readPreset: 0,
+    nativePresetWrite: 0,
     promptPlacement: 0,
     profileMutation: 0,
     resourceMutation: 0,
@@ -233,10 +234,33 @@ class ScriptedRemote implements ContextManagerClientBusinessRemote {
   }
 
   copyPreset(_from: string, id: string, _name: string | null) {
+    this.calls.nativePresetWrite += 1
+    const directory = this.defaultPresets.directory
+    if (directory.status === 'available') {
+      this.defaultPresets = {
+        ...this.defaultPresets,
+        directory: { ...directory, presets: [...directory.presets, { id, trust: 'user', isDefault: false }] },
+      }
+      this.defaultChanges = { ...this.defaultChanges,
+        generation: this.defaultChanges.generation + 1,
+        presets: this.defaultChanges.presets + 1,
+      }
+    }
     return Promise.resolve(ok(businessOk({ id })))
   }
 
   removePreset(id: string) {
+    this.calls.nativePresetWrite += 1
+    const directory = this.defaultPresets.directory
+    if (directory.status === 'available') {
+      this.defaultPresets = { ...this.defaultPresets,
+        directory: { ...directory, presets: directory.presets.filter(row => row.id !== id) },
+      }
+      this.defaultChanges = { ...this.defaultChanges,
+        generation: this.defaultChanges.generation + 1,
+        presets: this.defaultChanges.presets + 1,
+      }
+    }
     return Promise.resolve(ok(businessOk({ id })))
   }
 
@@ -2937,6 +2961,45 @@ test('M8C P04 concurrent same-ID native composition read must not publish old re
   const oldResult = await old
   assert.ok(oldResult.status === 'superseded' || oldResult.status === 'detached')
   assert.equal(model.state.getSnapshot().nativePresetDocuments?.get('source')?.data?.content, 'newest')
+  detach()
+  model.dispose()
+})
+
+test('M8C B2.3 model authoring uses native lane and recovers authoritative Preset roster without changing Profile Settings', async () => {
+  const remote = new ScriptedRemote()
+  remote.defaultPresets = {
+    directory: {
+      status: 'available', defaultId: 'source', authorable: true,
+      presets: [
+        { id: 'source', trust: 'system', isDefault: true },
+        { id: 'my-user', trust: 'user', isDefault: false },
+      ],
+    },
+    profiles: {},
+  }
+  const { model, detach } = await attachAndReady(remote)
+  const profileBefore = model.state.getSnapshot().profiles.data
+  const receipt = await model.presetMutations.copyPreset('source', 'copied', null)
+  assert.deepEqual(receipt, { status: 'applied', refresh: 'fresh' })
+  assert.equal(remote.calls.nativePresetWrite, 1)
+  const afterCopy = model.state.getSnapshot()
+  assert.equal(afterCopy.presets.status, 'ready')
+  assert.equal(afterCopy.presets.stale, false)
+  assert.equal(afterCopy.presets.data?.directory.status, 'available')
+  if (afterCopy.presets.data?.directory.status === 'available') {
+    assert.ok(afterCopy.presets.data.directory.presets.some(p => p.id === 'copied'))
+  }
+  assert.deepEqual(afterCopy.profiles.data, profileBefore,
+    'native copy cannot edit profile bindings or their Settings revision')
+
+  const removed = await model.presetMutations.removePreset('copied')
+  assert.deepEqual(removed, { status: 'applied', refresh: 'fresh' })
+  assert.equal(remote.calls.nativePresetWrite, 2)
+  const afterRemove = model.state.getSnapshot()
+  if (afterRemove.presets.data?.directory.status === 'available') {
+    assert.ok(!afterRemove.presets.data.directory.presets.some(p => p.id === 'copied'))
+  }
+  assert.deepEqual(afterRemove.profiles.data, profileBefore)
   detach()
   model.dispose()
 })
