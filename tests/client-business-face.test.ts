@@ -7,6 +7,7 @@ import {
   createContextManagerClientBusinessFace,
   type ContextManagerClientBusinessSource,
 } from '../src/client/business-face.js'
+import type { ContextManagerClientPresetMutationController } from '../src/client/preset-mutation-types.js'
 import type { ContextManagerClientMutationController } from '../src/client/mutation-controller.js'
 import type { ContextManagerClientResourceMutationController } from '../src/client/resource-mutation-controller.js'
 import type {
@@ -52,6 +53,13 @@ function createFixture() {
   })
   const calls: MutationCall[] = []
   const resourceState = createSnapshotStore<ContextManagerClientResourceMutationSnapshot>({ resource: { status: 'idle' } })
+  const presetState = createSnapshotStore({ preset: { status: 'idle' as const } })
+  const presetCalls: Array<{ kind: 'copy' | 'remove'; args: readonly unknown[] }> = []
+  const presetMutations: ContextManagerClientPresetMutationController = {
+    state: presetState,
+    async copyPreset(from, id, name) { presetCalls.push({ kind: 'copy', args: [from,id,name] }); return APPLIED },
+    async removePreset(id) { presetCalls.push({ kind: 'remove', args: [id] }); return APPLIED },
+  }
   const resourceCalls: Array<{ readonly method: keyof ContextManagerClientResourceMutations; readonly args: readonly unknown[] }> = []
   const recordResource = (
     method: keyof ContextManagerClientResourceMutations,
@@ -127,6 +135,14 @@ function createFixture() {
     state,
     mutations,
     resourceMutations,
+    presetMutations,
+    readCurrentPresetState() {
+      const snap = state.getSnapshot()
+      return { attachment: snap.attachment, protocol: snap.protocol,
+        instanceId: snap.instanceId, changes: snap.changes, presets: snap.presets }
+    },
+    async refreshNativePresets() { lazyReads.push('presets-refresh'); return refreshResult },
+    async loadNativePresetDocument(id) { lazyReads.push('native:' + id); return { status: 'completed' } },
     async loadPromptResourceList() { lazyReads.push('list'); return { status: 'completed' } },
     async loadPromptResource(id) { lazyReads.push(id); return { status: 'completed' } },
     capturePromptResourceCreateBasis() {
@@ -152,6 +168,8 @@ function createFixture() {
     state,
     mutationState,
     resourceState,
+    presetState,
+    presetCalls,
     resourceCalls,
     resourceStamp,
     lazyReads,
@@ -177,6 +195,10 @@ test('business face exposes only the frozen renderer-facing capability projectio
     'hooks',
     'loadPromptResource',
     'loadPromptResourceList',
+    'loadNativePresetDocument',
+    'readCurrentPresetState',
+    'refreshNativePresets',
+    'presetMutations',
     'profileMutations',
     'refresh',
     'resourceMutations',
@@ -209,9 +231,14 @@ test('business face exposes only the frozen renderer-facing capability projectio
   assert.equal(Object.isFrozen(face.hooks), true)
   assert.equal(Object.isFrozen(face.profileMutations), true)
   assert.equal(Object.isFrozen(face.resourceMutations), true)
+  assert.equal(Object.isFrozen(face.presetMutations), true)
+  assert.deepEqual(Object.keys(face.presetMutations).sort(), ['copyPreset', 'removePreset'])
   assert.equal(face.hooks.contextManager, fixture.state)
   assert.equal(face.hooks.profileMutation, fixture.mutationState)
   assert.equal(face.hooks.resourceMutation, fixture.resourceState)
+  assert.equal(face.hooks.presetMutation, fixture.presetState)
+  assert.equal('state' in face.presetMutations, false)
+  assert.notEqual(face.presetMutations, fixture.source.presetMutations)
   assert.equal('state' in face.resourceMutations, false)
   assert.notEqual(face.resourceMutations, fixture.source.resourceMutations)
   assert.notEqual(face.profileMutations, fixture.source.mutations)
@@ -361,4 +388,24 @@ test('Resource Business Face preserves edit-time stamp and explicitly forwards a
   assert.deepEqual(f.resourceCalls[0]?.args[0], createBasis)
   for (const call of f.resourceCalls.slice(1)) assert.deepEqual(call.args[0], stamp)
   assert.deepEqual(f.resourceCalls[4]?.args.slice(1), [null])
+})
+
+test('M8C B3-A Frozen Native Preset Business Face forwards exact copy/remove and on-demand read only', async () => {
+  const f = createFixture()
+  const face = createContextManagerClientBusinessFace(f.source)
+  assert.equal((await face.loadNativePresetDocument('raw')).status, 'completed')
+  assert.deepEqual(await face.refreshNativePresets(), f.refreshResult)
+  assert.equal(face.readCurrentPresetState().attachment, f.state.getSnapshot().attachment)
+  assert.deepEqual(await face.presetMutations.copyPreset('source', ' target ', null), APPLIED)
+  assert.deepEqual(await face.presetMutations.copyPreset('source', 'target', ''), APPLIED)
+  assert.deepEqual(await face.presetMutations.removePreset('user-id'), APPLIED)
+  assert.deepEqual(f.lazyReads, ['native:raw', 'presets-refresh'])
+  assert.deepEqual(f.presetCalls, [
+    { kind: 'copy', args: ['source', ' target ', null] },
+    { kind: 'copy', args: ['source', 'target', ''] },
+    { kind: 'remove', args: ['user-id'] },
+  ])
+  for (const name of ['state', 'reset', 'dispose', 'attach', 'reconcile', 'getRemote']) {
+    assert.equal(name in face.presetMutations, false)
+  }
 })
