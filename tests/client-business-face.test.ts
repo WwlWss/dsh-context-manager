@@ -202,7 +202,7 @@ test('business face exposes only the frozen renderer-facing capability projectio
     'profileMutations',
     'refresh',
     'resourceMutations',
-  ])
+  ].sort())
   assert.deepEqual(Object.keys(face.profileMutations).sort(), [
     'addPromptBinding',
     'createProfile',
