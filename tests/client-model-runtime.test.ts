@@ -3144,10 +3144,10 @@ test('M8C Final Strict P1-A RED: A-to-B Host rotation releases the native write 
   model.dispose()
 
   assert.equal(transition.status, 'completed')
-  assert.equal(laneAfterRotation.status, 'idle',
-    'Host B must not inherit an in-flight native mutation owned by Host A')
   assert.deepEqual(newWrite, { status: 'applied', refresh: 'fresh' },
     'new Host must be able to dispatch its own native Copy before A replies')
+  assert.equal(laneAfterRotation.status, 'idle',
+    'Host B must not inherit an in-flight native mutation owned by Host A')
   assert.deepEqual(oldResult, { status: 'superseded' },
     'old Host A Copy reply must not publish a result into Host B')
   assert.equal(observedWrites, 2, 'one old Host A RPC and one new Host B RPC')
@@ -3204,10 +3204,10 @@ test('M8C Final Strict P1-B RED: late Host A Copy receipt cannot rehydrate again
   detach()
   model.dispose()
 
-  assert.equal(beforeOldReply.status, 'idle',
-    'Host B should have reset the old mutation owner before its RPC completes')
   assert.deepEqual(oldResult, { status: 'superseded' },
     'a successful Host A RPC must not count Host B same-ID membership as A write verification')
+  assert.equal(beforeOldReply.status, 'idle',
+    'Host B should have reset the old mutation owner before its RPC completes')
   assert.equal(afterOldReply.status, 'idle',
     'old Host A receipt cannot publish a settled operation on Host B')
   assert.equal(extraRosterReads, 0,
