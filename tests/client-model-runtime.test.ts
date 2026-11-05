@@ -3085,3 +3085,131 @@ test('M8C Strict P23: Host instance rotation revokes the native view lease befor
   detach()
   model.dispose()
 })
+
+
+test('M8C Final Strict P1-A RED: A-to-B Host rotation releases the native write lane before old RPC settles', async () => {
+  const remote = new ScriptedRemote()
+  remote.defaultPresets = {
+    directory: {
+      status: 'available', defaultId: 'a-source', authorable: true,
+      presets: [{ id: 'a-source', trust: 'system', isDefault: true }],
+    },
+    profiles: {},
+  }
+  const { model, detach } = await attachAndReady(remote)
+  const oldReply = deferred<Awaited<ReturnType<ScriptedRemote['copyPreset']>>>()
+  const baseCopy = remote.copyPreset.bind(remote)
+  let holdFirst = true
+  remote.copyPreset = (from, id, name) => {
+    if (!holdFirst) return baseCopy(from, id, name)
+    holdFirst = false
+    remote.calls.nativePresetWrite += 1
+    return oldReply.promise
+  }
+
+  const oldWrite = model.presetMutations.copyPreset('a-source', 'same-target', null)
+  await waitFor(() => remote.calls.nativePresetWrite === 1,
+    'Host A native Copy RPC dispatched and reply held')
+  assert.equal(model.presetMutations.state.getSnapshot().preset.status, 'running')
+
+  // Same attached Remote, new Host instance. A must no longer own B's lane.
+  // B deliberately contains the old target ID to expose false attribution.
+  remote.defaultChanges = changes('host-b', 1, 1, 1)
+  remote.defaultPresets = {
+    directory: {
+      status: 'available', defaultId: 'b-source', authorable: true,
+      presets: [
+        { id: 'b-source', trust: 'system', isDefault: true },
+        { id: 'same-target', trust: 'user', isDefault: false },
+      ],
+    },
+    profiles: {},
+  }
+  const transition = await model.refresh()
+  await waitFor(() => {
+    const s = model.state.getSnapshot()
+    return s.instanceId === 'host-b' && s.presets.status === 'ready'
+      && !s.presets.stale && s.protocol.status === 'compatible'
+  }, 'Host B authoritative baseline')
+  const laneAfterRotation = model.presetMutations.state.getSnapshot().preset
+
+  const newWrite = await model.presetMutations.copyPreset('b-source', 'b-created', null)
+  // Always release the old RPC, even when B rejected it: no dangling tests.
+  oldReply.resolve(ok(businessOk({ id: 'same-target' })))
+  const oldResult = await oldWrite
+  const observedWrites = remote.calls.nativePresetWrite
+  const bHasNewTarget = remote.defaultPresets.directory.status === 'available'
+    && remote.defaultPresets.directory.presets.some(row => row.id === 'b-created')
+  detach()
+  model.dispose()
+
+  assert.equal(transition.status, 'completed')
+  assert.equal(laneAfterRotation.status, 'idle',
+    'Host B must not inherit an in-flight native mutation owned by Host A')
+  assert.deepEqual(newWrite, { status: 'applied', refresh: 'fresh' },
+    'new Host must be able to dispatch its own native Copy before A replies')
+  assert.deepEqual(oldResult, { status: 'superseded' },
+    'old Host A Copy reply must not publish a result into Host B')
+  assert.equal(observedWrites, 2, 'one old Host A RPC and one new Host B RPC')
+  assert.equal(bHasNewTarget, true)
+})
+
+test('M8C Final Strict P1-B RED: late Host A Copy receipt cannot rehydrate against a same-ID Host B roster', async () => {
+  const remote = new ScriptedRemote()
+  remote.defaultPresets = {
+    directory: {
+      status: 'available', defaultId: 'a-source', authorable: true,
+      presets: [{ id: 'a-source', trust: 'system', isDefault: true }],
+    },
+    profiles: {},
+  }
+  const { model, detach } = await attachAndReady(remote)
+  const oldReply = deferred<Awaited<ReturnType<ScriptedRemote['copyPreset']>>>()
+  const baseCopy = remote.copyPreset.bind(remote)
+  let holdFirst = true
+  remote.copyPreset = (from, id, name) => {
+    if (!holdFirst) return baseCopy(from, id, name)
+    holdFirst = false
+    remote.calls.nativePresetWrite += 1
+    return oldReply.promise
+  }
+  const oldWrite = model.presetMutations.copyPreset('a-source', 'colliding', null)
+  await waitFor(() => remote.calls.nativePresetWrite === 1,
+    'Host A dispatched old Copy before instance rotation')
+
+  remote.defaultChanges = changes('host-b', 1, 1, 1)
+  remote.defaultPresets = {
+    directory: {
+      status: 'available', defaultId: 'b-source', authorable: true,
+      presets: [
+        { id: 'b-source', trust: 'system', isDefault: true },
+        // Native B already has a distinct preset with the same ID.
+        { id: 'colliding', trust: 'user', isDefault: false },
+      ],
+    },
+    profiles: {},
+  }
+  await model.refresh()
+  await waitFor(() => {
+    const s = model.state.getSnapshot()
+    return s.instanceId === 'host-b' && s.presets.status === 'ready'
+      && !s.presets.stale && s.protocol.status === 'compatible'
+  }, 'Host B fresh preset roster with colliding ID')
+  const beforeOldReply = model.presetMutations.state.getSnapshot().preset
+  const beforeRehydrate = remote.calls.presets
+  oldReply.resolve(ok(businessOk({ id: 'colliding' })))
+  const oldResult = await oldWrite
+  const afterOldReply = model.presetMutations.state.getSnapshot().preset
+  const extraRosterReads = remote.calls.presets - beforeRehydrate
+  detach()
+  model.dispose()
+
+  assert.equal(beforeOldReply.status, 'idle',
+    'Host B should have reset the old mutation owner before its RPC completes')
+  assert.deepEqual(oldResult, { status: 'superseded' },
+    'a successful Host A RPC must not count Host B same-ID membership as A write verification')
+  assert.equal(afterOldReply.status, 'idle',
+    'old Host A receipt cannot publish a settled operation on Host B')
+  assert.equal(extraRosterReads, 0,
+    'old Host A receipt must not trigger a Host B preset roster read-back')
+})
