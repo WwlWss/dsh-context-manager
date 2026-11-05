@@ -496,11 +496,14 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
       diagnostics: { sessions: new Map(), prompts: new Map(), skills: new Map(), pinned: new Map() },
     })
     resetMutationController()
+    // A native Preset operation belongs to the Host instance that dispatched
+    // it. Invalidate that lane even when the next Host uses the same Remote:
+    // late A replies must not settle or rehydrate against B's preset roster.
+    resetPresetMutationController()
     // Profile Settings source changes alone do NOT revoke an independent
     // PromptLibrary mutation. A verified incompatible protocol does.
     if (protocol.status === 'incompatible') {
       resetResourceMutationController()
-      resetPresetMutationController()
     }
   }
 
