@@ -180,9 +180,12 @@ export function ContextManagerPresetDrawerContent(props: ContextManagerDrawerPro
     }
     void claim.result.then(outcome => {
       if (outcome.status === 'completed') {
-        // The new claim might have replaced this one while the promise settled.
+        // A real read may finish before roster/Host invalidation, while its
+        // successful receipt is delayed. Never treat that late completion as
+        // an owned View without rechecking the original Model lease.
         if (viewLease.current?.leaseId === claim.leaseId) {
-          viewLease.current.completed = true
+          if (!claim.isCurrent()) retireView('presetNoticeUnavailable')
+          else viewLease.current.completed = true
         }
       } else {
         retireView(outcome.status === 'superseded'
