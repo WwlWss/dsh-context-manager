@@ -1579,6 +1579,11 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
         || current.changes?.instanceId !== current.instanceId
         || surface.status !== 'ready' || surface.stale
         || surface.data?.directory.status !== 'available') return false
+      // A known refusal (or unknown transport result) only needs a fresh
+      // authoritative roster; absence/presence is not a failed read-back.
+      if (request.verification === 'roster') return true
+      // Only a confirmed successful native receipt requires its effect
+      // to be observed before reporting a fully verified refresh.
       const exists = surface.data.directory.presets.some(row => row.id === request.id)
       return request.kind === 'copy' ? exists : !exists
     },

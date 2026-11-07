@@ -24,8 +24,14 @@ export interface ContextManagerPresetMutationControllerDeps {
   readonly getProtocolStatus: () => 'unchecked' | 'checking' | 'compatible' | 'incompatible' | 'error'
   /** Source-of-truth read observation, not a native revision or write lock. */
   readonly getRoster: () => ContextManagerPresetRosterObservation | undefined
-  /** Only one authoritative *read-back*. Never dispatch another native write. */
-  readonly rehydrate: (request: { readonly kind: ContextManagerClientPresetMutationKind; readonly id: string }) => Promise<boolean>
+  /** One authoritative read-back, never another native write.
+   * 'roster' verifies directory freshness after refusal/uncertain outcome.
+   * 'effect' additionally verifies the postcondition of a confirmed success. */
+  readonly rehydrate: (request: {
+    readonly kind: ContextManagerClientPresetMutationKind
+    readonly id: string
+    readonly verification: 'roster' | 'effect'
+  }) => Promise<boolean>
   readonly invalidate?: () => void
 }
 
@@ -162,7 +168,11 @@ export function createContextManagerPresetMutationController(
     if (!current(e, id)) return obsolete()
     let fresh = false
     try {
-      fresh = await deps.rehydrate({ kind, id: args[kind === 'copy' ? 1 : 0] ?? '' })
+      fresh = await deps.rehydrate({
+        kind,
+        id: args[kind === 'copy' ? 1 : 0] ?? '',
+        verification: result.kind === 'success' ? 'effect' : 'roster',
+      })
     } catch {
       fresh = false
     }
