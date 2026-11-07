@@ -1,0 +1,62 @@
+name: M8C AUTH browser-native integrated proof
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - '.github/workflows/m8c-auth-browser.yml'
+      - 'tests/m8c/authenticated-native-preset-browser.mjs'
+      - 'src/service/remote.ts'
+      - 'src/service/preset-authoring.ts'
+      - 'src/adapters/preset-authoring.ts'
+      - 'src/client/model.ts'
+      - 'src/client/preset-drawer.ts'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  owner-browser-auth:
+    name: AUTH Chromium to native (${{ matrix.version }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        version: [0.1.5-rc.2, 0.1.6-alpha.2]
+    env:
+      DSH_HOME: ${{ github.workspace }}/.dsh-m8c-auth-${{ matrix.version }}
+      DSH_TELEMETRY_DISABLED: '1'
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22.20.0
+      - name: Use pinned pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.7.0 --activate
+      - run: pnpm install --frozen-lockfile
+      - name: Install real published Host authentication graph
+        run: |
+          pnpm add --save-dev --save-exact \
+            @deepseek-ai/cordis@4.0.2 \
+            @deepseek-ai/cordis-plugin-loader@1.0.3 \
+            @deepseek-ai/dsh-agent-presets@${{ matrix.version }} \
+            @deepseek-ai/dsh-session-projection@${{ matrix.version }} \
+            @deepseek-ai/dsh-typert-protocol@${{ matrix.version }} \
+            @deepseek-ai/dsh-typert-registry@${{ matrix.version }} \
+            @deepseek-ai/dsh-api-gateway@${{ matrix.version }} \
+            @deepseek-ai/dsh-client-connection@${{ matrix.version }} \
+            @deepseek-ai/dsh-host-webserver@${{ matrix.version }}
+      - run: pnpm run build
+      - name: Install locked browser runner
+        run: |
+          cd tests/m7d/runner
+          pnpm install --frozen-lockfile
+          pnpm exec playwright install --with-deps chromium
+      - name: Authenticate real Chromium through native read
+        run: node tests/m8c/authenticated-native-preset-browser.mjs
