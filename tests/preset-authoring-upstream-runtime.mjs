@@ -7,7 +7,7 @@ import { pathToFileURL } from 'node:url'
 
 import { Context } from '@deepseek-ai/cordis'
 
-import { ContextManagerPresetAuthoring } from '../lib/index.js'
+import { ContextManagerPresetAuthoring, ContextManagerRemoteService } from '../lib/index.js'
 
 const agentPresetModule = await import('@deepseek-ai/dsh-agent-presets')
 const AgentPresets = agentPresetModule.default ?? agentPresetModule.AgentPresets
@@ -34,6 +34,7 @@ let loaderFiber
 let projectionFiber
 let presetFiber
 let authoringFiber
+let remoteFiber
 
 try {
   loaderFiber = ctx.plugin(Loader)
@@ -86,7 +87,36 @@ try {
     'Context Manager remove must reach the native authoring implementation',
   )
   await assert.rejects(authoring.read('mine'))
+
+  // M8C E5: actual published AgentPresets filesystem -> Native Adapter ->
+  // Authoring Service -> public @Remote Host method. This is NOT a fake
+  // AgentPreset. The existing remote-upstream-runtime separately exercises
+  // the published TypertGateway wire dispatch with the same exact endpoints.
+  remoteFiber = ctx.plugin(ContextManagerRemoteService)
+  await remoteFiber
+  const remote = ctx.dshContextRemote
+
+  assert.deepEqual(await remote.readPreset('source'), {
+    ok: true, value: { id: 'source', content: composition },
+  })
+  const copied = await remote.copyPreset('source', 'remote-mine', 'Remote Mine')
+  assert.deepEqual(copied, { ok: true, value: { id: 'remote-mine' } })
+  assert.equal(
+    await readFile(join(userRoot, 'remote-mine', compositionFile), 'utf8'),
+    composition,
+    'real @Remote copy must reach the actual user root with exact body',
+  )
+  assert.deepEqual(await remote.readPreset('remote-mine'), {
+    ok: true, value: { id: 'remote-mine', content: composition },
+  })
+  assert.deepEqual(await remote.removePreset('remote-mine'), {
+    ok: true, value: { id: 'remote-mine' },
+  })
+  assert.equal(existsSync(join(userRoot, 'remote-mine')), false,
+    'real @Remote removal must call published native AgentPreset.remove',
+  )
 } finally {
+  await remoteFiber?.dispose()
   await authoringFiber?.dispose()
   await presetFiber?.dispose()
   await projectionFiber?.dispose()

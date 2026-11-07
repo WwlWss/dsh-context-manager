@@ -47,10 +47,11 @@ export function ContextManagerSkillPolicySection(props: SkillPolicySectionProps)
   const renderedOpenSessionEpoch = props.useStore(s => s.openSessionEpoch)
   const profileDraft = props.useStore(s => s.draft)
   const resourceDraft = props.useStore(s => s.resourceDraft)
+  const presetDraft = props.useStore(s => s.presetDraft)
   const selectedProfileId = props.useStore(s => s.selectedProfileId)
   const committing = useRef<number | null>(null)
   const canStart = writable && operation.status !== 'running'
-    && profileDraft === null && resourceDraft === null
+    && profileDraft === null && resourceDraft === null && presetDraft === null
     && profileId !== '__proto__'
 
   // This is an own-key *read-only projection*, not a discovered native Skill

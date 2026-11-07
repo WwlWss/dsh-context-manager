@@ -1,6 +1,7 @@
 import type {
   ContextManagerRemoteChangeSnapshot,
   ContextManagerRemotePresetSnapshot,
+  ContextManagerRemotePresetDocument,
   ContextManagerRemoteProfilesSnapshot,
   ContextManagerRemotePromptPlacementCapability,
   ContextManagerRemotePromptResource,
@@ -99,6 +100,7 @@ export type ContextManagerClientLazyReadResult = {
 }
 
 export interface ContextManagerClientSnapshot {
+  readonly nativePresetDocuments?: ReadonlyMap<string, ContextManagerClientSurface<ContextManagerRemotePresetDocument>>
   readonly attachment: 'detached' | 'attached'
   readonly protocol: ContextManagerClientProtocolState
   readonly sync: ContextManagerClientSyncState

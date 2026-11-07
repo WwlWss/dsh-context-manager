@@ -13,6 +13,45 @@ export type ContextManagerLocaleKey =
   | 'foundationMessage'
   | 'profilesTitle'
   | 'resourcesTitle'
+  | 'presetsTitle'
+  | 'presetDirectory'
+  | 'presetNoItems'
+  | 'presetSystem'
+  | 'presetUser'
+  | 'presetDefault'
+  | 'presetDirectoryStale'
+  | 'presetAuthoringUnavailable'
+  | 'presetView'
+  | 'presetReadOnlyContent'
+  | 'presetContentHint'
+  | 'presetBodyLoading'
+  | 'presetBodyFailed'
+  | 'presetCopy'
+  | 'presetCopyTitle'
+  | 'presetCopyTarget'
+  | 'presetCopyNameMode'
+  | 'presetCopyNameInherit'
+  | 'presetCopyNameExplicit'
+  | 'presetCopyExplicitName'
+  | 'presetRemove'
+  | 'presetRemoveTitle'
+  | 'presetRemoveHint'
+  | 'presetRemoveConfirm'
+  | 'presetDraftBlockedHint'
+  | 'presetStatusReady'
+  | 'presetBrokenRow'
+  | 'presetNoticeApplied'
+  | 'presetNoticeDegraded'
+  | 'presetNoticeUnknown'
+  | 'presetNoticeRejected'
+  | 'presetNoticeBusy'
+  | 'presetNoticeUnavailable'
+  | 'presetNoticeInvalid'
+  | 'presetNoticeExists'
+  | 'presetNoticeDraftActive'
+  | 'presetNoticeStale'
+  | 'presetNoticeReadFailed'
+  | 'presetNoticeConfirmMismatch'
   | 'resourceDetails'
   | 'resourceNew'
   | 'resourceCreateTitle'
@@ -186,6 +225,45 @@ export const CONTEXT_MANAGER_LOCALES = Object.freeze({
     foundationMessage: "Web 客户端基础已启用。配置文件控件将在后续里程碑中加入。",
     profilesTitle: "配置文件",
     resourcesTitle: "提示词资源",
+    presetsTitle: "原生预设",
+    presetDirectory: "原生预设目录",
+    presetNoItems: "暂无原生预设。",
+    presetSystem: "系统预设",
+    presetUser: "用户预设",
+    presetDefault: "默认预设",
+    presetDirectoryStale: "预设目录状态已过期；写入已禁用。",
+    presetAuthoringUnavailable: "原生预设写入暂不可用。",
+    presetView: "查看原始内容",
+    presetReadOnlyContent: "原生 Composition（只读）",
+    presetContentHint: "仅在点击查看时读取原始内容，不自动执行或持久化。",
+    presetBodyLoading: "正在按需读取原始内容……",
+    presetBodyFailed: "预设内容读取失败或已过期。",
+    presetCopy: "复制预设",
+    presetCopyTitle: "复制原生预设",
+    presetCopyTarget: "新预设 ID",
+    presetCopyNameMode: "显示名称模式",
+    presetCopyNameInherit: "继承原有名称",
+    presetCopyNameExplicit: "明确指定名称",
+    presetCopyExplicitName: "新显示名称（可以为空）",
+    presetRemove: "移除预设",
+    presetRemoveTitle: "确认移除原生预设",
+    presetRemoveHint: "不会自动修复引用它的配置文件或运行中的会话。",
+    presetRemoveConfirm: "输入完整预设 ID 以确认移除",
+    presetDraftBlockedHint: "草稿保留，操作结果需要再次核对，禁止自动重试。",
+    presetStatusReady: "目录已核实",
+    presetBrokenRow: "此预设内容不可读取",
+    presetNoticeApplied: "操作已确认并刷新目录。",
+    presetNoticeDegraded: "原生操作已确认，但目录重新核验失败；禁止重复提交。",
+    presetNoticeUnknown: "原生预设操作结果未知；禁止自动重试。",
+    presetNoticeRejected: "原生预设操作已拒绝。",
+    presetNoticeBusy: "另一个原生预设写入正在执行。",
+    presetNoticeUnavailable: "原生预设操作暂不可用。",
+    presetNoticeInvalid: "预设输入无效。",
+    presetNoticeExists: "目标预设 ID 已存在。",
+    presetNoticeDraftActive: "请先完成或放弃当前草稿。",
+    presetNoticeStale: "预设目录或目标已变化，请重新确认。",
+    presetNoticeReadFailed: "原始内容读取失败。",
+    presetNoticeConfirmMismatch: "请输入完全匹配的预设 ID。",
     resourceDetails: "资源详情",
     resourceNew: "新建资源",
     resourceCreateTitle: "创建 PromptResource",
@@ -350,6 +428,45 @@ export const CONTEXT_MANAGER_LOCALES = Object.freeze({
     foundationMessage: "Web client foundation is active. Profile controls arrive in later milestones.",
     profilesTitle: "Profiles",
     resourcesTitle: "Prompt Resources",
+    presetsTitle: "Native Presets",
+    presetDirectory: "Native Preset directory",
+    presetNoItems: "No native presets found.",
+    presetSystem: "System preset",
+    presetUser: "User preset",
+    presetDefault: "Default preset",
+    presetDirectoryStale: "Preset directory is stale; writes are disabled.",
+    presetAuthoringUnavailable: "Native Preset authoring is unavailable.",
+    presetView: "View original composition",
+    presetReadOnlyContent: "Native composition (read-only)",
+    presetContentHint: "Original composition is fetched only when View is clicked; it is never executed or persisted.",
+    presetBodyLoading: "Loading original composition on demand…",
+    presetBodyFailed: "Native composition is unavailable or stale.",
+    presetCopy: "Copy preset",
+    presetCopyTitle: "Copy native preset",
+    presetCopyTarget: "New preset ID",
+    presetCopyNameMode: "Display-name mode",
+    presetCopyNameInherit: "Inherit original name",
+    presetCopyNameExplicit: "Specify an exact name",
+    presetCopyExplicitName: "New display name (may be empty)",
+    presetRemove: "Remove preset",
+    presetRemoveTitle: "Confirm native preset removal",
+    presetRemoveHint: "This will not automatically repair referring Profiles or active Sessions.",
+    presetRemoveConfirm: "Type the exact preset ID to confirm removal",
+    presetDraftBlockedHint: "This draft is retained pending verification; never retry automatically.",
+    presetStatusReady: "Directory verified",
+    presetBrokenRow: "Preset composition cannot be read",
+    presetNoticeApplied: "Operation confirmed and directory refreshed.",
+    presetNoticeDegraded: "Native operation confirmed, but directory verification failed; resubmission blocked.",
+    presetNoticeUnknown: "Native Preset operation outcome is unknown; automatic retry prohibited.",
+    presetNoticeRejected: "Native Preset operation refused.",
+    presetNoticeBusy: "Another native Preset write is running.",
+    presetNoticeUnavailable: "Native Preset operation unavailable.",
+    presetNoticeInvalid: "Invalid Preset input.",
+    presetNoticeExists: "Target Preset ID already exists.",
+    presetNoticeDraftActive: "Finish or discard the active draft first.",
+    presetNoticeStale: "Preset directory or selected target has changed; review before retrying.",
+    presetNoticeReadFailed: "Composition read failed.",
+    presetNoticeConfirmMismatch: "Enter the exact preset ID to confirm.",
     resourceDetails: "Resource details",
     resourceNew: "New resource",
     resourceCreateTitle: "Create PromptResource",

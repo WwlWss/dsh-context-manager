@@ -124,7 +124,27 @@ function createWritableRemoteFixture() {
   let readOnly = false
   const writes = []
   const resourceWrites = []
-  const readCalls = { protocol: 0, profiles: 0, resourceLists: 0 }
+  const readCalls = { protocol: 0, profiles: 0, resourceLists: 0, presetLists: 0, nativeBodies: 0 }
+  const presetProbe = Boolean(process.env.M8C_PRESET_PROBE)
+  let presetCursor = 10
+  let nativeDefaultId = 'native'
+  let nativeAuthorable = true
+  let failPresetReads = 0
+  let refuseNextNativeWrite = false
+  let unknownNextNativeWrite = false
+  let heldNativeRead = null
+  let nextCopyReplyGate = null
+  const presetWrites = []
+  const nativePresets = new Map([
+    ['native', { id: 'native', trust: 'system', name: 'Native Root',
+      description: 'Built-in preset', content: 'Exact native\\n<script>no execution</script>\\n' }],
+    ['user-one', { id: 'user-one', trust: 'user', name: 'User One',
+      description: 'User-owned preset', content: 'User one text\\n' }],
+    ['user-two', { id: 'user-two', trust: 'user', name: 'User Two',
+      content: 'User two text\\n' }],
+    ['broken', { id: 'broken', trust: 'user', name: 'Broken',
+      broken: 'cannot parse native source', content: 'Not readable' }],
+  ])
   const resources = new Map()
   let resourceCursor = 0
   let unknownNextResourceWrite = false
@@ -221,7 +241,7 @@ function createWritableRemoteFixture() {
         generation: change,
         profiles: profileCursor,
         promptResources: resourceCursor,
-        presets: change,
+        presets: presetProbe ? presetCursor : change,
         runtime: change,
       })
     },
@@ -237,6 +257,11 @@ function createWritableRemoteFixture() {
       return okRead(profileSnapshot())
     },
     async presets() {
+      readCalls.presetLists++
+      if (presetProbe && failPresetReads > 0) {
+        failPresetReads -= 1
+        throw new Error('native preset directory read unavailable')
+      }
       const resolutions = Object.create(null)
       for (const [id, profile] of Object.entries(profiles)) {
         resolutions[id] = {
@@ -246,13 +271,79 @@ function createWritableRemoteFixture() {
           },
         }
       }
+      const rows = presetProbe
+        ? Array.from(nativePresets.values(), entry => ({
+          id: entry.id, trust: entry.trust, isDefault: entry.id === nativeDefaultId,
+          ...(entry.name === undefined ? {} : { name: entry.name }),
+          ...(entry.description === undefined ? {} : { description: entry.description }),
+          ...(entry.broken === undefined ? {} : { broken: entry.broken }),
+        }))
+        : [{ id: 'native', trust: 'system', isDefault: true }]
       return okRead({
         directory: {
-          status: 'available', defaultId: 'native', authorable: false,
-          presets: [{ id: 'native', trust: 'system', isDefault: true }],
+          status: 'available', defaultId: presetProbe ? nativeDefaultId : 'native',
+          authorable: presetProbe && nativeAuthorable, presets: rows,
         },
         profiles: resolutions,
       })
+    },
+    async readPreset(id) {
+      readCalls.nativeBodies++
+      if (heldNativeRead?.id === id) {
+        const held = heldNativeRead
+        heldNativeRead = null
+        return held.promise
+      }
+      const item = nativePresets.get(id)
+      return item ? accepted({ id, content: item.content })
+        : rejected('preset-authoring-unavailable', 'native source missing')
+    },
+    async copyPreset(from, id, name) {
+      presetWrites.push({ kind: 'copy', from, id, name })
+      if (refuseNextNativeWrite) {
+        refuseNextNativeWrite = false
+        return rejected('preset-authoring-unavailable', 'refused by native host')
+      }
+      if (!nativeAuthorable) return rejected('preset-authoring-unavailable', 'native authoring disabled')
+      const source = nativePresets.get(from)
+      if (!source || nativePresets.has(id) || !id.length) {
+        return rejected('preset-authoring-unavailable', 'native copy rejected')
+      }
+      nativePresets.set(id, {
+        ...source, id, trust: 'user',
+        name: name === null ? source.name : name,
+      })
+      presetCursor++
+      change++
+      if (nextCopyReplyGate !== null) {
+        const pending = nextCopyReplyGate
+        nextCopyReplyGate = null
+        await pending
+      }
+      if (unknownNextNativeWrite) {
+        unknownNextNativeWrite = false
+        throw new Error('native copy completed; transport reply dropped')
+      }
+      return accepted({ id })
+    },
+    async removePreset(id) {
+      presetWrites.push({ kind: 'remove', id })
+      if (refuseNextNativeWrite) {
+        refuseNextNativeWrite = false
+        return rejected('preset-authoring-unavailable', 'refused by native host')
+      }
+      const item = nativePresets.get(id)
+      if (!nativeAuthorable || item?.trust !== 'user' || id === nativeDefaultId) {
+        return rejected('preset-authoring-unavailable', 'native remove rejected')
+      }
+      nativePresets.delete(id)
+      presetCursor++
+      change++
+      if (unknownNextNativeWrite) {
+        unknownNextNativeWrite = false
+        throw new Error('native remove completed; transport reply dropped')
+      }
+      return accepted({ id })
     },
     async promptPlacement() { return okRead({ status: 'unavailable' }) },
     async listPromptResources() {
@@ -389,8 +480,24 @@ function createWritableRemoteFixture() {
     },
   }
   return {
-    face, profiles, writes, resources, resourceWrites, readCalls,
+    face, profiles, writes, resources, resourceWrites, readCalls, presetWrites, nativePresets,
     getDefault: () => defaultId,
+    makeUnknownNextPresetWrite() { unknownNextNativeWrite = true },
+    refuseNextPresetWrite() { refuseNextNativeWrite = true },
+    failNextPresetReadBack(count = 12) { failPresetReads = count },
+    makeNativeAuthorable(value) { nativeAuthorable = value; presetCursor++; change++ },
+    externalPresetDefault(id) { nativeDefaultId = id; presetCursor++; change++ },
+    holdNextNativeCopyReply() {
+      let release
+      nextCopyReplyGate = new Promise(resolve => { release = resolve })
+      return () => release()
+    },
+    holdNextNativeBodyRead(id) {
+      let release
+      const promise = new Promise(resolve => { release = resolve })
+      heldNativeRead = { id, promise }
+      return (content) => release(accepted({ id, content }))
+    },
     // The chosen Profile snapshot is seeded before the real Renderer is
     // mounted. Special names are own Settings-style keys, not native catalog.
     seedSkillsForProbe() {
@@ -573,6 +680,12 @@ let injectedBusiness
 let registeredOverlayStore
 let registeredSidebarStore
 let delayNextUiRefresh = false
+// Independent Final Strict Review: simulate a newly observed live Host state
+// before React rerenders a previously enabled Preset action.
+let m8cLiveObservationOverride = null
+// Observe the exact claim returned to the real Drawer; never substitute a mock result.
+const m8cObservedNativeViewClaims = []
+let m8cCompletionInvalidationInjected = false
 let uiRefreshDispatches = 0
 let uiListDispatches = 0
 let rejectDelayedUiRefresh
@@ -587,6 +700,29 @@ slotFace.register = (options, component) => {
         const face = originalInject()
         return {
           ...face,
+          beginNativePresetView: id => {
+            const claim = face.beginNativePresetView(id)
+            if (process.env.M8C_PRESET_PROBE === 'R27'
+              || process.env.M8C_PRESET_PROBE === 'R28'
+              || process.env.M8C_PRESET_PROBE === 'R32') {
+              m8cObservedNativeViewClaims.push(claim)
+            }
+            if (process.env.M8C_PRESET_PROBE === 'R32'
+              && !m8cCompletionInvalidationInjected) {
+              m8cCompletionInvalidationInjected = true
+              // The actual Model completed and published the body. Before the
+              // Drawer sees that successful result, a real fresh Host roster
+              // invalidates its lease. Forward the actual result unchanged.
+              return { ...claim, result: claim.result.then(async outcome => {
+                if (outcome.status === 'completed') {
+                  remoteFixture.externalPresetDefault('native')
+                  await face.refresh()
+                }
+                return outcome
+              }) }
+            }
+            return claim
+          },
           // Test-only delayed UI read failure: Controller reads continue on
           // their actual paths, so no invented Host/Remote mutation response.
           refresh: () => {
@@ -597,6 +733,35 @@ slotFace.register = (options, component) => {
                 rejectDelayedUiRefresh = reject
               })
               : face.refresh()
+          },
+          readCurrentPresetState: () => {
+            const actual = face.readCurrentPresetState()
+            if (m8cLiveObservationOverride === 'new-instance') {
+              return { ...actual,
+                instanceId: 'm8c-replaced-host',
+                changes: actual.changes === undefined ? undefined
+                  : { ...actual.changes, instanceId: 'm8c-replaced-host' },
+              }
+            }
+            if (m8cLiveObservationOverride === 'detached') {
+              return { ...actual, attachment: 'detached' }
+            }
+            const directory = actual.presets.data?.directory
+            if (directory?.status !== 'available') return actual
+            if (m8cLiveObservationOverride === 'non-authorable') {
+              return { ...actual, presets: { ...actual.presets, data: {
+                ...actual.presets.data, directory: { ...directory, authorable: false },
+              } } }
+            }
+            if (m8cLiveObservationOverride === 'trust-changed') {
+              return { ...actual, presets: { ...actual.presets, data: {
+                ...actual.presets.data, directory: { ...directory,
+                  presets: directory.presets.map(row => row.id === 'user-one'
+                    ? { ...row, trust: 'system' } : row),
+                },
+              } } }
+            }
+            return actual
           },
           loadPromptResourceList: () => {
             uiListDispatches++
@@ -636,7 +801,636 @@ assert.equal(remoteFixture.writes.length, 0)
 // B1-3 uses this same Published Renderer + root Store + real Business Face.
 // The probe branch isolates each intentional RED from the long historical
 // M7C/M8A1/M8A2 green scenario; it never substitutes a fake UI renderer.
-if (process.env.M8B_SKILL_PROBE) {
+if (process.env.M8C_PRESET_PROBE) {
+  const probe = process.env.M8C_PRESET_PROBE
+  const live = () => registeredOverlayStore.readLiveSnapshot()
+  const row = (id) => tree.root.findByProps({ 'data-context-manager-preset-row': id })
+  const tab = (pane) => tree.root.findByProps({ 'data-context-manager-tab': pane })
+  const cm = () => injectedBusiness?.()?.hooks.contextManager.getSnapshot()
+  const goPresets = async () => {
+    if (live()?.pane !== 'presets') {
+      await act(async () => { tab('presets').props.onClick() })
+      await settleUI()
+    }
+    assert.equal(live()?.pane, 'presets')
+  }
+  const click = async (hook) => {
+    await act(async () => { tree.root.findByProps({ [hook]: '' }).props.onClick() })
+    await settleUI()
+  }
+  const selectPreset = async (id) => {
+    await act(async () => { row(id).props.onClick() })
+    await settleUI()
+  }
+  const changeInput = async (id, value) => {
+    await act(async () => {
+      tree.root.findByProps({ id }).props.onChange({ currentTarget: { value } })
+    })
+    await settleUI()
+  }
+  const startCopy = async (sourceId='native') => {
+    await goPresets()
+    await selectPreset(sourceId)
+    await click('data-context-manager-preset-copy')
+    assert.equal(live()?.presetDraft?.kind, 'copy')
+  }
+  const submitCopy = async () => {
+    const form = tree.root.findByProps({ 'data-context-manager-preset-copy-form': '' })
+    await act(async () => { form.props.onSubmit({ preventDefault() {} }) })
+    await settleUI()
+  }
+  const startRemove = async (id='user-one') => {
+    await goPresets()
+    await selectPreset(id)
+    await click('data-context-manager-preset-remove')
+    assert.equal(live()?.presetDraft?.kind, 'confirm-remove')
+  }
+  switch (probe) {
+    case 'R01': {
+      const tab = tree.root.findByProps({ 'data-context-manager-tab': 'presets' })
+      assert.ok(tab, 'M8C RED: real published Renderer must mount third Presets tab')
+      await act(async () => { tab.props.onClick() })
+      await settleUI()
+      assert.equal(live()?.pane, 'presets')
+      assert.equal(tree.root.findAllByProps({ 'data-context-manager-preset-editor': '' }).length, 1,
+        'M8C RED: only actual registered overlay contains native Preset pane')
+      assert.ok(row('native'), 'M8C native system preset must be listed')
+      assert.equal(remoteFixture.writes.length, 0)
+      break
+    }
+
+    case 'R02': {
+      await goPresets()
+      assert.equal(remoteFixture.readCalls.nativeBodies, 0, 'pane mount never eagerly reads composition')
+      await selectPreset('user-one')
+      await selectPreset('native')
+      assert.equal(remoteFixture.readCalls.nativeBodies, 0, 'directory navigation is metadata-only')
+      assert.equal(remoteFixture.presetWrites.length, 0)
+      break
+    }
+    case 'R03': {
+      await goPresets()
+      await click('data-context-manager-preset-view')
+      assert.equal(remoteFixture.readCalls.nativeBodies, 1)
+      const visible = tree.root.findByProps({ 'data-context-manager-preset-body': '' })
+      assert.equal(renderedText(visible), remoteFixture.nativePresets.get('native').content)
+      assert.equal(tree.root.findAll(node => node.type === 'script').length, 0,
+        'raw script must be inert React text, never a DOM element')
+      assert.equal(cm().nativePresetDocuments.get('native').data?.id, 'native')
+      break
+    }
+    case 'R04': {
+      await goPresets()
+      const releaseOld = remoteFixture.holdNextNativeBodyRead('native')
+      await click('data-context-manager-preset-view')
+      assert.equal(remoteFixture.readCalls.nativeBodies, 1)
+      await selectPreset('user-one')
+      await click('data-context-manager-preset-view')
+      assert.equal(remoteFixture.readCalls.nativeBodies, 2)
+      const currentBody = remoteFixture.nativePresets.get('user-one').content
+      assert.equal(renderedText(tree.root.findByProps({ 'data-context-manager-preset-body': '' })), currentBody)
+      releaseOld('stale private contents from native')
+      await settleUI()
+      assert.equal(renderedText(tree.root.findByProps({ 'data-context-manager-preset-body': '' })), currentBody)
+      assert.equal(cm().nativePresetDocuments.has('native'), false)
+      break
+    }
+    case 'R05': {
+      await goPresets()
+      await click('data-context-manager-preset-view')
+      assert.equal(cm().nativePresetDocuments.size, 1)
+      await act(async () => { trigger().props.onClick() })
+      await settleUI()
+      assert.equal(live()?.open, false)
+      assert.equal(cm().nativePresetDocuments.size, 0, 'close must revoke and erase cached body')
+      await act(async () => { trigger().props.onClick() })
+      await settleUI()
+      assert.equal(live()?.pane, 'presets')
+      assert.equal(tree.root.findAllByProps({ 'data-context-manager-preset-body': '' }).length, 0)
+      await click('data-context-manager-preset-view')
+      assert.equal(cm().nativePresetDocuments.size, 1)
+      await act(async () => { tab('resources').props.onClick() })
+      await settleUI()
+      assert.equal(live()?.pane, 'resources')
+      assert.equal(cm().nativePresetDocuments.size, 0, 'pane exit must erase body')
+      break
+    }
+    case 'R06': {
+      await startCopy()
+      await changeInput('cm-preset-copy-id', 'new-native')
+      await submitCopy()
+      assert.deepEqual(remoteFixture.presetWrites, [
+        { kind: 'copy', from: 'native', id: 'new-native', name: null },
+      ])
+      assert.equal(remoteFixture.nativePresets.get('new-native').content,
+        remoteFixture.nativePresets.get('native').content)
+      assert.equal(live()?.presetDraft, null)
+      assert.ok(row('new-native'))
+      break
+    }
+    case 'R07': {
+      await startCopy()
+      await changeInput('cm-preset-copy-id', 'empty-name')
+      await act(async () => { tree.root.findByProps({ id: 'cm-preset-copy-name-mode' })
+        .props.onChange({ currentTarget: { value: 'explicit' } }) })
+      await settleUI()
+      await changeInput('cm-preset-copy-name', '')
+      await submitCopy()
+      assert.deepEqual(remoteFixture.presetWrites, [
+        { kind: 'copy', from: 'native', id: 'empty-name', name: '' },
+      ], 'explicit empty display name must NOT become null')
+      assert.equal(remoteFixture.nativePresets.get('empty-name').name, '')
+      break
+    }
+    case 'R08': {
+      await startCopy()
+      await changeInput('cm-preset-copy-id', 'user-one')
+      assert.equal(tree.root.findByProps({ 'data-context-manager-preset-copy-submit': '' }).props.disabled, true)
+      await submitCopy()
+      assert.equal(remoteFixture.presetWrites.length, 0, 'collisions never reach native Host')
+      assert.equal(live()?.presetDraft?.kind, 'copy')
+      break
+    }
+    case 'R09': {
+      await startRemove()
+      assert.equal(remoteFixture.presetWrites.length, 0, 'remove begin cannot dispatch')
+      assert.equal(tree.root.findByProps({ 'data-context-manager-preset-remove-submit': '' }).props.disabled, true)
+      await changeInput('cm-preset-remove-confirm', 'user-on')
+      assert.equal(tree.root.findByProps({ 'data-context-manager-preset-remove-submit': '' }).props.disabled, true)
+      await click('data-context-manager-preset-remove-submit')
+      assert.equal(remoteFixture.presetWrites.length, 0)
+      break
+    }
+    case 'R10': {
+      await startRemove()
+      await changeInput('cm-preset-remove-confirm', 'user-one')
+      assert.equal(tree.root.findByProps({ 'data-context-manager-preset-remove-submit': '' }).props.disabled, false)
+      await click('data-context-manager-preset-remove-submit')
+      assert.deepEqual(remoteFixture.presetWrites, [{ kind: 'remove', id: 'user-one' }])
+      assert.equal(remoteFixture.nativePresets.has('user-one'), false)
+      assert.equal(live()?.presetDraft, null)
+      assert.equal(remoteFixture.profiles.main.basePreset, 'native')
+      break
+    }
+
+    case 'R11': {
+      await goPresets()
+      assert.equal(tree.root.findByProps({ 'data-context-manager-preset-remove': '' }).props.disabled, true,
+        'system native preset cannot be removed through UI')
+      remoteFixture.externalPresetDefault('user-one')
+      await act(async () => { await injectedBusiness().refreshNativePresets() })
+      await settleUI()
+      await selectPreset('user-one')
+      assert.equal(tree.root.findByProps({ 'data-context-manager-preset-remove': '' }).props.disabled, true,
+        'user trust does not authorize removal of current default')
+      await startCopy('native')
+      await changeInput('cm-preset-copy-id', 'refused-target')
+      remoteFixture.refuseNextPresetWrite()
+      await submitCopy()
+      assert.equal(remoteFixture.presetWrites.length, 1)
+      assert.equal(live()?.presetDraft?.blocked, 'refused', 'native denial must not be successful')
+      assert.equal(live()?.presetDraft?.terminalNotice?.code, 'presetNoticeRejected')
+      assert.equal(remoteFixture.nativePresets.has('refused-target'), false)
+      break
+    }
+    case 'R12': {
+      await startCopy()
+      await changeInput('cm-preset-copy-id', 'single-flight')
+      const release = remoteFixture.holdNextNativeCopyReply()
+      const form = tree.root.findByProps({ 'data-context-manager-preset-copy-form': '' })
+      await act(async () => {
+        form.props.onSubmit({ preventDefault() {} })
+        form.props.onSubmit({ preventDefault() {} })
+      })
+      await settleUI()
+      assert.equal(remoteFixture.presetWrites.length, 1,
+        'same-render double submit must be claimed synchronously')
+      assert.equal(live()?.presetDraft?.submitting, true)
+      release()
+      await settleUI()
+      assert.equal(remoteFixture.presetWrites.length, 1)
+      assert.equal(remoteFixture.nativePresets.has('single-flight'), true)
+      break
+    }
+    case 'R13': {
+      await goPresets()
+      assert.equal(live()?.selectedPresetId, null)
+      const oldView = tree.root.findByProps({ 'data-context-manager-preset-view': '' }).props.onClick
+      const oldCopy = tree.root.findByProps({ 'data-context-manager-preset-copy': '' }).props.onClick
+      remoteFixture.externalPresetDefault('user-one')
+      await act(async () => { await injectedBusiness().refreshNativePresets() })
+      await settleUI()
+      assert.equal(live()?.selectedPresetId, null, 'raw selection remains implicit')
+      assert.equal(cm().presets.data.directory.defaultId, 'user-one')
+      await act(async () => { oldView(); oldCopy() })
+      await settleUI()
+      assert.equal(remoteFixture.readCalls.nativeBodies, 0, 'old fallback cannot read another source')
+      assert.equal(remoteFixture.presetWrites.length, 0)
+      assert.equal(live()?.presetDraft, null, 'old fallback cannot open a different source draft')
+      break
+    }
+    case 'R14': {
+      await goPresets()
+      const epoch = live().openSessionEpoch
+      const oldView = tree.root.findByProps({ 'data-context-manager-preset-view': '' }).props.onClick
+      const oldCopy = tree.root.findByProps({ 'data-context-manager-preset-copy': '' }).props.onClick
+      await act(async () => { tab('profiles').props.onClick() })
+      await settleUI()
+      await goPresets()
+      assert.equal(live()?.openSessionEpoch, epoch, 'same opening, re-mounted Preset pane')
+      await act(async () => { oldView(); oldCopy() })
+      await settleUI()
+      assert.equal(remoteFixture.readCalls.nativeBodies, 0)
+      assert.equal(live()?.presetDraft, null, 'unmounted callbacks cannot claim the fresh pane')
+      break
+    }
+    case 'R15': {
+      await goPresets()
+      const epoch = live().openSessionEpoch
+      const oldView = tree.root.findByProps({ 'data-context-manager-preset-view': '' }).props.onClick
+      const oldCopy = tree.root.findByProps({ 'data-context-manager-preset-copy': '' }).props.onClick
+      await act(async () => { trigger().props.onClick() })
+      await settleUI()
+      await act(async () => { trigger().props.onClick() })
+      await settleUI()
+      assert.notEqual(live()?.openSessionEpoch, epoch)
+      await act(async () => { oldView(); oldCopy() })
+      await settleUI()
+      assert.equal(remoteFixture.readCalls.nativeBodies, 0)
+      assert.equal(live()?.presetDraft, null)
+      break
+    }
+    case 'R16': {
+      await startCopy()
+      await act(async () => { tab('profiles').props.onClick(); tab('resources').props.onClick() })
+      await settleUI()
+      assert.equal(live()?.pane, 'presets', 'occupied Preset draft blocks cross-pane switch')
+      assert.equal(live()?.presetDraft?.kind, 'copy')
+      await act(async () => { buttonByLabel(tree, 'Cancel').props.onClick() })
+      await settleUI()
+      assert.equal(live()?.presetDraft, null)
+      await act(async () => { tab('resources').props.onClick() })
+      await settleUI()
+      assert.equal(live()?.pane, 'resources')
+      assert.equal(remoteFixture.presetWrites.length, 0)
+      break
+    }
+    case 'R17': {
+      await startCopy()
+      await changeInput('cm-preset-copy-id', 'degraded-copy')
+      remoteFixture.failNextPresetReadBack()
+      await submitCopy()
+      assert.equal(remoteFixture.presetWrites.length, 1, 'native call must occur exactly once')
+      assert.equal(remoteFixture.nativePresets.has('degraded-copy'), true)
+      assert.equal(live()?.presetDraft?.blocked, 'unverified')
+      assert.equal(live()?.presetDraft?.terminalNotice?.code, 'presetNoticeDegraded')
+      await submitCopy()
+      assert.equal(remoteFixture.presetWrites.length, 1, 'degraded receipt prevents replay')
+      break
+    }
+    case 'R18': {
+      await startCopy()
+      await changeInput('cm-preset-copy-id', 'unknown-copy')
+      remoteFixture.makeUnknownNextPresetWrite()
+      await submitCopy()
+      assert.equal(remoteFixture.presetWrites.length, 1)
+      assert.equal(remoteFixture.nativePresets.has('unknown-copy'), true,
+        'transport unknown may still have committed')
+      assert.equal(live()?.presetDraft?.blocked, 'unknown')
+      assert.equal(live()?.presetDraft?.terminalNotice?.code, 'presetNoticeUnknown')
+      await act(async () => { buttonByLabel(tree, 'Refresh').props.onClick() })
+      await settleUI()
+      assert.equal(live()?.presetDraft?.terminalNotice?.code, 'presetNoticeUnknown',
+        'fresh read-back cannot relabel first unknown receipt')
+      await submitCopy()
+      assert.equal(remoteFixture.presetWrites.length, 1, 'outcome-unknown must not retry')
+      break
+    }
+
+    case 'R19': {
+      await goPresets()
+      await click('data-context-manager-preset-view')
+      assert.equal(cm().nativePresetDocuments.size, 1)
+      const oldView = tree.root.findByProps({ 'data-context-manager-preset-view': '' }).props.onClick
+      const oldCopy = tree.root.findByProps({ 'data-context-manager-preset-copy': '' }).props.onClick
+      const beforeReads = remoteFixture.readCalls.nativeBodies
+      const beforeWrites = remoteFixture.presetWrites.length
+      const oldBusiness = injectedBusiness()
+      await act(async () => { tree.unmount() })
+      disposeRoot()
+      await disposePlugin()
+      assert.equal(registeredOverlayStore.readLiveSnapshot(), undefined,
+        'published Store reader must be revoked on plugin disposal')
+      assert.equal(oldBusiness.hooks.contextManager.getSnapshot().nativePresetDocuments.size, 0,
+        'model disposal must purge revealed composition')
+      await act(async () => { oldView(); oldCopy() })
+      assert.equal(remoteFixture.readCalls.nativeBodies, beforeReads)
+      assert.equal(remoteFixture.presetWrites.length, beforeWrites)
+      break
+    }
+    case 'R20': {
+      await goPresets()
+      await act(async () => { tab('profiles').props.onClick() })
+      await settleUI()
+      assert.equal(live()?.pane, 'profiles')
+      assert.equal(tree.root.findAllByProps({ 'data-context-manager-new-profile': '' }).length, 1)
+      assert.equal(tree.root.findAllByProps({ 'data-context-manager-prompt-bindings': '' }).length, 1)
+      await act(async () => { tab('resources').props.onClick() })
+      await settleUI()
+      assert.equal(live()?.pane, 'resources')
+      assert.equal(tree.root.findAllByProps({ 'data-context-manager-resource-editor': '' }).length, 1)
+      await goPresets()
+      assert.equal(tree.root.findAllByProps({ 'data-context-manager-preset-editor': '' }).length, 1)
+      assert.equal(remoteFixture.writes.length, 0)
+      assert.equal(remoteFixture.resourceWrites.length, 0)
+      assert.equal(remoteFixture.presetWrites.length, 0)
+      break
+    }
+
+    case 'R21': {
+      await goPresets()
+      const oldCopy = tree.root.findByProps({ 'data-context-manager-preset-copy': '' }).props.onClick
+      m8cLiveObservationOverride = 'detached'
+      await act(async () => { oldCopy() })
+      assert.equal(live()?.presetDraft, null,
+        'stale render must fail closed when current Host has detached')
+      m8cLiveObservationOverride = 'non-authorable'
+      await act(async () => { oldCopy() })
+      assert.equal(live()?.presetDraft, null,
+        'stale render must reject a live non-authorable directory')
+      assert.equal(remoteFixture.presetWrites.length, 0)
+      break
+    }
+    case 'R22': {
+      await goPresets()
+      await selectPreset('user-one')
+      const oldRemove = tree.root.findByProps({ 'data-context-manager-preset-remove': '' }).props.onClick
+      assert.equal(tree.root.findByProps({ 'data-context-manager-preset-remove': '' }).props.disabled, false)
+      m8cLiveObservationOverride = 'trust-changed'
+      await act(async () => { oldRemove() })
+      assert.equal(live()?.presetDraft, null,
+        'render-time user trust must not override changed live directory metadata')
+      assert.equal(remoteFixture.presetWrites.length, 0)
+      break
+    }
+
+    case 'R23': {
+      await startCopy('native')
+      await changeInput('cm-preset-copy-id', 'not-authorized-copy')
+      m8cLiveObservationOverride = 'non-authorable'
+      await submitCopy()
+      assert.equal(remoteFixture.presetWrites.length, 0,
+        'Copy Submit must fail closed when live authorable hint has been withdrawn')
+      assert.equal(live()?.presetDraft?.kind, 'copy')
+      break
+    }
+    case 'R24': {
+      await startRemove('user-one')
+      await changeInput('cm-preset-remove-confirm', 'user-one')
+      m8cLiveObservationOverride = 'non-authorable'
+      await click('data-context-manager-preset-remove-submit')
+      assert.equal(remoteFixture.presetWrites.length, 0,
+        'Remove Submit must fail closed when live authorable hint has been withdrawn')
+      assert.equal(remoteFixture.nativePresets.has('user-one'), true)
+      break
+    }
+
+    case 'R25': {
+      await goPresets()
+      const oldCopy = tree.root.findByProps({ 'data-context-manager-preset-copy': '' }).props.onClick
+      m8cLiveObservationOverride = 'new-instance'
+      await act(async () => { oldCopy() })
+      await settleUI()
+      assert.equal(live()?.presetDraft, null,
+        'old rendered Begin cannot transfer a native Preset intent to a replacement Host')
+      assert.equal(remoteFixture.presetWrites.length, 0)
+      break
+    }
+    case 'R26': {
+      await startCopy('native')
+      await changeInput('cm-preset-copy-id', 'old-intent-new-host')
+      m8cLiveObservationOverride = 'new-instance'
+      await submitCopy()
+      assert.equal(remoteFixture.presetWrites.length, 0,
+        'submitting an old Host draft against identical new-Host catalog must be denied')
+      assert.equal(live()?.presetDraft?.kind, 'copy')
+      break
+    }
+    case 'R27': {
+      // P2-1 Tests-only RED: a same-Host native roster cursor invalidation
+      // makes a pending View resolve superseded while the selected ID stays
+      // rendered. The user must see a terminal state, not infinite Loading.
+      await goPresets()
+      const originalInstance = cm().instanceId
+      const releaseOld = remoteFixture.holdNextNativeBodyRead('native')
+      const loading = () => tree.root.findAll(node =>
+        node.type === 'p' && node.props.role === 'status'
+          && renderedText(node) === 'Loading original composition on demand…')
+      await click('data-context-manager-preset-view')
+      assert.equal(remoteFixture.readCalls.nativeBodies, 1)
+      assert.equal(m8cObservedNativeViewClaims.length, 1)
+      assert.equal(loading().length, 1,
+        'positive control: actual Renderer has a pending explicit composition read')
+
+      remoteFixture.externalPresetDefault('native')
+      await act(async () => { await injectedBusiness?.()?.refresh() })
+      await settleUI()
+      const recovered = cm()
+      assert.equal(recovered.instanceId, originalInstance,
+        'same Host must retain its instance identity after a real preset cursor change')
+      assert.equal(recovered.presets.status, 'ready')
+      assert.equal(recovered.presets.stale, false)
+      assert.ok(recovered.presets.data.directory.presets.some(item => item.id === 'native'),
+        'refreshed native catalog retains the selected ID and a fresh roster')
+      assert.equal(live()?.selectedPresetId, null,
+        'the effective native ID stays the same without a new raw selection')
+      assert.equal(loading().length, 1,
+        'until the held RPC settles, Loading remains a legitimate pending state')
+
+      releaseOld('private composition from old Host A')
+      const staleResult = await m8cObservedNativeViewClaims[0].result
+      assert.equal(staleResult.status, 'superseded',
+        'the real Model must resolve the stale View instead of rejecting the Promise')
+      await settleUI()
+      assert.equal(cm().nativePresetDocuments.has('native'), false,
+        'old Host body must remain evicted')
+      assert.equal(tree.root.findAllByProps({ 'data-context-manager-preset-body': '' }).length, 0,
+        'stale private bytes may not be rendered')
+      assert.equal(loading().length, 0,
+        'P2-1 RED: settled superseded View cannot remain in permanent Loading')
+      assert.ok(['presetNoticeReadFailed', 'presetNoticeUnavailable'].includes(live()?.presetNotice?.code),
+        'terminal stale View should show a bounded read/unavailable notice')
+      await click('data-context-manager-preset-view')
+      assert.equal(remoteFixture.readCalls.nativeBodies, 2,
+        'the refreshed Host must still permit a new explicit View')
+      assert.equal(renderedText(tree.root.findByProps({
+        'data-context-manager-preset-body': '',
+      })), remoteFixture.nativePresets.get('native').content)
+      break
+    }
+    case 'R28': {
+      // Companion GREEN control: a late old-Host resolution must not retire
+      // or overwrite the View lease explicitly opened against Host B.
+      await goPresets()
+      const releaseOld = remoteFixture.holdNextNativeBodyRead('native')
+      await click('data-context-manager-preset-view')
+      assert.equal(m8cObservedNativeViewClaims.length, 1)
+      remoteFixture.externalRotateHostInstance()
+      await act(async () => { await injectedBusiness?.()?.refresh() })
+      await settleUI()
+      assert.equal(cm().presets.status, 'ready')
+      assert.equal(cm().presets.stale, false)
+      await click('data-context-manager-preset-view')
+      assert.equal(m8cObservedNativeViewClaims.length, 2)
+      assert.notEqual(m8cObservedNativeViewClaims[0].leaseId,
+        m8cObservedNativeViewClaims[1].leaseId,
+        'new View owns a distinct lease after Host rotation')
+      assert.equal(remoteFixture.readCalls.nativeBodies, 2,
+        'only two explicit View actions may read raw composition')
+      assert.equal((await m8cObservedNativeViewClaims[1].result).status, 'completed')
+      const currentBody = remoteFixture.nativePresets.get('native').content
+      assert.equal(renderedText(tree.root.findByProps({
+        'data-context-manager-preset-body': '',
+      })), currentBody, 'Host B composition must be visible before old A reply')
+
+      releaseOld('Host A stale private composition')
+      assert.equal((await m8cObservedNativeViewClaims[0].result).status, 'superseded')
+      await settleUI()
+      assert.equal(renderedText(tree.root.findByProps({
+        'data-context-manager-preset-body': '',
+      })), currentBody,
+      'retiring an obsolete lease must not erase the newer Host B composition')
+      assert.equal(cm().nativePresetDocuments.get('native')?.data?.content, currentBody)
+      assert.equal(live()?.presetNotice?.code ?? null, null,
+        'obsolete callback may not publish a stale warning over a newer View')
+      assert.equal(remoteFixture.presetWrites.length, 0)
+      break
+    }
+    case 'R29': {
+      // Fix A Tests-only RED: completion happened *before* Model revoked its
+      // native view. There is no future Promise resolution to retire Loading.
+      await goPresets()
+      await click('data-context-manager-preset-view')
+      const nativeBody = remoteFixture.nativePresets.get('native').content
+      assert.equal(renderedText(tree.root.findByProps({
+        'data-context-manager-preset-body': '',
+      })), nativeBody, 'positive control: composition was successfully shown')
+      assert.equal(remoteFixture.readCalls.nativeBodies, 1)
+      const originalInstance = cm().instanceId
+      remoteFixture.externalPresetDefault('native') // same ID, advanced preset cursor
+      await act(async () => { await injectedBusiness?.()?.refresh() })
+      await settleUI()
+      assert.equal(cm().instanceId, originalInstance)
+      assert.equal(cm().presets.status, 'ready')
+      assert.equal(cm().presets.stale, false)
+      assert.ok(cm().presets.data.directory.presets.some(row => row.id === 'native'))
+      assert.equal(cm().nativePresetDocuments.size, 0, 'Model revoked completed private body')
+      assert.equal(tree.root.findAllByProps({ 'data-context-manager-preset-body': '' }).length, 0,
+        'revoked native contents cannot remain on screen')
+      assert.equal(remoteFixture.readCalls.nativeBodies, 1,
+        'cursor recovery must never implicitly reread the private body')
+      assert.equal(tree.root.findAll(node =>
+        node.type === 'p' && node.props.role === 'status'
+        && renderedText(node) === 'Loading original composition on demand…').length, 0,
+        'Fix A RED: completed-then-revoked lease must not show perpetual Loading')
+      await click('data-context-manager-preset-view')
+      assert.equal(remoteFixture.readCalls.nativeBodies, 2,
+        'a new explicit user View must be permitted')
+      assert.equal(renderedText(tree.root.findByProps({
+        'data-context-manager-preset-body': '',
+      })), nativeBody)
+      break
+    }
+    case 'R30': {
+      // A new Host with the identical native ID must not inherit a completed
+      // body or implicit read authorization from the former Host.
+      await goPresets()
+      await click('data-context-manager-preset-view')
+      assert.equal(remoteFixture.readCalls.nativeBodies, 1)
+      assert.ok(tree.root.findByProps({ 'data-context-manager-preset-body': '' }))
+      const originalInstance = cm().instanceId
+      remoteFixture.externalRotateHostInstance()
+      await act(async () => { await injectedBusiness?.()?.refresh() })
+      await settleUI()
+      assert.notEqual(cm().instanceId, originalInstance)
+      assert.equal(cm().presets.status, 'ready')
+      assert.equal(cm().presets.stale, false)
+      assert.ok(cm().presets.data.directory.presets.some(row => row.id === 'native'))
+      assert.equal(cm().nativePresetDocuments.size, 0)
+      assert.equal(remoteFixture.readCalls.nativeBodies, 1,
+        'Host B must not read the new body without a new click')
+      assert.equal(tree.root.findAllByProps({ 'data-context-manager-preset-body': '' }).length, 0)
+      assert.equal(tree.root.findAll(node =>
+        node.type === 'p' && node.props.role === 'status'
+        && renderedText(node) === 'Loading original composition on demand…').length, 0,
+        'Host replacement must retire any displayed completed View lease')
+      await click('data-context-manager-preset-view')
+      assert.equal(remoteFixture.readCalls.nativeBodies, 2)
+      assert.ok(tree.root.findByProps({ 'data-context-manager-preset-body': '' }))
+      break
+    }
+    case 'R31': {
+      // Mutation-driven cursor invalidation must retire the old completed
+      // View even after its temporary confirmation panel is dismissed.
+      await goPresets()
+      await click('data-context-manager-preset-view')
+      assert.equal(remoteFixture.readCalls.nativeBodies, 1)
+      assert.ok(tree.root.findByProps({ 'data-context-manager-preset-body': '' }))
+      await startCopy('native')
+      await changeInput('cm-preset-copy-id', 'copied-after-completed-view')
+      await submitCopy()
+      assert.equal(remoteFixture.presetWrites.length, 1)
+      assert.equal(remoteFixture.nativePresets.has('copied-after-completed-view'), true)
+      assert.equal(live()?.presetDraft, null)
+      assert.equal(cm().presets.status, 'ready')
+      assert.equal(cm().presets.stale, false)
+      assert.equal(cm().nativePresetDocuments.size, 0)
+      assert.equal(remoteFixture.readCalls.nativeBodies, 1,
+        'Mutation recovery may refresh roster but cannot re-fetch composition')
+      assert.equal(tree.root.findAllByProps({ 'data-context-manager-preset-body': '' }).length, 0)
+      assert.equal(tree.root.findAll(node =>
+        node.type === 'p' && node.props.role === 'status'
+        && renderedText(node) === 'Loading original composition on demand…').length, 0,
+        'Fix A RED: mutation must revoke an already completed local View lease')
+      break
+    }
+    case 'R32': {
+      // Fix A hardening RED: Model publishes completed, Host changes the
+      // cursor and revokes the lease, then the unchanged completed receipt
+      // reaches the actual Drawer callback after the refresh.
+      await goPresets()
+      await click('data-context-manager-preset-view')
+      assert.equal(m8cObservedNativeViewClaims.length, 1)
+      assert.equal((await m8cObservedNativeViewClaims[0].result).status, 'completed',
+        'real body read must first have completed successfully')
+      await settleUI()
+      assert.equal(cm().presets.status, 'ready')
+      assert.equal(cm().presets.stale, false)
+      assert.equal(cm().nativePresetDocuments.size, 0,
+        'real refreshed directory revoked the completed private body')
+      assert.equal(remoteFixture.readCalls.nativeBodies, 1)
+      assert.equal(tree.root.findAllByProps({ 'data-context-manager-preset-body': '' }).length, 0)
+      assert.equal(tree.root.findAll(node =>
+        node.type === 'p' && node.props.role === 'status'
+        && renderedText(node) === 'Loading original composition on demand…').length, 0,
+        'R32 RED: late completed result may not reestablish a revoked View as Loading')
+      await click('data-context-manager-preset-view')
+      assert.equal(remoteFixture.readCalls.nativeBodies, 2,
+        'a new explicit View remains possible without hidden retries')
+      assert.ok(tree.root.findByProps({ 'data-context-manager-preset-body': '' }))
+      break
+    }
+    default: throw new Error('Unknown M8C published Renderer probe: ' + probe)
+  }
+  if (probe !== 'R19') {
+    await act(async () => { tree.unmount() })
+    disposeRoot()
+    await disposePlugin()
+    assert.equal(registeredOverlayStore.readLiveSnapshot(), undefined)
+  }
+  await sessionFiber.dispose()
+  await rendererFiber.dispose()
+} else if (process.env.M8B_SKILL_PROBE) {
   const probe = process.env.M8B_SKILL_PROBE
   const live = () => registeredOverlayStore.readLiveSnapshot()
   const skillRows = () => tree.root.findAll(node =>

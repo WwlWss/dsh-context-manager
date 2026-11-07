@@ -1,0 +1,48 @@
+name: M8C AUTH browser-native integrated proof
+
+on:
+  push:
+    branches:
+      - main
+  # Authentication proof must re-run on every new PR HEAD, regardless of path.
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  owner-browser-auth:
+    name: AUTH Chromium to native (${{ matrix.version }})
+    # Playwright 1.56.1 pinned runner supports Ubuntu 24.04, not ubuntu-latest (26.04).
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        version: [0.1.2-rc.1, 0.1.5-rc.1, 0.1.5-rc.2, 0.1.6-alpha.2]
+    env:
+      DSH_HOME: ${{ github.workspace }}/.dsh-m8c-auth-${{ matrix.version }}
+      DSH_TELEMETRY_DISABLED: '1'
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22.20.0
+      - name: Use pinned pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.7.0 --activate
+      - run: pnpm install --frozen-lockfile
+      - name: Install locked browser runner
+        run: |
+          cd tests/m7d/runner
+          pnpm install --frozen-lockfile
+          pnpm exec playwright install --with-deps chromium
+      - name: Authenticate real Chromium through native read
+        env:
+          M8C_AUTH_VERSION: ${{ matrix.version }}
+        run: bash tests/m8c/qualify-browser-native-auth.sh "$M8C_AUTH_VERSION"
