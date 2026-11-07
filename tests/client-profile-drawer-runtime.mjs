@@ -683,6 +683,8 @@ let delayNextUiRefresh = false
 // Independent Final Strict Review: simulate a newly observed live Host state
 // before React rerenders a previously enabled Preset action.
 let m8cLiveObservationOverride = null
+// Observe the exact claim returned to the real Drawer; never substitute a mock result.
+const m8cObservedNativeViewClaims = []
 let uiRefreshDispatches = 0
 let uiListDispatches = 0
 let rejectDelayedUiRefresh
@@ -697,6 +699,14 @@ slotFace.register = (options, component) => {
         const face = originalInject()
         return {
           ...face,
+          beginNativePresetView: id => {
+            const claim = face.beginNativePresetView(id)
+            if (process.env.M8C_PRESET_PROBE === 'R27'
+              || process.env.M8C_PRESET_PROBE === 'R28') {
+              m8cObservedNativeViewClaims.push(claim)
+            }
+            return claim
+          },
           // Test-only delayed UI read failure: Controller reads continue on
           // their actual paths, so no invented Host/Remote mutation response.
           refresh: () => {
@@ -1188,6 +1198,95 @@ if (process.env.M8C_PRESET_PROBE) {
       assert.equal(remoteFixture.presetWrites.length, 0,
         'submitting an old Host draft against identical new-Host catalog must be denied')
       assert.equal(live()?.presetDraft?.kind, 'copy')
+      break
+    }
+    case 'R27': {
+      // P2-1 Tests-only RED: a resolved superseded View must leave Loading,
+      // even when the new Host rehydrates the same selected native ID.
+      await goPresets()
+      const originalInstance = cm().instanceId
+      const releaseOld = remoteFixture.holdNextNativeBodyRead('native')
+      const loading = () => tree.root.findAll(node =>
+        node.type === 'p' && node.props.role === 'status'
+          && renderedText(node) === 'Loading original composition on demand…')
+      await click('data-context-manager-preset-view')
+      assert.equal(remoteFixture.readCalls.nativeBodies, 1)
+      assert.equal(m8cObservedNativeViewClaims.length, 1)
+      assert.equal(loading().length, 1,
+        'positive control: actual Renderer has a pending explicit composition read')
+
+      remoteFixture.externalRotateHostInstance()
+      await act(async () => { await injectedBusiness()?.()?.refresh() })
+      await settleUI()
+      const recovered = cm()
+      assert.notEqual(recovered.instanceId, originalInstance,
+        'must exercise real in-place Host authority change, not a fake UI override')
+      assert.equal(recovered.presets.status, 'ready')
+      assert.equal(recovered.presets.stale, false)
+      assert.ok(recovered.presets.data.directory.presets.some(item => item.id === 'native'),
+        'Host B retains the exact selected ID and an authoritative fresh roster')
+      assert.equal(live()?.selectedPresetId, null,
+        'the effective native ID stays the same without a new raw selection')
+      assert.equal(loading().length, 1,
+        'until the held RPC settles, Loading remains a legitimate pending state')
+
+      releaseOld('private composition from old Host A')
+      const staleResult = await m8cObservedNativeViewClaims[0].result
+      assert.equal(staleResult.status, 'superseded',
+        'the real Model must resolve the stale View instead of rejecting the Promise')
+      await settleUI()
+      assert.equal(cm().nativePresetDocuments.has('native'), false,
+        'old Host body must remain evicted')
+      assert.equal(tree.root.findAllByProps({ 'data-context-manager-preset-body': '' }).length, 0,
+        'stale private bytes may not be rendered')
+      assert.equal(loading().length, 0,
+        'P2-1 RED: settled superseded View cannot remain in permanent Loading')
+      assert.ok(['presetNoticeReadFailed', 'presetNoticeUnavailable'].includes(live()?.presetNotice?.code),
+        'terminal stale View should show a bounded read/unavailable notice')
+      await click('data-context-manager-preset-view')
+      assert.equal(remoteFixture.readCalls.nativeBodies, 2,
+        'the recovered Host must still permit a new explicit View')
+      assert.equal(renderedText(tree.root.findByProps({
+        'data-context-manager-preset-body': '',
+      })), remoteFixture.nativePresets.get('native').content)
+      break
+    }
+    case 'R28': {
+      // Companion GREEN control: a late old-Host resolution must not retire
+      // or overwrite the View lease explicitly opened against Host B.
+      await goPresets()
+      const releaseOld = remoteFixture.holdNextNativeBodyRead('native')
+      await click('data-context-manager-preset-view')
+      assert.equal(m8cObservedNativeViewClaims.length, 1)
+      remoteFixture.externalRotateHostInstance()
+      await act(async () => { await injectedBusiness()?.()?.refresh() })
+      await settleUI()
+      assert.equal(cm().presets.status, 'ready')
+      assert.equal(cm().presets.stale, false)
+      await click('data-context-manager-preset-view')
+      assert.equal(m8cObservedNativeViewClaims.length, 2)
+      assert.notEqual(m8cObservedNativeViewClaims[0].leaseId,
+        m8cObservedNativeViewClaims[1].leaseId,
+        'new View owns a distinct lease after Host rotation')
+      assert.equal(remoteFixture.readCalls.nativeBodies, 2,
+        'only two explicit View actions may read raw composition')
+      assert.equal((await m8cObservedNativeViewClaims[1].result).status, 'completed')
+      const currentBody = remoteFixture.nativePresets.get('native').content
+      assert.equal(renderedText(tree.root.findByProps({
+        'data-context-manager-preset-body': '',
+      })), currentBody, 'Host B composition must be visible before old A reply')
+
+      releaseOld('Host A stale private composition')
+      assert.equal((await m8cObservedNativeViewClaims[0].result).status, 'superseded')
+      await settleUI()
+      assert.equal(renderedText(tree.root.findByProps({
+        'data-context-manager-preset-body': '',
+      })), currentBody,
+      'retiring an obsolete lease must not erase the newer Host B composition')
+      assert.equal(cm().nativePresetDocuments.get('native')?.data?.content, currentBody)
+      assert.equal(live()?.presetNotice?.code ?? null, null,
+        'obsolete callback may not publish a stale warning over a newer View')
+      assert.equal(remoteFixture.presetWrites.length, 0)
       break
     }
     default: throw new Error('Unknown M8C published Renderer probe: ' + probe)
