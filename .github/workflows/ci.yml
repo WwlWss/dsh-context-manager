@@ -717,6 +717,8 @@ jobs:
         run: node ./tests/client-profile-drawer-runtime.mjs
       - name: Execute M8B real Skill Renderer qualification
         run: node ./tests/m8b/run-skill-renderer-probes.mjs
+      - name: Execute M8C real Native Preset Renderer qualification
+        run: node ./tests/m8c/run-preset-renderer-probes.mjs
 
   package:
     name: verify packed bundle

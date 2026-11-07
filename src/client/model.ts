@@ -8,6 +8,7 @@ import {
   CONTEXT_MANAGER_REMOTE_API_VERSION,
   type ContextManagerRemoteChangeSnapshot,
   type ContextManagerRemotePresetSnapshot,
+  type ContextManagerRemotePresetDocument,
   type ContextManagerRemoteProfilesSnapshot,
   type ContextManagerRemotePromptPlacementCapability,
   type ContextManagerRemoteResult,
@@ -38,6 +39,8 @@ import {
   type ContextManagerResourceRecoveryRequest,
 } from './resource-mutation-controller.js'
 import type { ContextManagerClientResourceCreateBasis } from './resource-mutation-types.js'
+import { createContextManagerPresetMutationController } from './preset-mutation-controller.js'
+import type { ContextManagerClientPresetMutationController } from './preset-mutation-types.js'
 import { mapSurfaces, setBoundedEntry } from './keyed-cache.js'
 import type {
   ContextManagerClientBusinessRemote,
@@ -93,8 +96,12 @@ export interface ContextManagerClientModel {
   readonly state: SnapshotStore<ContextManagerClientSnapshot>
   readonly mutations: ContextManagerClientMutationController
   readonly resourceMutations: ContextManagerClientResourceMutationController
+  readonly presetMutations: ContextManagerClientPresetMutationController
   loadPromptResourceList(): Promise<ContextManagerClientLazyReadResult>
   loadPromptResource(id: string): Promise<ContextManagerClientLazyReadResult>
+  loadNativePresetDocument(id: string): Promise<ContextManagerClientLazyReadResult>
+  beginNativePresetView(id: string): { readonly leaseId: number; readonly result: Promise<ContextManagerClientLazyReadResult> }
+  releaseNativePresetView(leaseId: number): void
   loadSessionPreset(id: string): Promise<ContextManagerClientLazyReadResult>
   loadAgentPromptRuntime(id: string): Promise<ContextManagerClientLazyReadResult>
   loadAgentSkillRuntime(id: string): Promise<ContextManagerClientLazyReadResult>
@@ -104,6 +111,9 @@ export interface ContextManagerClientModel {
 
   attach(remote: ContextManagerClientBusinessRemote): () => void
   refresh(): Promise<ContextManagerClientReconcileResult>
+  refreshNativePresets(): Promise<ContextManagerClientReconcileResult>
+  /** A live read-only projection; not another authority or mutable Store. */
+  readCurrentPresetState(): Pick<ContextManagerClientSnapshot, 'attachment' | 'protocol' | 'changes' | 'instanceId' | 'presets'>
   reconcile(
     scopes: readonly ContextManagerClientBaselineSurface[],
   ): Promise<ContextManagerClientReconcileResult>
@@ -128,6 +138,7 @@ function initialSnapshot(): ContextManagerClientSnapshot {
     presets: idleSurface(),
     promptPlacement: idleSurface(),
     resources: { list: idleSurface(), documents: new Map() },
+    nativePresetDocuments: new Map(),
     diagnostics: { sessions: new Map(), prompts: new Map(), skills: new Map(), pinned: new Map() },
   }
 }
@@ -243,8 +254,9 @@ function detachedSurface<T>(
   }
 }
 
-type KeyedKind = 'document' | 'session' | 'prompt' | 'skill' | 'pinned'
-type KeyedValue = ContextManagerRemotePromptResource
+type KeyedKind = 'document' | 'nativePreset' | 'session' | 'prompt' | 'skill' | 'pinned'
+type KeyedValue = ContextManagerRemotePresetDocument
+  | ContextManagerRemotePromptResource
   | ContextManagerRemoteSessionPresetIdentity
   | ContextManagerRemotePromptRuntimeInspection
   | ContextManagerRemoteSkillRuntimeInspection
@@ -289,6 +301,7 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
   let disposed = false
   let resetMutationController = (): void => {}
   let resetResourceMutationController = (): void => {}
+  let resetPresetMutationController = (): void => {}
   let observeResourceAuthority = (_id: string | null): void => {}
   let attachmentEpoch = 0
   const surfaceEpochs: SurfaceEpochs = {
@@ -309,6 +322,22 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
   let protocolOwnerRun = 0
   let keyedRequestSequence = 0
   const keyedOwners = new Map<string, number>()
+  let nextNativePresetViewLeaseId = 0
+  let activeNativePresetView: { readonly id: string; readonly leaseId: number } | undefined
+  /** Cancel native composition requests only; no effect on mutations/other keyed families. */
+  const revokeNativePresetReadOwners = (): void => {
+    activeNativePresetView = undefined
+    for (const key of keyedOwners.keys()) {
+      if (key.startsWith('["nativePreset",')) keyedOwners.delete(key)
+    }
+  }
+  const clearNativePresetView = (): void => {
+    revokeNativePresetReadOwners()
+    const current = state.getSnapshot()
+    if ((current.nativePresetDocuments?.size ?? 0) > 0) {
+      state.set({ ...current, nativePresetDocuments: new Map() })
+    }
+  }
   let pendingBaselineRecovery: { readonly attachment: number; readonly authority: number } | undefined
 
   const isAttachmentCurrent = (epoch: number): boolean => (
@@ -451,6 +480,7 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
     protocolOwnerRun = 0
     resetSurfaceOwnership()
     keyedOwners.clear()
+    activeNativePresetView = undefined
     pendingBaselineRecovery = undefined
     const current = state.getSnapshot()
     state.set({
@@ -462,12 +492,19 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
       presets: idleSurface(),
       promptPlacement: idleSurface(),
       resources: { list: idleSurface(), documents: new Map() },
+      nativePresetDocuments: new Map(),
       diagnostics: { sessions: new Map(), prompts: new Map(), skills: new Map(), pinned: new Map() },
     })
     resetMutationController()
+    // A native Preset operation belongs to the Host instance that dispatched
+    // it. Invalidate that lane even when the next Host uses the same Remote:
+    // late A replies must not settle or rehydrate against B's preset roster.
+    resetPresetMutationController()
     // Profile Settings source changes alone do NOT revoke an independent
     // PromptLibrary mutation. A verified incompatible protocol does.
-    if (protocol.status === 'incompatible') resetResourceMutationController()
+    if (protocol.status === 'incompatible') {
+      resetResourceMutationController()
+    }
   }
 
   const transitionAuthority = (
@@ -519,6 +556,7 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
     ) return
 
     const sameInstance = previous?.instanceId === next.instanceId
+    if (sameInstance && previous.presets !== next.presets) revokeNativePresetReadOwners()
     const resourceAuthorityChanged = sameInstance && previous.resourceAuthorityId !== next.resourceAuthorityId
     state.set({
       ...current,
@@ -529,6 +567,9 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
       presets: sameInstance && previous.presets !== next.presets
         ? markSurfaceStale(current.presets)
         : current.presets,
+      nativePresetDocuments: sameInstance && previous.presets !== next.presets
+        ? new Map()
+        : current.nativePresetDocuments,
       promptPlacement: sameInstance && previous.runtime !== next.runtime
         ? markSurfaceStale(current.promptPlacement)
         : current.promptPlacement,
@@ -985,7 +1026,8 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
   const lazyResult = (status: ContextManagerClientLazyReadResult['status']): ContextManagerClientLazyReadResult => ({ status })
   const keyOf = (kind: string, id: string): string => JSON.stringify([kind, id])
   const cursorForKind = (kind: 'list' | KeyedKind, c: ContextManagerRemoteChangeSnapshot): number => (
-    kind === 'list' || kind === 'document' ? c.promptResources : c.runtime
+    kind === 'list' || kind === 'document' ? c.promptResources
+      : kind === 'nativePreset' ? c.presets : c.runtime
   )
 
   const publishList = (surface: ContextManagerClientSurface<readonly ContextManagerRemotePromptResourceListItem[]>): void => {
@@ -999,6 +1041,14 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
     surface: ContextManagerClientSurface<KeyedValue>,
   ): void => {
     const current = state.getSnapshot()
+    if (kind === 'nativePreset') {
+      state.set({
+        ...current,
+        nativePresetDocuments: setBoundedEntry(current.nativePresetDocuments ?? new Map(), id,
+          surface as ContextManagerClientSurface<ContextManagerRemotePresetDocument>, 8),
+      })
+      return
+    }
     if (kind === 'document') {
       state.set({
         ...current,
@@ -1025,6 +1075,7 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
     const snapshot = state.getSnapshot()
     switch (kind) {
       case 'document': return snapshot.resources.documents.get(id)
+      case 'nativePreset': return snapshot.nativePresetDocuments?.get(id)
       case 'session': return snapshot.diagnostics.sessions.get(id)
       case 'prompt': return snapshot.diagnostics.prompts.get(id)
       case 'skill': return snapshot.diagnostics.skills.get(id)
@@ -1117,6 +1168,11 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
         if (transition.status === 'changed') {
           authority = transition.authority
           scheduleBaselineRecovery(attachment, authority)
+          // An explicit native composition View is bound to the Host that
+          // authorized it. Reclaiming a generic keyed-read owner after the
+          // Host instance changes would silently fetch new-Host private bytes.
+          // Other keyed families keep their legacy bounded authority restart.
+          if (kind === 'nativePreset') return staleResult()
           // clearAuthority publishes synchronously: an observer may already have
           // replaced this key, but it cannot cancel model-wide recovery.
           if ((keyedOwners.get(key) ?? 0) > request) return staleResult()
@@ -1132,6 +1188,7 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
         const read: ReadOutcome<unknown> = await (kind === 'list'
           ? invokeBusinessRead(() => currentRemote.listPromptResources())
           : kind === 'document' ? invokeBusinessRead(() => currentRemote.getPromptResource(id))
+          : kind === 'nativePreset' ? invokeBusinessRead(() => currentRemote.readPreset(id))
           : kind === 'session' ? invokeRead(() => currentRemote.sessionPreset(id))
           : kind === 'prompt' ? invokeRead(() => currentRemote.inspectPromptRuntime(id))
           : kind === 'skill' ? invokeRead(() => currentRemote.inspectSkillRuntime(id))
@@ -1150,6 +1207,9 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
         if (afterTransition.status === 'changed') {
           authority = afterTransition.authority
           scheduleBaselineRecovery(attachment, authority)
+          // The current lease was revoked by clearAuthority; never reissue a
+          // native composition read under a replacement Host instance.
+          if (kind === 'nativePreset') return staleResult()
           if ((keyedOwners.get(key) ?? 0) > request) return staleResult()
           keyedOwners.set(key, request)
           needsAuthorityRestart = true
@@ -1327,6 +1387,31 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
     return false
   }
 
+  const beginNativePresetView = (id: string): {
+    readonly leaseId: number
+    readonly result: Promise<ContextManagerClientLazyReadResult>
+  } => {
+    // A View action owns one exact composition: never preserve another body's cache.
+    clearNativePresetView()
+    const leaseId = ++nextNativePresetViewLeaseId
+    const current = state.getSnapshot()
+    const directory = current.presets.data?.directory
+    const allowed = current.attachment === 'attached'
+      && current.protocol.status === 'compatible'
+      && current.instanceId !== undefined
+      && current.changes?.instanceId === current.instanceId
+      && current.presets.status === 'ready' && !current.presets.stale
+      && directory?.status === 'available'
+      && directory.presets.some(row => row.id === id && row.broken === undefined)
+    if (!allowed) return Object.freeze({ leaseId, result: Promise.resolve(lazyResult('superseded')) })
+    activeNativePresetView = { id, leaseId }
+    return Object.freeze({ leaseId, result: runLazy('nativePreset', id) })
+  }
+  const releaseNativePresetView = (leaseId: number): void => {
+    if (activeNativePresetView?.leaseId !== leaseId) return
+    clearNativePresetView()
+  }
+
   const attach = (nextRemote: ContextManagerClientBusinessRemote): (() => void) => {
     if (disposed) {
       throw new Error('Context Manager Client model is disposed')
@@ -1338,6 +1423,7 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
     resetRunBookkeeping()
     resetSurfaceOwnership()
     keyedOwners.clear()
+    activeNativePresetView = undefined
 
     {
       const current = state.getSnapshot()
@@ -1348,6 +1434,7 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
         sync: { status: 'idle' },
         profiles: detachedSurface(current.profiles),
         presets: detachedSurface(current.presets),
+        nativePresetDocuments: new Map(),
         promptPlacement: detachedSurface(current.promptPlacement),
         resources: { list: detachedSurface(current.resources.list), documents: detachMap(current.resources.documents) },
         diagnostics: { sessions: detachMap(current.diagnostics.sessions), prompts: detachMap(current.diagnostics.prompts), skills: detachMap(current.diagnostics.skills), pinned: detachMap(current.diagnostics.pinned) },
@@ -1355,6 +1442,7 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
     }
     resetMutationController()
     resetResourceMutationController()
+    resetPresetMutationController()
 
     void reconcile(CONTEXT_MANAGER_BASELINE_SURFACES)
 
@@ -1365,6 +1453,7 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
       resetRunBookkeeping()
       resetSurfaceOwnership()
       keyedOwners.clear()
+      activeNativePresetView = undefined
       const current = state.getSnapshot()
       state.set({
         ...current,
@@ -1373,12 +1462,14 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
         sync: { status: 'idle' },
         profiles: detachedSurface(current.profiles),
         presets: detachedSurface(current.presets),
+        nativePresetDocuments: new Map(),
         promptPlacement: detachedSurface(current.promptPlacement),
         resources: { list: detachedSurface(current.resources.list), documents: detachMap(current.resources.documents) },
         diagnostics: { sessions: detachMap(current.diagnostics.sessions), prompts: detachMap(current.diagnostics.prompts), skills: detachMap(current.diagnostics.skills), pinned: detachMap(current.diagnostics.pinned) },
       })
       resetMutationController()
       resetResourceMutationController()
+      resetPresetMutationController()
     }
   }
 
@@ -1455,6 +1546,51 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
   resetResourceMutationController = resourceHandle.reset
   observeResourceAuthority = resourceHandle.observeResourceAuthority
 
+  const presetHandle = createContextManagerPresetMutationController({
+    getRemote: () => remote,
+    getLifecycle: () => (
+      disposed ? 'disposed' : remote === undefined ? 'detached' : 'attached'
+    ),
+    getProtocolStatus: () => state.getSnapshot().protocol.status,
+    getRoster: () => {
+      const current = state.getSnapshot()
+      const surface = current.presets
+      if (current.attachment !== 'attached' || current.protocol.status !== 'compatible'
+        || current.changes?.instanceId !== current.instanceId
+        || surface.status !== 'ready' || surface.stale
+        || surface.data?.directory.status !== 'available') return undefined
+      return {
+        status: 'ready',
+        authorable: surface.data.directory.authorable,
+        ids: surface.data.directory.presets.map(row => row.id),
+      }
+    },
+    invalidate: () => {
+      revokeNativePresetReadOwners()
+      const current = state.getSnapshot()
+      state.set({ ...current, presets: markSurfaceStale(current.presets), nativePresetDocuments: new Map() })
+    },
+    rehydrate: async request => {
+      const result = await reconcile(['presets'])
+      if (result.status !== 'completed') return false
+      const current = state.getSnapshot()
+      const surface = current.presets
+      if (current.attachment !== 'attached' || current.protocol.status !== 'compatible'
+        || current.changes?.instanceId !== current.instanceId
+        || surface.status !== 'ready' || surface.stale
+        || surface.data?.directory.status !== 'available') return false
+      // A known refusal (or unknown transport result) only needs a fresh
+      // authoritative roster; absence/presence is not a failed read-back.
+      if (request.verification === 'roster') return true
+      // Only a confirmed successful native receipt requires its effect
+      // to be observed before reporting a fully verified refresh.
+      const exists = surface.data.directory.presets.some(row => row.id === request.id)
+      return request.kind === 'copy' ? exists : !exists
+    },
+  })
+  const presetMutations = presetHandle.controller
+  resetPresetMutationController = presetHandle.reset
+
   const dispose = (): void => {
     if (disposed) return
     disposed = true
@@ -1463,11 +1599,13 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
     resetRunBookkeeping()
     resetSurfaceOwnership()
     keyedOwners.clear()
+    activeNativePresetView = undefined
     const current = state.getSnapshot()
     state.set({
       ...current,
       attachment: 'detached',
       resources: { list: idleSurface(), documents: new Map() },
+      nativePresetDocuments: new Map(),
       diagnostics: { sessions: new Map(), prompts: new Map(), skills: new Map(), pinned: new Map() },
       protocol: { status: 'unchecked' },
       sync: { status: 'idle' },
@@ -1477,14 +1615,19 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
     })
     resetMutationController()
     resetResourceMutationController()
+    resetPresetMutationController()
   }
 
   return Object.freeze({
     state,
     mutations,
     resourceMutations,
+    presetMutations,
     loadPromptResourceList: () => runLazy('list', ''),
     loadPromptResource: (id: string) => runLazy('document', id),
+    loadNativePresetDocument: (id: string) => runLazy('nativePreset', id),
+    beginNativePresetView,
+    releaseNativePresetView,
     loadSessionPreset: (id: string) => runLazy('session', id),
     loadAgentPromptRuntime: (id: string) => runLazy('prompt', id),
     loadAgentSkillRuntime: (id: string) => runLazy('skill', id),
@@ -1493,6 +1636,14 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
     capturePromptResourceCreateBasis,
     attach,
     refresh: () => reconcile(CONTEXT_MANAGER_BASELINE_SURFACES),
+    refreshNativePresets: () => reconcile(['presets']),
+    readCurrentPresetState: () => {
+      const current = state.getSnapshot()
+      return Object.freeze({
+        attachment: current.attachment, protocol: current.protocol,
+        instanceId: current.instanceId, changes: current.changes, presets: current.presets,
+      })
+    },
     reconcile,
     getProfileRevision,
     captureProfileMutationBasis,

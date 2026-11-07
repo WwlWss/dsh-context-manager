@@ -1,8 +1,10 @@
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
+import type { ContextManagerClientPresetMutationRemote } from './preset-remote-port.js'
 
 import type {
   ContextManagerRemoteChangeSnapshot,
   ContextManagerRemotePresetSnapshot,
+  ContextManagerRemotePresetDocument,
   ContextManagerRemoteProfilesSnapshot,
   ContextManagerRemoteProfileInput,
   ContextManagerRemoteProfileMutationBasis,
@@ -76,9 +78,15 @@ export interface ContextManagerClientProfileMutationRemote {
   removePromptBinding(profileId: string, bindingId: string, basis: ContextManagerRemoteProfileMutationBasis): ProfileMutationResult
 }
 
+export interface ContextManagerClientNativePresetReadRemote {
+  readPreset(id: string): Promise<RemoteResult<ContextManagerRemoteResult<ContextManagerRemotePresetDocument>>>
+}
+
 export interface ContextManagerClientBusinessRemote
   extends ContextManagerClientReadRemote,
     ContextManagerClientResourceReadRemote,
     ContextManagerClientRuntimeReadRemote,
     ContextManagerClientResourceMutationRemote,
+    ContextManagerClientNativePresetReadRemote,
+    ContextManagerClientPresetMutationRemote,
     ContextManagerClientProfileMutationRemote {}

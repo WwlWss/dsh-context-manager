@@ -4,6 +4,8 @@ import type { ContextManagerClientPromptResourceReadStamp } from './model-types.
 import type { ContextManagerClientResourceCreateBasis } from './resource-mutation-types.js'
 import type { ContextManagerRemotePromptResource, ContextManagerRemotePromptPlacement, ContextManagerRemoteSkillMode } from '../remote/types.js'
 import type { ResourceDraft, ResourceDraftBlock, ResourceNotice } from './resource-editor.js'
+import type { PresetDraft, PresetDraftBlock, PresetNotice } from './preset-editor.js'
+import type { ContextManagerRemotePresetRow } from '../remote/types.js'
 import { isPromptBindingDraft } from './prompt-binding-editor.js'
 import type {
   ProfileDraft,
@@ -16,9 +18,13 @@ export interface ContextManagerPresentationState {
   open: boolean
   /** Monotonic UI-only session, not a Profile/Resource Host authority or CAS. */
   openSessionEpoch: number
-  pane: 'profiles' | 'resources'
+  pane: 'profiles' | 'resources' | 'presets'
   selectedProfileId: string | null
   selectedResourceId: string | null
+  selectedPresetId: string | null
+  presetDraft: PresetDraft | null
+  nextPresetDraftToken: number
+  presetNotice: PresetNotice | null
   resourceDraft: ResourceDraft | null
   nextResourceDraftToken: number
   resourceNotice: ResourceNotice | null
@@ -58,6 +64,17 @@ export function terminalResourceNotice(
   return state.resourceDraft?.terminalNotice
 }
 
+export function terminalPresetNotice(
+  state: Pick<ContextManagerPresentationState, 'presetDraft'>,
+): PresetNotice | undefined {
+  return state.presetDraft?.terminalNotice
+}
+
+function notifyOccupiedPresetDraft(state: ContextManagerPresentationState): void {
+  if (!state.open || terminalPresetNotice(state) !== undefined) return
+  state.presetNotice = { code: 'presetNoticeDraftActive', kind: 'warning' }
+}
+
 function notifyOccupiedProfileDraft(state: ContextManagerPresentationState): void {
   // An obsolete Begin after Drawer Close must not leave a phantom warning on Reopen.
   if (!state.open || terminalProfileNotice(state) !== undefined) return
@@ -65,11 +82,16 @@ function notifyOccupiedProfileDraft(state: ContextManagerPresentationState): voi
 }
 
 function canBeginProfileDraft(state: ContextManagerPresentationState): boolean {
-  return state.open && state.pane === 'profiles' && state.draft === null && state.resourceDraft === null
+  return state.open && state.pane === 'profiles' && state.draft === null && state.resourceDraft === null && state.presetDraft === null
 }
 
 function canBeginResourceDraft(state: ContextManagerPresentationState): boolean {
-  return state.open && state.pane === 'resources' && state.resourceDraft === null && state.draft === null
+  return state.open && state.pane === 'resources' && state.resourceDraft === null && state.draft === null && state.presetDraft === null
+}
+
+function canBeginPresetDraft(state: ContextManagerPresentationState): boolean {
+  return state.open && state.pane === 'presets' && state.presetDraft === null
+    && state.draft === null && state.resourceDraft === null
 }
 
 function notifyOccupiedResourceDraft(state: ContextManagerPresentationState): void {
@@ -104,15 +126,20 @@ export function isLiveDrawerOpenSession(
 export function mayApplyCurrentDraftEvent(
   actions: object,
   renderedOpenSessionEpoch: number,
-  pane: 'profiles' | 'resources',
+  pane: 'profiles' | 'resources' | 'presets',
   token: number,
 ): boolean {
   const current = readLivePresentationForActions(actions)
   if (!isLiveDrawerOpenSession(current, renderedOpenSessionEpoch)
     || current?.pane !== pane) return false
-  return pane === 'profiles'
-    ? current.draft?.token === token && current.resourceDraft === null
-    : current.resourceDraft?.token === token && current.draft === null
+  switch (pane) {
+    case 'profiles': return current.draft?.token === token
+      && current.resourceDraft === null && current.presetDraft === null
+    case 'resources': return current.resourceDraft?.token === token
+      && current.draft === null && current.presetDraft === null
+    case 'presets': return current.presetDraft?.token === token
+      && current.draft === null && current.resourceDraft === null
+  }
 }
 
 /** F01-SR3: user-originated navigation/close events must belong to the
@@ -128,7 +155,7 @@ export function mayApplyCurrentDraftEvent(
 export function mayApplyCurrentNavigationEvent(
   actions: object,
   renderedOpenSessionEpoch: number,
-  pane?: 'profiles' | 'resources',
+  pane?: 'profiles' | 'resources' | 'presets',
 ): boolean {
   const current = readLivePresentationForActions(actions)
   return isLiveDrawerOpenSession(current, renderedOpenSessionEpoch)
@@ -145,6 +172,7 @@ export function mayDispatchImmediateProfileWrite(
     && current.selectedProfileId === selectedProfileId
     && current.draft === null
     && current.resourceDraft === null
+    && current.presetDraft === null
 }
 
 export function ownsLiveProfileDraft(
@@ -155,6 +183,7 @@ export function ownsLiveProfileDraft(
     && current.open
     && current.pane === 'profiles'
     && current.resourceDraft === null
+    && current.presetDraft === null
     && current.draft === original
     && original.blocked === undefined
     && original.submitting !== true
@@ -168,9 +197,20 @@ export function ownsLiveResourceDraft(
     && current.open
     && current.pane === 'resources'
     && current.draft === null
+    && current.presetDraft === null
     && current.resourceDraft === original
     && original.blocked === undefined
     && original.submitting !== true
+}
+
+export function ownsLivePresetDraft(
+  current: ContextManagerPresentationState | undefined,
+  original: PresetDraft,
+): boolean {
+  return current !== undefined && current.open && current.pane === 'presets'
+    && current.draft === null && current.resourceDraft === null
+    && current.presetDraft === original
+    && original.blocked === undefined && original.submitting !== true
 }
 
 /** View-only state. All authoritative Profile and mutation state remains in B1/B2. */
@@ -182,6 +222,10 @@ export function createContextManagerPresentationStore() {
       pane: 'profiles',
       selectedProfileId: null,
       selectedResourceId: null,
+      selectedPresetId: null,
+      presetDraft: null,
+      nextPresetDraftToken: 0,
+      presetNotice: null,
       resourceDraft: null,
       nextResourceDraftToken: 0,
       resourceNotice: null,
@@ -204,17 +248,21 @@ export function createContextManagerPresentationStore() {
         if (!state.open) state.openSessionEpoch += 1
         state.open = !state.open
       },
-      selectPane(state, pane: 'profiles' | 'resources') {
-        if (state.pane === pane) return
-        if (state.draft !== null || state.resourceDraft !== null) {
-          if (state.pane === 'profiles') notifyOccupiedProfileDraft(state)
-          else notifyOccupiedResourceDraft(state)
+      selectPane(state, pane: 'profiles' | 'resources' | 'presets') {
+        if (!state.open || state.pane === pane) return
+        if (state.draft !== null || state.resourceDraft !== null || state.presetDraft !== null) {
+          switch (state.pane) {
+            case 'profiles': notifyOccupiedProfileDraft(state); break
+            case 'resources': notifyOccupiedResourceDraft(state); break
+            case 'presets': notifyOccupiedPresetDraft(state); break
+          }
           return
         }
         state.pane = pane
       },
       selectProfile(state, id: string | null) {
-        if (state.draft !== null) {
+        if (!state.open || state.pane !== 'profiles'
+          || state.draft !== null || state.resourceDraft !== null || state.presetDraft !== null) {
           notifyOccupiedProfileDraft(state)
           return
         }
@@ -526,7 +574,7 @@ export function createContextManagerPresentationStore() {
       /** Presentation claim only: performed synchronously before the Host RPC.
        * The Controller still owns Profile global single-flight and CAS. */
       beginProfileSubmission(state, token: number) {
-        if (state.pane !== 'profiles' || state.resourceDraft !== null
+        if (state.pane !== 'profiles' || state.resourceDraft !== null || state.presetDraft !== null
           || state.draft?.token !== token
           || state.draft.blocked !== undefined || state.draft.submitting) return
         state.draft.submitting = true
@@ -566,7 +614,8 @@ export function createContextManagerPresentationStore() {
         state.notice = null
       },
       selectResource(state, id: string | null) {
-        if (state.resourceDraft !== null) {
+        if (!state.open || state.pane !== 'resources'
+          || state.resourceDraft !== null || state.draft !== null || state.presetDraft !== null) {
           notifyOccupiedResourceDraft(state)
           return
         }
@@ -651,7 +700,7 @@ export function createContextManagerPresentationStore() {
         state.resourceNotice = null
       },
       beginResourceSubmission(state, token: number) {
-        if (state.pane !== 'resources' || state.draft !== null
+        if (state.pane !== 'resources' || state.draft !== null || state.presetDraft !== null
           || state.resourceDraft?.token !== token
           || state.resourceDraft.blocked !== undefined || state.resourceDraft.submitting) return
         state.resourceDraft.submitting = true
@@ -685,6 +734,102 @@ export function createContextManagerPresentationStore() {
           || state.resourceDraft.submitting || state.resourceDraft.blocked === undefined) return
         state.resourceDraft = null
         state.resourceNotice = null
+      },
+      selectPreset(state, id: string | null) {
+        if (!state.open || state.pane !== 'presets'
+          || state.presetDraft !== null || state.draft !== null || state.resourceDraft !== null) {
+          notifyOccupiedPresetDraft(state)
+          return
+        }
+        state.selectedPresetId = id
+        state.presetNotice = null
+      },
+      beginPresetCopy(state, row: ContextManagerRemotePresetRow, cursor: number, defaultId: string, instanceId: string) {
+        if (!canBeginPresetDraft(state)) {
+          notifyOccupiedPresetDraft(state)
+          return
+        }
+        state.nextPresetDraftToken += 1
+        state.selectedPresetId = row.id
+        state.presetDraft = {
+          kind: 'copy', token: state.nextPresetDraftToken, sourceId: row.id,
+          observedRow: Object.freeze({ ...row }), observedCursor: cursor,
+          observedDefaultId: defaultId, observedInstanceId: instanceId,
+          targetId: '', nameMode: 'inherit', explicitName: '',
+        }
+        state.presetNotice = null
+      },
+      beginPresetRemove(state, row: ContextManagerRemotePresetRow, cursor: number, defaultId: string, instanceId: string) {
+        if (!canBeginPresetDraft(state)) {
+          notifyOccupiedPresetDraft(state)
+          return
+        }
+        state.nextPresetDraftToken += 1
+        state.selectedPresetId = row.id
+        state.presetDraft = {
+          kind: 'confirm-remove', token: state.nextPresetDraftToken, targetId: row.id,
+          observedRow: Object.freeze({ ...row }), observedCursor: cursor,
+          observedDefaultId: defaultId, observedInstanceId: instanceId,
+          confirmationText: '',
+        }
+        state.presetNotice = null
+      },
+      updatePresetCopy(state, token: number, field: 'targetId' | 'explicitName', value: string) {
+        if (state.presetDraft?.kind !== 'copy' || state.presetDraft.token !== token
+          || state.presetDraft.blocked !== undefined || state.presetDraft.submitting) return
+        state.presetDraft[field] = value
+        state.presetNotice = null
+      },
+      setPresetNameMode(state, token: number, value: 'inherit' | 'explicit') {
+        if (state.presetDraft?.kind !== 'copy' || state.presetDraft.token !== token
+          || state.presetDraft.blocked !== undefined || state.presetDraft.submitting) return
+        state.presetDraft.nameMode = value
+        state.presetNotice = null
+      },
+      updatePresetRemoveConfirmation(state, token: number, value: string) {
+        if (state.presetDraft?.kind !== 'confirm-remove' || state.presetDraft.token !== token
+          || state.presetDraft.blocked !== undefined || state.presetDraft.submitting) return
+        state.presetDraft.confirmationText = value
+        state.presetNotice = null
+      },
+      beginPresetSubmission(state, token: number) {
+        if (!state.open || state.pane !== 'presets'
+          || state.draft !== null || state.resourceDraft !== null
+          || state.presetDraft?.token !== token
+          || state.presetDraft.blocked !== undefined || state.presetDraft.submitting) return
+        state.presetDraft.submitting = true
+      },
+      finishPresetSubmission(state, token: number) {
+        if (state.presetDraft?.token === token) state.presetDraft.submitting = false
+      },
+      blockPresetDraft(state, token: number, block: PresetDraftBlock, notice: PresetNotice | null) {
+        if (state.presetDraft?.token !== token || state.presetDraft.blocked !== undefined) return
+        state.presetDraft.blocked = block
+        state.presetDraft.submitting = false
+        if (notice !== null) state.presetDraft.terminalNotice = { ...notice }
+        state.presetNotice = notice
+      },
+      completePresetDraft(state, token: number, notice: PresetNotice | null, selectId?: string | null) {
+        if (state.presetDraft?.token !== token || state.presetDraft.blocked !== undefined) return
+        state.presetDraft = null
+        if (selectId !== undefined) state.selectedPresetId = selectId
+        state.presetNotice = notice
+      },
+      cancelPresetDraft(state, token: number) {
+        if (state.presetDraft?.token !== token
+          || state.presetDraft.blocked !== undefined || state.presetDraft.submitting) return
+        state.presetDraft = null
+        state.presetNotice = null
+      },
+      discardBlockedPresetDraft(state, token: number) {
+        if (state.presetDraft?.token !== token
+          || state.presetDraft.blocked === undefined || state.presetDraft.submitting) return
+        state.presetDraft = null
+        state.presetNotice = null
+      },
+      setPresetNotice(state, notice: PresetNotice | null) {
+        if (terminalPresetNotice(state) !== undefined) return
+        state.presetNotice = notice
       },
       setResourceNotice(state, notice: ResourceNotice | null) {
         if (terminalResourceNotice(state) !== undefined) return

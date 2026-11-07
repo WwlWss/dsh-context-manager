@@ -8,6 +8,7 @@ import {
   type ContextManagerRemoteChangeSnapshot,
   type ContextManagerRemoteErrorCode,
   type ContextManagerRemotePresetSnapshot,
+  type ContextManagerRemotePresetDocument,
   type ContextManagerRemoteProfilesSnapshot,
   type ContextManagerRemoteProfileInput,
   type ContextManagerRemoteProfileMutationBasis,
@@ -164,6 +165,8 @@ class ScriptedRemote implements ContextManagerClientBusinessRemote {
     changes: 0,
     profiles: 0,
     presets: 0,
+    readPreset: 0,
+    nativePresetWrite: 0,
     promptPlacement: 0,
     profileMutation: 0,
     resourceMutation: 0,
@@ -185,6 +188,7 @@ class ScriptedRemote implements ContextManagerClientBusinessRemote {
   readonly changesSteps: Array<Step<ContextManagerRemoteChangeSnapshot>> = []
   readonly profilesSteps: Array<Step<ContextManagerRemoteProfilesSnapshot>> = []
   readonly presetsSteps: Array<Step<ContextManagerRemotePresetSnapshot>> = []
+  readonly presetBodySteps: Array<Step<ContextManagerRemoteResult<ContextManagerRemotePresetDocument>>> = []
   readonly placementSteps: Array<Step<ContextManagerRemotePromptPlacementCapability>> = []
   readonly profileMutationSteps: ProfileMutationStep[] = []
 
@@ -222,6 +226,42 @@ class ScriptedRemote implements ContextManagerClientBusinessRemote {
   presets(): Promise<RemoteResult<ContextManagerRemotePresetSnapshot>> {
     this.calls.presets += 1
     return this.take(this.presetsSteps, this.defaultPresets)
+  }
+
+  readPreset(id: string): Promise<RemoteResult<ContextManagerRemoteResult<ContextManagerRemotePresetDocument>>> {
+    this.calls.readPreset += 1
+    return this.take(this.presetBodySteps, businessOk({ id, content: 'native body:' + id }))
+  }
+
+  copyPreset(_from: string, id: string, _name: string | null) {
+    this.calls.nativePresetWrite += 1
+    const directory = this.defaultPresets.directory
+    if (directory.status === 'available') {
+      this.defaultPresets = {
+        ...this.defaultPresets,
+        directory: { ...directory, presets: [...directory.presets, { id, trust: 'user', isDefault: false }] },
+      }
+      this.defaultChanges = { ...this.defaultChanges,
+        generation: this.defaultChanges.generation + 1,
+        presets: this.defaultChanges.presets + 1,
+      }
+    }
+    return Promise.resolve(ok(businessOk({ id })))
+  }
+
+  removePreset(id: string) {
+    this.calls.nativePresetWrite += 1
+    const directory = this.defaultPresets.directory
+    if (directory.status === 'available') {
+      this.defaultPresets = { ...this.defaultPresets,
+        directory: { ...directory, presets: directory.presets.filter(row => row.id !== id) },
+      }
+      this.defaultChanges = { ...this.defaultChanges,
+        generation: this.defaultChanges.generation + 1,
+        presets: this.defaultChanges.presets + 1,
+      }
+    }
+    return Promise.resolve(ok(businessOk({ id })))
   }
 
   promptPlacement(): Promise<RemoteResult<ContextManagerRemotePromptPlacementCapability>> {
@@ -2887,4 +2927,480 @@ test('the baseline surface list stays explicit and mutation-free', () => {
     'presets',
     'promptPlacement',
   ])
+})
+
+test('M8C P03 composition is an explicit keyed lazy read, never a baseline or profile-side effect', async () => {
+  const { model, remote, detach } = await attachAndReady()
+  assert.equal(remote.calls.readPreset, 0, 'initial authoritative hydration must not read composition')
+  const report = await model.loadNativePresetDocument('source')
+  assert.equal(report.status, 'completed')
+  assert.equal(remote.calls.readPreset, 1)
+  const body = model.state.getSnapshot().nativePresetDocuments?.get('source')
+  assert.equal(body?.status, 'ready')
+  assert.equal(body.data?.content, 'native body:source')
+  assert.equal(model.state.getSnapshot().profiles.status, 'ready')
+  detach()
+  assert.equal(model.state.getSnapshot().nativePresetDocuments?.size, 0,
+    'host detach must purge sensitive native composition data')
+  model.dispose()
+})
+
+test('M8C P04 concurrent same-ID native composition read must not publish old response over new', async () => {
+  const remote = new ScriptedRemote()
+  const gate = deferred<RemoteResult<ContextManagerRemoteResult<ContextManagerRemotePresetDocument>>>()
+  remote.presetBodySteps.push(
+    async () => gate.promise,
+    async () => ok(businessOk({ id: 'source', content: 'newest' })),
+  )
+  const { model, detach } = await attachAndReady(remote)
+  const old = model.loadNativePresetDocument('source')
+  await waitFor(() => remote.calls.readPreset === 1, 'first native composition request')
+  const latest = model.loadNativePresetDocument('source')
+  assert.equal((await latest).status, 'completed')
+  gate.resolve(ok(businessOk({ id: 'source', content: 'obsolete' })))
+  const oldResult = await old
+  assert.ok(oldResult.status === 'superseded' || oldResult.status === 'detached')
+  assert.equal(model.state.getSnapshot().nativePresetDocuments?.get('source')?.data?.content, 'newest')
+  detach()
+  model.dispose()
+})
+
+test('M8C B2.3 model authoring uses native lane and recovers authoritative Preset roster without changing Profile Settings', async () => {
+  const remote = new ScriptedRemote()
+  remote.defaultPresets = {
+    directory: {
+      status: 'available', defaultId: 'source', authorable: true,
+      presets: [
+        { id: 'source', trust: 'system', isDefault: true },
+        { id: 'my-user', trust: 'user', isDefault: false },
+      ],
+    },
+    profiles: {},
+  }
+  const { model, detach } = await attachAndReady(remote)
+  const profileBefore = model.state.getSnapshot().profiles.data
+  const receipt = await model.presetMutations.copyPreset('source', 'copied', null)
+  assert.deepEqual(receipt, { status: 'applied', refresh: 'fresh' })
+  assert.equal(remote.calls.nativePresetWrite, 1)
+  const afterCopy = model.state.getSnapshot()
+  assert.equal(afterCopy.presets.status, 'ready')
+  assert.equal(afterCopy.presets.stale, false)
+  assert.equal(afterCopy.presets.data?.directory.status, 'available')
+  if (afterCopy.presets.data?.directory.status === 'available') {
+    assert.ok(afterCopy.presets.data.directory.presets.some(p => p.id === 'copied'))
+  }
+  assert.deepEqual(afterCopy.profiles.data, profileBefore,
+    'native copy cannot edit profile bindings or their Settings revision')
+
+  const removed = await model.presetMutations.removePreset('copied')
+  assert.deepEqual(removed, { status: 'applied', refresh: 'fresh' })
+  assert.equal(remote.calls.nativePresetWrite, 2)
+  const afterRemove = model.state.getSnapshot()
+  if (afterRemove.presets.data?.directory.status === 'available') {
+    assert.ok(!afterRemove.presets.data.directory.presets.some(p => p.id === 'copied'))
+  }
+  assert.deepEqual(afterRemove.profiles.data, profileBefore)
+  detach()
+  model.dispose()
+})
+
+test('M8C B3-C composition view lease is explicit and release removes sensitive bytes', async () => {
+  const remote = new ScriptedRemote()
+  remote.defaultPresets = {
+    directory: {
+      status: 'available', defaultId: 'source', authorable: true,
+      presets: [{ id: 'source', trust: 'system', isDefault: true }],
+    },
+    profiles: {},
+  }
+  const { model, detach } = await attachAndReady(remote)
+  const before = remote.calls.readPreset
+  const opened = model.beginNativePresetView('source')
+  assert.equal(remote.calls.readPreset, before, 'a lease claim itself must not eagerly publish a body')
+  assert.equal((await opened.result).status, 'completed')
+  assert.equal(remote.calls.readPreset, before + 1)
+  assert.equal(model.state.getSnapshot().nativePresetDocuments?.get('source')?.data?.content, 'native body:source')
+  model.releaseNativePresetView(opened.leaseId)
+  assert.equal(model.state.getSnapshot().nativePresetDocuments?.size, 0)
+  const denied = model.beginNativePresetView('not-in-directory')
+  assert.notEqual((await denied.result).status, 'completed')
+  assert.equal(remote.calls.readPreset, before + 1, 'no native read for an absent source')
+  model.releaseNativePresetView(denied.leaseId)
+  detach()
+  model.dispose()
+})
+
+test('M8C B3-C old view response or old cleanup never publishes over newer view lease', async () => {
+  const remote = new ScriptedRemote()
+  remote.defaultPresets = {
+    directory: {
+      status: 'available', defaultId: 'source', authorable: true,
+      presets: [{ id: 'source', trust: 'system', isDefault: true }],
+    },
+    profiles: {},
+  }
+  const gate = deferred<RemoteResult<ContextManagerRemoteResult<ContextManagerRemotePresetDocument>>>()
+  remote.presetBodySteps.push(
+    async () => gate.promise,
+    async () => ok(businessOk({ id: 'source', content: 'fresh lease body' })),
+  )
+  const { model, detach } = await attachAndReady(remote)
+  const stale = model.beginNativePresetView('source')
+  await waitFor(() => remote.calls.readPreset === 1, 'old leased native body request')
+  model.releaseNativePresetView(stale.leaseId)
+  const fresh = model.beginNativePresetView('source')
+  assert.equal((await fresh.result).status, 'completed')
+  assert.equal(model.state.getSnapshot().nativePresetDocuments?.get('source')?.data?.content, 'fresh lease body')
+  model.releaseNativePresetView(stale.leaseId)
+  assert.equal(model.state.getSnapshot().nativePresetDocuments?.get('source')?.data?.content, 'fresh lease body')
+  gate.resolve(ok(businessOk({ id: 'source', content: 'obsolete sensitive content' })))
+  assert.equal((await stale.result).status, 'superseded')
+  assert.equal(model.state.getSnapshot().nativePresetDocuments?.get('source')?.data?.content, 'fresh lease body')
+  model.releaseNativePresetView(fresh.leaseId)
+  assert.equal(model.state.getSnapshot().nativePresetDocuments?.size, 0)
+  detach()
+  model.dispose()
+})
+
+
+test('M8C Strict P23: Host instance rotation revokes the native view lease before any new-Host read', async () => {
+  const remote = new ScriptedRemote()
+  remote.defaultPresets = {
+    directory: { status: 'available', defaultId: 'source', authorable: true,
+      presets: [{ id: 'source', trust: 'system', isDefault: true }] },
+    profiles: {},
+  }
+  const { model, detach } = await attachAndReady(remote)
+  // Browser still displays host-a's fresh directory, but the next lazy
+  // changes() discovers host-b. No old explicit View may be silently
+  // reauthorized to fetch host-b's composition.
+  remote.defaultChanges = changes('host-b', 2, 1, 1)
+  const lease = model.beginNativePresetView('source')
+  assert.equal((await lease.result).status, 'superseded')
+  assert.equal(remote.calls.readPreset, 0,
+    'old view lease must never dispatch readPreset after Host instance rotation')
+  assert.equal(model.state.getSnapshot().nativePresetDocuments?.size, 0,
+    'recovery of a new Host must never repopulate the old sensitive view')
+  model.releaseNativePresetView(lease.leaseId)
+  detach()
+  model.dispose()
+})
+
+
+test('M8C Final Strict P1-A RED: A-to-B Host rotation releases the native write lane before old RPC settles', async () => {
+  const remote = new ScriptedRemote()
+  remote.defaultPresets = {
+    directory: {
+      status: 'available', defaultId: 'a-source', authorable: true,
+      presets: [{ id: 'a-source', trust: 'system', isDefault: true }],
+    },
+    profiles: {},
+  }
+  const { model, detach } = await attachAndReady(remote)
+  const oldReply = deferred<Awaited<ReturnType<ScriptedRemote['copyPreset']>>>()
+  const baseCopy = remote.copyPreset.bind(remote)
+  let holdFirst = true
+  remote.copyPreset = (from, id, name) => {
+    if (!holdFirst) return baseCopy(from, id, name)
+    holdFirst = false
+    remote.calls.nativePresetWrite += 1
+    return oldReply.promise
+  }
+
+  const oldWrite = model.presetMutations.copyPreset('a-source', 'same-target', null)
+  await waitFor(() => remote.calls.nativePresetWrite === 1,
+    'Host A native Copy RPC dispatched and reply held')
+  assert.equal(model.presetMutations.state.getSnapshot().preset.status, 'running')
+
+  // Same attached Remote, new Host instance. A must no longer own B's lane.
+  // B deliberately contains the old target ID to expose false attribution.
+  remote.defaultChanges = changes('host-b', 1, 1, 1)
+  remote.defaultPresets = {
+    directory: {
+      status: 'available', defaultId: 'b-source', authorable: true,
+      presets: [
+        { id: 'b-source', trust: 'system', isDefault: true },
+        { id: 'same-target', trust: 'user', isDefault: false },
+      ],
+    },
+    profiles: {},
+  }
+  const transition = await model.refresh()
+  await waitFor(() => {
+    const s = model.state.getSnapshot()
+    return s.instanceId === 'host-b' && s.presets.status === 'ready'
+      && !s.presets.stale && s.protocol.status === 'compatible'
+  }, 'Host B authoritative baseline')
+  const laneAfterRotation = model.presetMutations.state.getSnapshot().preset
+
+  const newWrite = await model.presetMutations.copyPreset('b-source', 'b-created', null)
+  // Always release the old RPC, even when B rejected it: no dangling tests.
+  oldReply.resolve(ok(businessOk({ id: 'same-target' })))
+  const oldResult = await oldWrite
+  const observedWrites = remote.calls.nativePresetWrite
+  const bHasNewTarget = remote.defaultPresets.directory.status === 'available'
+    && remote.defaultPresets.directory.presets.some(row => row.id === 'b-created')
+  detach()
+  model.dispose()
+
+  assert.equal(transition.status, 'completed')
+  assert.deepEqual(newWrite, { status: 'applied', refresh: 'fresh' },
+    'new Host must be able to dispatch its own native Copy before A replies')
+  assert.equal(laneAfterRotation.status, 'idle',
+    'Host B must not inherit an in-flight native mutation owned by Host A')
+  assert.deepEqual(oldResult, { status: 'superseded' },
+    'old Host A Copy reply must not publish a result into Host B')
+  assert.equal(observedWrites, 2, 'one old Host A RPC and one new Host B RPC')
+  assert.equal(bHasNewTarget, true)
+})
+
+test('M8C Final Strict P1-B RED: late Host A Copy receipt cannot rehydrate against a same-ID Host B roster', async () => {
+  const remote = new ScriptedRemote()
+  remote.defaultPresets = {
+    directory: {
+      status: 'available', defaultId: 'a-source', authorable: true,
+      presets: [{ id: 'a-source', trust: 'system', isDefault: true }],
+    },
+    profiles: {},
+  }
+  const { model, detach } = await attachAndReady(remote)
+  const oldReply = deferred<Awaited<ReturnType<ScriptedRemote['copyPreset']>>>()
+  const baseCopy = remote.copyPreset.bind(remote)
+  let holdFirst = true
+  remote.copyPreset = (from, id, name) => {
+    if (!holdFirst) return baseCopy(from, id, name)
+    holdFirst = false
+    remote.calls.nativePresetWrite += 1
+    return oldReply.promise
+  }
+  const oldWrite = model.presetMutations.copyPreset('a-source', 'colliding', null)
+  await waitFor(() => remote.calls.nativePresetWrite === 1,
+    'Host A dispatched old Copy before instance rotation')
+
+  remote.defaultChanges = changes('host-b', 1, 1, 1)
+  remote.defaultPresets = {
+    directory: {
+      status: 'available', defaultId: 'b-source', authorable: true,
+      presets: [
+        { id: 'b-source', trust: 'system', isDefault: true },
+        // Native B already has a distinct preset with the same ID.
+        { id: 'colliding', trust: 'user', isDefault: false },
+      ],
+    },
+    profiles: {},
+  }
+  await model.refresh()
+  await waitFor(() => {
+    const s = model.state.getSnapshot()
+    return s.instanceId === 'host-b' && s.presets.status === 'ready'
+      && !s.presets.stale && s.protocol.status === 'compatible'
+  }, 'Host B fresh preset roster with colliding ID')
+  const beforeOldReply = model.presetMutations.state.getSnapshot().preset
+  const beforeRehydrate = remote.calls.presets
+  oldReply.resolve(ok(businessOk({ id: 'colliding' })))
+  const oldResult = await oldWrite
+  const afterOldReply = model.presetMutations.state.getSnapshot().preset
+  const extraRosterReads = remote.calls.presets - beforeRehydrate
+  detach()
+  model.dispose()
+
+  assert.deepEqual(oldResult, { status: 'superseded' },
+    'a successful Host A RPC must not count Host B same-ID membership as A write verification')
+  assert.equal(beforeOldReply.status, 'idle',
+    'Host B should have reset the old mutation owner before its RPC completes')
+  assert.equal(afterOldReply.status, 'idle',
+    'old Host A receipt cannot publish a settled operation on Host B')
+  assert.equal(extraRosterReads, 0,
+    'old Host A receipt must not trigger a Host B preset roster read-back')
+})
+
+
+test('M8C P2-2 M1 RED: refused Copy with fresh unchanged native roster is rejected/fresh', async () => {
+  const remote = new ScriptedRemote()
+  remote.defaultPresets = {
+    directory: {
+      status: 'available', defaultId: 'source', authorable: true,
+      presets: [
+        { id: 'source', trust: 'system', isDefault: true },
+        { id: 'user-one', trust: 'user', isDefault: false },
+      ],
+    },
+    profiles: {},
+  }
+  const { model, detach } = await attachAndReady(remote)
+  const beforeRead = remote.calls.presets
+  const beforeProfiles = model.state.getSnapshot().profiles.data
+  // An explicit Host business refusal does not create the Copy target.
+  // Its absence is the correct fresh native roster, not read-back degradation.
+  remote.copyPreset = async () => {
+    remote.calls.nativePresetWrite += 1
+    return ok(businessFail<{ id: string }>('preset-authoring-unavailable', 'native refused copy'))
+  }
+  const result = await model.presetMutations.copyPreset('source', 'refused-target', null)
+  const observed = model.state.getSnapshot()
+  const receipt = model.presetMutations.state.getSnapshot().preset
+  const nativeWrites = remote.calls.nativePresetWrite
+  const rosterReads = remote.calls.presets - beforeRead
+  detach()
+  model.dispose()
+
+  assert.equal(nativeWrites, 1, 'business refusal must dispatch exactly one native Copy')
+  assert.ok(rosterReads >= 1, 'read-back must use actual authoritative Preset RPC')
+  assert.equal(observed.presets.status, 'ready')
+  assert.equal(observed.presets.stale, false)
+  assert.equal(observed.presets.data?.directory.status, 'available')
+  const refreshedDirectory = observed.presets.data?.directory
+  if (refreshedDirectory?.status !== 'available') throw new Error('requires fresh Copy roster')
+  assert.equal(refreshedDirectory.presets.some(row => row.id === 'refused-target'), false,
+    'a genuinely fresh roster correctly excludes a refused Copy target')
+  assert.deepEqual(observed.profiles.data, beforeProfiles, 'native refusal may not rewrite Profile Settings')
+  assert.deepEqual(result, {
+    status: 'rejected', refresh: 'fresh',
+    error: { kind: 'business', code: 'preset-authoring-unavailable', message: 'native refused copy' },
+  }, 'known refusal must report roster freshness independently of successful-Copy postcondition')
+  assert.equal(receipt.status, 'settled')
+  if (receipt.status === 'settled') assert.deepEqual(receipt.result, result)
+})
+
+test('M8C P2-2 M2 RED: refused Remove with fresh unchanged native roster is rejected/fresh', async () => {
+  const remote = new ScriptedRemote()
+  remote.defaultPresets = {
+    directory: {
+      status: 'available', defaultId: 'source', authorable: true,
+      presets: [
+        { id: 'source', trust: 'system', isDefault: true },
+        { id: 'user-one', trust: 'user', isDefault: false },
+      ],
+    },
+    profiles: {},
+  }
+  const { model, detach } = await attachAndReady(remote)
+  const beforeRead = remote.calls.presets
+  const beforeProfiles = model.state.getSnapshot().profiles.data
+  remote.removePreset = async () => {
+    remote.calls.nativePresetWrite += 1
+    return ok(businessFail<{ id: string }>('preset-authoring-unavailable', 'native refused remove'))
+  }
+  const result = await model.presetMutations.removePreset('user-one')
+  const observed = model.state.getSnapshot()
+  const receipt = model.presetMutations.state.getSnapshot().preset
+  const nativeWrites = remote.calls.nativePresetWrite
+  const rosterReads = remote.calls.presets - beforeRead
+  detach()
+  model.dispose()
+
+  assert.equal(nativeWrites, 1, 'business refusal must dispatch exactly one native Remove')
+  assert.ok(rosterReads >= 1, 'read-back must use actual authoritative Preset RPC')
+  assert.equal(observed.presets.status, 'ready')
+  assert.equal(observed.presets.stale, false)
+  assert.equal(observed.presets.data?.directory.status, 'available')
+  const refreshedDirectory = observed.presets.data?.directory
+  if (refreshedDirectory?.status !== 'available') throw new Error('requires fresh Remove roster')
+  assert.equal(refreshedDirectory.presets.some(row => row.id === 'user-one'), true,
+    'a genuinely fresh roster correctly retains a refused Remove target')
+  assert.deepEqual(observed.profiles.data, beforeProfiles, 'native refusal may not rewrite Profile Settings')
+  assert.deepEqual(result, {
+    status: 'rejected', refresh: 'fresh',
+    error: { kind: 'business', code: 'preset-authoring-unavailable', message: 'native refused remove' },
+  }, 'known refusal must report roster freshness independently of successful-Remove postcondition')
+  assert.equal(receipt.status, 'settled')
+  if (receipt.status === 'settled') assert.deepEqual(receipt.result, result)
+})
+
+test('M8C P2-2 M3 control: external Copy target appearance cannot turn known refusal into applied', async () => {
+  const remote = new ScriptedRemote()
+  remote.defaultPresets = {
+    directory: {
+      status: 'available', defaultId: 'source', authorable: true,
+      presets: [{ id: 'source', trust: 'system', isDefault: true }],
+    },
+    profiles: {},
+  }
+  const { model, detach } = await attachAndReady(remote)
+  remote.copyPreset = async () => {
+    remote.calls.nativePresetWrite += 1
+    // An unrelated native writer created a same-ID entry; our RPC is still refused.
+    const directory = remote.defaultPresets.directory
+    if (directory.status !== 'available') throw new Error('test requires available directory')
+    remote.defaultPresets = {
+      ...remote.defaultPresets,
+      directory: {
+        ...directory,
+        presets: [...directory.presets, {
+          id: 'external-target', trust: 'user', isDefault: false,
+        }],
+      },
+    }
+    remote.defaultChanges = {
+      ...remote.defaultChanges, generation: remote.defaultChanges.generation + 1,
+      presets: remote.defaultChanges.presets + 1,
+    }
+    return ok(businessFail<{ id: string }>('preset-authoring-unavailable', 'refused by this writer'))
+  }
+  const beforeRead = remote.calls.presets
+  const result = await model.presetMutations.copyPreset('source', 'external-target', null)
+  const state = model.state.getSnapshot()
+  const writes = remote.calls.nativePresetWrite
+  const reads = remote.calls.presets - beforeRead
+  detach()
+  model.dispose()
+  assert.equal(writes, 1)
+  assert.ok(reads >= 1)
+  assert.equal(state.presets.status, 'ready')
+  assert.equal(state.presets.stale, false)
+  const refreshedDirectory = state.presets.data?.directory
+  if (refreshedDirectory?.status !== 'available') throw new Error('requires external Copy roster')
+  assert.equal(refreshedDirectory.presets.some(row => row.id === 'external-target'), true)
+  assert.deepEqual(result, {
+    status: 'rejected', refresh: 'fresh',
+    error: { kind: 'business', code: 'preset-authoring-unavailable', message: 'refused by this writer' },
+  }, 'matching roster membership created elsewhere is not proof this refused Copy succeeded')
+})
+
+test('M8C P2-2 M4 control: external Remove target disappearance cannot turn known refusal into applied', async () => {
+  const remote = new ScriptedRemote()
+  remote.defaultPresets = {
+    directory: {
+      status: 'available', defaultId: 'source', authorable: true,
+      presets: [
+        { id: 'source', trust: 'system', isDefault: true },
+        { id: 'user-one', trust: 'user', isDefault: false },
+      ],
+    },
+    profiles: {},
+  }
+  const { model, detach } = await attachAndReady(remote)
+  remote.removePreset = async () => {
+    remote.calls.nativePresetWrite += 1
+    // Another native actor removed the ID, but this operation was refused.
+    const directory = remote.defaultPresets.directory
+    if (directory.status !== 'available') throw new Error('test requires available directory')
+    remote.defaultPresets = {
+      ...remote.defaultPresets,
+      directory: { ...directory, presets: directory.presets.filter(row => row.id !== 'user-one') },
+    }
+    remote.defaultChanges = {
+      ...remote.defaultChanges, generation: remote.defaultChanges.generation + 1,
+      presets: remote.defaultChanges.presets + 1,
+    }
+    return ok(businessFail<{ id: string }>('preset-authoring-unavailable', 'refused by this writer'))
+  }
+  const beforeRead = remote.calls.presets
+  const result = await model.presetMutations.removePreset('user-one')
+  const state = model.state.getSnapshot()
+  const writes = remote.calls.nativePresetWrite
+  const reads = remote.calls.presets - beforeRead
+  detach()
+  model.dispose()
+  assert.equal(writes, 1)
+  assert.ok(reads >= 1)
+  assert.equal(state.presets.status, 'ready')
+  assert.equal(state.presets.stale, false)
+  const refreshedDirectory = state.presets.data?.directory
+  if (refreshedDirectory?.status !== 'available') throw new Error('requires external Remove roster')
+  assert.equal(refreshedDirectory.presets.some(row => row.id === 'user-one'), false)
+  assert.deepEqual(result, {
+    status: 'rejected', refresh: 'fresh',
+    error: { kind: 'business', code: 'preset-authoring-unavailable', message: 'refused by this writer' },
+  }, 'matching roster absence caused elsewhere is not proof this refused Remove succeeded')
 })

@@ -29,6 +29,7 @@ import {
   type ContextManagerDrawerProps,
 } from './profile-drawer.js'
 import { ContextManagerResourceDrawerContent } from './resource-drawer.js'
+import { ContextManagerPresetDrawerContent } from './preset-drawer.js'
 import styles from './plugin.module.css'
 
 type TriggerProps = ComposedProps<
@@ -59,7 +60,7 @@ function ContextManagerDrawerBody(props: ContextManagerDrawerProps) {
   const pane = props.useStore(state => state.pane)
   const renderedOpenSessionEpoch = props.useStore(state => state.openSessionEpoch)
   const { actions, t } = props
-  const navigate = (next: 'profiles' | 'resources') => {
+  const navigate = (next: 'profiles' | 'resources' | 'presets') => {
     if (mayApplyCurrentNavigationEvent(actions, renderedOpenSessionEpoch, pane)) {
       actions.selectPane(next)
     }
@@ -80,10 +81,18 @@ function ContextManagerDrawerBody(props: ContextManagerDrawerProps) {
         'data-context-manager-tab': 'resources',
         onClick: () => navigate('resources'),
       }, t('resourcesTitle')),
+      createElement('button', {
+        type: 'button',
+        className: pane === 'presets' ? styles.tabActive : styles.tab,
+        'aria-current': pane === 'presets' ? 'page' : undefined,
+        'data-context-manager-tab': 'presets',
+        onClick: () => navigate('presets'),
+      }, t('presetsTitle')),
     ),
     pane === 'profiles'
       ? createElement(ContextManagerProfileDrawerContent, props)
-      : createElement(ContextManagerResourceDrawerContent, props),
+      : pane === 'resources' ? createElement(ContextManagerResourceDrawerContent, props)
+        : createElement(ContextManagerPresetDrawerContent, props),
   )
 }
 
