@@ -1216,7 +1216,7 @@ if (process.env.M8C_PRESET_PROBE) {
         'positive control: actual Renderer has a pending explicit composition read')
 
       remoteFixture.externalRotateHostInstance()
-      await act(async () => { await injectedBusiness()?.()?.refresh() })
+      await act(async () => { await injectedBusiness?.()?.refresh() })
       await settleUI()
       const recovered = cm()
       assert.notEqual(recovered.instanceId, originalInstance,
@@ -1259,7 +1259,7 @@ if (process.env.M8C_PRESET_PROBE) {
       await click('data-context-manager-preset-view')
       assert.equal(m8cObservedNativeViewClaims.length, 1)
       remoteFixture.externalRotateHostInstance()
-      await act(async () => { await injectedBusiness()?.()?.refresh() })
+      await act(async () => { await injectedBusiness?.()?.refresh() })
       await settleUI()
       assert.equal(cm().presets.status, 'ready')
       assert.equal(cm().presets.stale, false)
