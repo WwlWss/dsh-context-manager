@@ -1290,6 +1290,94 @@ if (process.env.M8C_PRESET_PROBE) {
       assert.equal(remoteFixture.presetWrites.length, 0)
       break
     }
+    case 'R29': {
+      // Fix A Tests-only RED: completion happened *before* Model revoked its
+      // native view. There is no future Promise resolution to retire Loading.
+      await goPresets()
+      await click('data-context-manager-preset-view')
+      const nativeBody = remoteFixture.nativePresets.get('native').content
+      assert.equal(renderedText(tree.root.findByProps({
+        'data-context-manager-preset-body': '',
+      })), nativeBody, 'positive control: composition was successfully shown')
+      assert.equal(remoteFixture.readCalls.nativeBodies, 1)
+      const originalInstance = cm().instanceId
+      remoteFixture.externalPresetDefault('native') // same ID, advanced preset cursor
+      await act(async () => { await injectedBusiness?.()?.refresh() })
+      await settleUI()
+      assert.equal(cm().instanceId, originalInstance)
+      assert.equal(cm().presets.status, 'ready')
+      assert.equal(cm().presets.stale, false)
+      assert.ok(cm().presets.data.directory.presets.some(row => row.id === 'native'))
+      assert.equal(cm().nativePresetDocuments.size, 0, 'Model revoked completed private body')
+      assert.equal(tree.root.findAllByProps({ 'data-context-manager-preset-body': '' }).length, 0,
+        'revoked native contents cannot remain on screen')
+      assert.equal(remoteFixture.readCalls.nativeBodies, 1,
+        'cursor recovery must never implicitly reread the private body')
+      assert.equal(tree.root.findAll(node =>
+        node.type === 'p' && node.props.role === 'status'
+        && renderedText(node) === 'Loading original composition on demand…').length, 0,
+        'Fix A RED: completed-then-revoked lease must not show perpetual Loading')
+      await click('data-context-manager-preset-view')
+      assert.equal(remoteFixture.readCalls.nativeBodies, 2,
+        'a new explicit user View must be permitted')
+      assert.equal(renderedText(tree.root.findByProps({
+        'data-context-manager-preset-body': '',
+      })), nativeBody)
+      break
+    }
+    case 'R30': {
+      // A new Host with the identical native ID must not inherit a completed
+      // body or implicit read authorization from the former Host.
+      await goPresets()
+      await click('data-context-manager-preset-view')
+      assert.equal(remoteFixture.readCalls.nativeBodies, 1)
+      assert.ok(tree.root.findByProps({ 'data-context-manager-preset-body': '' }))
+      const originalInstance = cm().instanceId
+      remoteFixture.externalRotateHostInstance()
+      await act(async () => { await injectedBusiness?.()?.refresh() })
+      await settleUI()
+      assert.notEqual(cm().instanceId, originalInstance)
+      assert.equal(cm().presets.status, 'ready')
+      assert.equal(cm().presets.stale, false)
+      assert.ok(cm().presets.data.directory.presets.some(row => row.id === 'native'))
+      assert.equal(cm().nativePresetDocuments.size, 0)
+      assert.equal(remoteFixture.readCalls.nativeBodies, 1,
+        'Host B must not read the new body without a new click')
+      assert.equal(tree.root.findAllByProps({ 'data-context-manager-preset-body': '' }).length, 0)
+      assert.equal(tree.root.findAll(node =>
+        node.type === 'p' && node.props.role === 'status'
+        && renderedText(node) === 'Loading original composition on demand…').length, 0,
+        'Host replacement must retire any displayed completed View lease')
+      await click('data-context-manager-preset-view')
+      assert.equal(remoteFixture.readCalls.nativeBodies, 2)
+      assert.ok(tree.root.findByProps({ 'data-context-manager-preset-body': '' }))
+      break
+    }
+    case 'R31': {
+      // Mutation-driven cursor invalidation must retire the old completed
+      // View even after its temporary confirmation panel is dismissed.
+      await goPresets()
+      await click('data-context-manager-preset-view')
+      assert.equal(remoteFixture.readCalls.nativeBodies, 1)
+      assert.ok(tree.root.findByProps({ 'data-context-manager-preset-body': '' }))
+      await startCopy('native')
+      await changeInput('cm-preset-copy-id', 'copied-after-completed-view')
+      await submitCopy()
+      assert.equal(remoteFixture.presetWrites.length, 1)
+      assert.equal(remoteFixture.nativePresets.has('copied-after-completed-view'), true)
+      assert.equal(live()?.presetDraft, null)
+      assert.equal(cm().presets.status, 'ready')
+      assert.equal(cm().presets.stale, false)
+      assert.equal(cm().nativePresetDocuments.size, 0)
+      assert.equal(remoteFixture.readCalls.nativeBodies, 1,
+        'Mutation recovery may refresh roster but cannot re-fetch composition')
+      assert.equal(tree.root.findAllByProps({ 'data-context-manager-preset-body': '' }).length, 0)
+      assert.equal(tree.root.findAll(node =>
+        node.type === 'p' && node.props.role === 'status'
+        && renderedText(node) === 'Loading original composition on demand…').length, 0,
+        'Fix A RED: mutation must revoke an already completed local View lease')
+      break
+    }
     default: throw new Error('Unknown M8C published Renderer probe: ' + probe)
   }
   if (probe !== 'R19') {
