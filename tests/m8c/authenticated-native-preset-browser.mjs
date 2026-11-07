@@ -75,6 +75,13 @@ async function main(){
   ctx.baseUrl=pathToFileURL(process.cwd()+'/').href
   const fibers=[]
   let disposeContribution,removeIndex,browser
+  // Test-only call counter forwards to the real native adapter; no stubbed response.
+  let nativeReadCalls=0
+  const originalNativeRead=ContextManagerPresetAuthoring.prototype.read
+  ContextManagerPresetAuthoring.prototype.read=function(id){
+    nativeReadCalls+=1
+    return originalNativeRead.call(this,id)
+  }
   const mount=async(plugin,config)=>{
     const fiber=ctx.plugin(plugin,config)
     await fiber
@@ -141,6 +148,7 @@ async function main(){
       assert.equal(actual.body.includes(secret),false,'denial must not expose body')
       console.log('M8C_AUTH_ASSERT '+JSON.stringify({id,passed:true,status:expected}))
     }
+    assert.equal(nativeReadCalls,0,'unauthorized HTTP must never enter native Authoring.read')
 
     browser=await chromium.launch({headless:true})
     const context=await browser.newContext()
@@ -156,12 +164,14 @@ async function main(){
     assert.equal(result?.status,200)
     assert.equal(receivedNative(result?.body),true,
       'Browser must receive exact composition from actual native AgentPresets')
+    assert.equal(nativeReadCalls,1,'authorized browser must enter native read exactly once')
     console.log('M8C_AUTH_ASSERT '+JSON.stringify({id:'owner-browser-positive',passed:true,status:200}))
 
     const cookie=cookies.map(x=>x.name+'='+x.value).join('; ')
     const replay=await rawRpc(port,{host:'localhost:'+String(port),cookie})
     assert.equal(replay.status,401,'Cookie must bind original browser authority')
     assert.equal(replay.body.includes(secret),false)
+    assert.equal(nativeReadCalls,1,'wrong-authority Cookie cannot reach native read')
     console.log('M8C_AUTH_ASSERT '+JSON.stringify({id:'wrong-authority-replay',passed:true,status:401}))
     await context.close()
     console.log('M8C_AUTH_INTEGRATED_PASS '+JSON.stringify({
@@ -169,6 +179,7 @@ async function main(){
       allowed:1,denied:6,privateTextLogged:false
     }))
   }finally{
+    ContextManagerPresetAuthoring.prototype.read=originalNativeRead
     await browser?.close()
     await removeIndex?.()
     await disposeContribution?.()

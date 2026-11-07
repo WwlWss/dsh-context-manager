@@ -1,16 +1,9 @@
 name: M8C AUTH browser-native integrated proof
 
 on:
+  # Authentication proof must re-run on every new PR HEAD, regardless of path.
   pull_request:
-    types: [opened, synchronize, reopened]
-    paths:
-      - '.github/workflows/m8c-auth-browser.yml'
-      - 'tests/m8c/authenticated-native-preset-browser.mjs'
-      - 'src/service/remote.ts'
-      - 'src/service/preset-authoring.ts'
-      - 'src/adapters/preset-authoring.ts'
-      - 'src/client/model.ts'
-      - 'src/client/preset-drawer.ts'
+    types: [opened, synchronize, reopened, ready_for_review]
   workflow_dispatch:
 
 permissions:
@@ -25,7 +18,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        version: [0.1.5-rc.2, 0.1.6-alpha.2]
+        version: [0.1.2-rc.1, 0.1.5-rc.1, 0.1.5-rc.2, 0.1.6-alpha.2]
     env:
       DSH_HOME: ${{ github.workspace }}/.dsh-m8c-auth-${{ matrix.version }}
       DSH_TELEMETRY_DISABLED: '1'
