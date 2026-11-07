@@ -685,6 +685,7 @@ let delayNextUiRefresh = false
 let m8cLiveObservationOverride = null
 // Observe the exact claim returned to the real Drawer; never substitute a mock result.
 const m8cObservedNativeViewClaims = []
+let m8cCompletionInvalidationInjected = false
 let uiRefreshDispatches = 0
 let uiListDispatches = 0
 let rejectDelayedUiRefresh
@@ -702,8 +703,23 @@ slotFace.register = (options, component) => {
           beginNativePresetView: id => {
             const claim = face.beginNativePresetView(id)
             if (process.env.M8C_PRESET_PROBE === 'R27'
-              || process.env.M8C_PRESET_PROBE === 'R28') {
+              || process.env.M8C_PRESET_PROBE === 'R28'
+              || process.env.M8C_PRESET_PROBE === 'R32') {
               m8cObservedNativeViewClaims.push(claim)
+            }
+            if (process.env.M8C_PRESET_PROBE === 'R32'
+              && !m8cCompletionInvalidationInjected) {
+              m8cCompletionInvalidationInjected = true
+              // The actual Model completed and published the body. Before the
+              // Drawer sees that successful result, a real fresh Host roster
+              // invalidates its lease. Forward the actual result unchanged.
+              return { ...claim, result: claim.result.then(async outcome => {
+                if (outcome.status === 'completed') {
+                  remoteFixture.externalPresetDefault('native')
+                  await face.refresh()
+                }
+                return outcome
+              }) }
             }
             return claim
           },
@@ -1376,6 +1392,32 @@ if (process.env.M8C_PRESET_PROBE) {
         node.type === 'p' && node.props.role === 'status'
         && renderedText(node) === 'Loading original composition on demand…').length, 0,
         'Fix A RED: mutation must revoke an already completed local View lease')
+      break
+    }
+    case 'R32': {
+      // Fix A hardening RED: Model publishes completed, Host changes the
+      // cursor and revokes the lease, then the unchanged completed receipt
+      // reaches the actual Drawer callback after the refresh.
+      await goPresets()
+      await click('data-context-manager-preset-view')
+      assert.equal(m8cObservedNativeViewClaims.length, 1)
+      assert.equal((await m8cObservedNativeViewClaims[0].result).status, 'completed',
+        'real body read must first have completed successfully')
+      await settleUI()
+      assert.equal(cm().presets.status, 'ready')
+      assert.equal(cm().presets.stale, false)
+      assert.equal(cm().nativePresetDocuments.size, 0,
+        'real refreshed directory revoked the completed private body')
+      assert.equal(remoteFixture.readCalls.nativeBodies, 1)
+      assert.equal(tree.root.findAllByProps({ 'data-context-manager-preset-body': '' }).length, 0)
+      assert.equal(tree.root.findAll(node =>
+        node.type === 'p' && node.props.role === 'status'
+        && renderedText(node) === 'Loading original composition on demand…').length, 0,
+        'R32 RED: late completed result may not reestablish a revoked View as Loading')
+      await click('data-context-manager-preset-view')
+      assert.equal(remoteFixture.readCalls.nativeBodies, 2,
+        'a new explicit View remains possible without hidden retries')
+      assert.ok(tree.root.findByProps({ 'data-context-manager-preset-body': '' }))
       break
     }
     default: throw new Error('Unknown M8C published Renderer probe: ' + probe)
