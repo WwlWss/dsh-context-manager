@@ -1,6 +1,9 @@
 name: M8C AUTH browser-native integrated proof
 
 on:
+  push:
+    branches:
+      - main
   # Authentication proof must re-run on every new PR HEAD, regardless of path.
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
@@ -34,23 +37,12 @@ jobs:
           corepack enable
           corepack prepare pnpm@11.7.0 --activate
       - run: pnpm install --frozen-lockfile
-      - name: Install real published Host authentication graph
-        run: |
-          pnpm add --save-dev --save-exact \
-            @deepseek-ai/cordis@4.0.2 \
-            @deepseek-ai/cordis-plugin-loader@1.0.3 \
-            @deepseek-ai/dsh-agent-presets@${{ matrix.version }} \
-            @deepseek-ai/dsh-session-projection@${{ matrix.version }} \
-            @deepseek-ai/dsh-typert-protocol@${{ matrix.version }} \
-            @deepseek-ai/dsh-typert-registry@${{ matrix.version }} \
-            @deepseek-ai/dsh-api-gateway@${{ matrix.version }} \
-            @deepseek-ai/dsh-client-connection@${{ matrix.version }} \
-            @deepseek-ai/dsh-host-webserver@${{ matrix.version }}
-      - run: pnpm run build
       - name: Install locked browser runner
         run: |
           cd tests/m7d/runner
           pnpm install --frozen-lockfile
           pnpm exec playwright install --with-deps chromium
       - name: Authenticate real Chromium through native read
-        run: node tests/m8c/authenticated-native-preset-browser.mjs
+        env:
+          M8C_AUTH_VERSION: ${{ matrix.version }}
+        run: bash tests/m8c/qualify-browser-native-auth.sh "$M8C_AUTH_VERSION"

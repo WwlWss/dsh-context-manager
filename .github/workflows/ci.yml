@@ -966,6 +966,15 @@ jobs:
           M7D_DSH_VERSION: ${{ matrix.version }}
           M7D_SOURCE_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
         run: node tests/m7d/packed-browser.e2e.mjs
+      # Run after the immutable packed-browser qualification; the AUTH
+      # dependency install is intentionally isolated to the end of this Job.
+      # This step is required: any failure makes the protected Full fail.
+      - name: Require M8C Browser-to-Native AUTH before Full qualification
+        if: ${{ runner.os == 'Linux' }}
+        shell: bash
+        env:
+          M8C_AUTH_VERSION: ${{ matrix.version }}
+        run: bash tests/m8c/qualify-browser-native-auth.sh "$M8C_AUTH_VERSION"
       - name: Upload minimal successful qualification evidence
         if: ${{ success() }}
         uses: actions/upload-artifact@v4
