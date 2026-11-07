@@ -3249,7 +3249,9 @@ test('M8C P2-2 M1 RED: refused Copy with fresh unchanged native roster is reject
   assert.equal(observed.presets.status, 'ready')
   assert.equal(observed.presets.stale, false)
   assert.equal(observed.presets.data?.directory.status, 'available')
-  assert.equal(observed.presets.data?.directory.presets.some(row => row.id === 'refused-target'), false,
+  const refreshedDirectory = observed.presets.data?.directory
+  if (refreshedDirectory?.status !== 'available') throw new Error('requires fresh Copy roster')
+  assert.equal(refreshedDirectory.presets.some(row => row.id === 'refused-target'), false,
     'a genuinely fresh roster correctly excludes a refused Copy target')
   assert.deepEqual(observed.profiles.data, beforeProfiles, 'native refusal may not rewrite Profile Settings')
   assert.deepEqual(result, {
@@ -3292,7 +3294,9 @@ test('M8C P2-2 M2 RED: refused Remove with fresh unchanged native roster is reje
   assert.equal(observed.presets.status, 'ready')
   assert.equal(observed.presets.stale, false)
   assert.equal(observed.presets.data?.directory.status, 'available')
-  assert.equal(observed.presets.data?.directory.presets.some(row => row.id === 'user-one'), true,
+  const refreshedDirectory = observed.presets.data?.directory
+  if (refreshedDirectory?.status !== 'available') throw new Error('requires fresh Remove roster')
+  assert.equal(refreshedDirectory.presets.some(row => row.id === 'user-one'), true,
     'a genuinely fresh roster correctly retains a refused Remove target')
   assert.deepEqual(observed.profiles.data, beforeProfiles, 'native refusal may not rewrite Profile Settings')
   assert.deepEqual(result, {
@@ -3344,7 +3348,9 @@ test('M8C P2-2 M3 control: external Copy target appearance cannot turn known ref
   assert.ok(reads >= 1)
   assert.equal(state.presets.status, 'ready')
   assert.equal(state.presets.stale, false)
-  assert.equal(state.presets.data?.directory.presets.some(row => row.id === 'external-target'), true)
+  const refreshedDirectory = state.presets.data?.directory
+  if (refreshedDirectory?.status !== 'available') throw new Error('requires external Copy roster')
+  assert.equal(refreshedDirectory.presets.some(row => row.id === 'external-target'), true)
   assert.deepEqual(result, {
     status: 'rejected', refresh: 'fresh',
     error: { kind: 'business', code: 'preset-authoring-unavailable', message: 'refused by this writer' },
@@ -3390,7 +3396,9 @@ test('M8C P2-2 M4 control: external Remove target disappearance cannot turn know
   assert.ok(reads >= 1)
   assert.equal(state.presets.status, 'ready')
   assert.equal(state.presets.stale, false)
-  assert.equal(state.presets.data?.directory.presets.some(row => row.id === 'user-one'), false)
+  const refreshedDirectory = state.presets.data?.directory
+  if (refreshedDirectory?.status !== 'available') throw new Error('requires external Remove roster')
+  assert.equal(refreshedDirectory.presets.some(row => row.id === 'user-one'), false)
   assert.deepEqual(result, {
     status: 'rejected', refresh: 'fresh',
     error: { kind: 'business', code: 'preset-authoring-unavailable', message: 'refused by this writer' },
