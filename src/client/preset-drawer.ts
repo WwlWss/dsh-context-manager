@@ -149,11 +149,22 @@ export function ContextManagerPresetDrawerContent(props: ContextManagerDrawerPro
     const claim = props.beginNativePresetView(selectedId)
     viewLease.current = { id: selectedId, leaseId: claim.leaseId }
     setShownLease(claim.leaseId)
-    void claim.result.catch(() => {
-      if (ownsSelection() && viewLease.current?.leaseId === claim.leaseId) {
-        actions.setPresetNotice({ code: 'presetNoticeReadFailed', kind: 'warning' })
+    // A revoked read normally resolves with superseded/detached/disposed;
+    // catching only rejected promises would leave this View loading forever.
+    // Settle only the exact local lease: a late result may never erase a newer View.
+    const retireView = (code: 'presetNoticeReadFailed' | 'presetNoticeUnavailable') => {
+      if (viewLease.current?.leaseId !== claim.leaseId) return
+      releaseView()
+      if (!mounted.current) return
+      setShownLease(null)
+      if (ownsOpening()) actions.setPresetNotice({ code, kind: 'warning' })
+    }
+    void claim.result.then(outcome => {
+      if (outcome.status !== 'completed') {
+        retireView(outcome.status === 'superseded'
+          ? 'presetNoticeReadFailed' : 'presetNoticeUnavailable')
       }
-    })
+    }).catch(() => retireView('presetNoticeReadFailed'))
   }
   const startCopy = () => {
     if (!canBegin || !view.canCopy || !ownsSelection()
