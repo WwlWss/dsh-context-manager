@@ -3213,3 +3213,186 @@ test('M8C Final Strict P1-B RED: late Host A Copy receipt cannot rehydrate again
   assert.equal(extraRosterReads, 0,
     'old Host A receipt must not trigger a Host B preset roster read-back')
 })
+
+
+test('M8C P2-2 M1 RED: refused Copy with fresh unchanged native roster is rejected/fresh', async () => {
+  const remote = new ScriptedRemote()
+  remote.defaultPresets = {
+    directory: {
+      status: 'available', defaultId: 'source', authorable: true,
+      presets: [
+        { id: 'source', trust: 'system', isDefault: true },
+        { id: 'user-one', trust: 'user', isDefault: false },
+      ],
+    },
+    profiles: {},
+  }
+  const { model, detach } = await attachAndReady(remote)
+  const beforeRead = remote.calls.presets
+  const beforeProfiles = model.state.getSnapshot().profiles.data
+  // An explicit Host business refusal does not create the Copy target.
+  // Its absence is the correct fresh native roster, not read-back degradation.
+  remote.copyPreset = async () => {
+    remote.calls.nativePresetWrite += 1
+    return ok(businessFail<{ id: string }>('preset-authoring-unavailable', 'native refused copy'))
+  }
+  const result = await model.presetMutations.copyPreset('source', 'refused-target', null)
+  const observed = model.state.getSnapshot()
+  const receipt = model.presetMutations.state.getSnapshot().preset
+  const nativeWrites = remote.calls.nativePresetWrite
+  const rosterReads = remote.calls.presets - beforeRead
+  detach()
+  model.dispose()
+
+  assert.equal(nativeWrites, 1, 'business refusal must dispatch exactly one native Copy')
+  assert.ok(rosterReads >= 1, 'read-back must use actual authoritative Preset RPC')
+  assert.equal(observed.presets.status, 'ready')
+  assert.equal(observed.presets.stale, false)
+  assert.equal(observed.presets.data?.directory.status, 'available')
+  assert.equal(observed.presets.data?.directory.presets.some(row => row.id === 'refused-target'), false,
+    'a genuinely fresh roster correctly excludes a refused Copy target')
+  assert.deepEqual(observed.profiles.data, beforeProfiles, 'native refusal may not rewrite Profile Settings')
+  assert.deepEqual(result, {
+    status: 'rejected', refresh: 'fresh',
+    error: { kind: 'business', code: 'preset-authoring-unavailable', message: 'native refused copy' },
+  }, 'known refusal must report roster freshness independently of successful-Copy postcondition')
+  assert.equal(receipt.status, 'settled')
+  if (receipt.status === 'settled') assert.deepEqual(receipt.result, result)
+})
+
+test('M8C P2-2 M2 RED: refused Remove with fresh unchanged native roster is rejected/fresh', async () => {
+  const remote = new ScriptedRemote()
+  remote.defaultPresets = {
+    directory: {
+      status: 'available', defaultId: 'source', authorable: true,
+      presets: [
+        { id: 'source', trust: 'system', isDefault: true },
+        { id: 'user-one', trust: 'user', isDefault: false },
+      ],
+    },
+    profiles: {},
+  }
+  const { model, detach } = await attachAndReady(remote)
+  const beforeRead = remote.calls.presets
+  const beforeProfiles = model.state.getSnapshot().profiles.data
+  remote.removePreset = async () => {
+    remote.calls.nativePresetWrite += 1
+    return ok(businessFail<{ id: string }>('preset-authoring-unavailable', 'native refused remove'))
+  }
+  const result = await model.presetMutations.removePreset('user-one')
+  const observed = model.state.getSnapshot()
+  const receipt = model.presetMutations.state.getSnapshot().preset
+  const nativeWrites = remote.calls.nativePresetWrite
+  const rosterReads = remote.calls.presets - beforeRead
+  detach()
+  model.dispose()
+
+  assert.equal(nativeWrites, 1, 'business refusal must dispatch exactly one native Remove')
+  assert.ok(rosterReads >= 1, 'read-back must use actual authoritative Preset RPC')
+  assert.equal(observed.presets.status, 'ready')
+  assert.equal(observed.presets.stale, false)
+  assert.equal(observed.presets.data?.directory.status, 'available')
+  assert.equal(observed.presets.data?.directory.presets.some(row => row.id === 'user-one'), true,
+    'a genuinely fresh roster correctly retains a refused Remove target')
+  assert.deepEqual(observed.profiles.data, beforeProfiles, 'native refusal may not rewrite Profile Settings')
+  assert.deepEqual(result, {
+    status: 'rejected', refresh: 'fresh',
+    error: { kind: 'business', code: 'preset-authoring-unavailable', message: 'native refused remove' },
+  }, 'known refusal must report roster freshness independently of successful-Remove postcondition')
+  assert.equal(receipt.status, 'settled')
+  if (receipt.status === 'settled') assert.deepEqual(receipt.result, result)
+})
+
+test('M8C P2-2 M3 control: external Copy target appearance cannot turn known refusal into applied', async () => {
+  const remote = new ScriptedRemote()
+  remote.defaultPresets = {
+    directory: {
+      status: 'available', defaultId: 'source', authorable: true,
+      presets: [{ id: 'source', trust: 'system', isDefault: true }],
+    },
+    profiles: {},
+  }
+  const { model, detach } = await attachAndReady(remote)
+  remote.copyPreset = async () => {
+    remote.calls.nativePresetWrite += 1
+    // An unrelated native writer created a same-ID entry; our RPC is still refused.
+    const directory = remote.defaultPresets.directory
+    if (directory.status !== 'available') throw new Error('test requires available directory')
+    remote.defaultPresets = {
+      ...remote.defaultPresets,
+      directory: {
+        ...directory,
+        presets: [...directory.presets, {
+          id: 'external-target', trust: 'user', isDefault: false,
+        }],
+      },
+    }
+    remote.defaultChanges = {
+      ...remote.defaultChanges, generation: remote.defaultChanges.generation + 1,
+      presets: remote.defaultChanges.presets + 1,
+    }
+    return ok(businessFail<{ id: string }>('preset-authoring-unavailable', 'refused by this writer'))
+  }
+  const beforeRead = remote.calls.presets
+  const result = await model.presetMutations.copyPreset('source', 'external-target', null)
+  const state = model.state.getSnapshot()
+  const writes = remote.calls.nativePresetWrite
+  const reads = remote.calls.presets - beforeRead
+  detach()
+  model.dispose()
+  assert.equal(writes, 1)
+  assert.ok(reads >= 1)
+  assert.equal(state.presets.status, 'ready')
+  assert.equal(state.presets.stale, false)
+  assert.equal(state.presets.data?.directory.presets.some(row => row.id === 'external-target'), true)
+  assert.deepEqual(result, {
+    status: 'rejected', refresh: 'fresh',
+    error: { kind: 'business', code: 'preset-authoring-unavailable', message: 'refused by this writer' },
+  }, 'matching roster membership created elsewhere is not proof this refused Copy succeeded')
+})
+
+test('M8C P2-2 M4 control: external Remove target disappearance cannot turn known refusal into applied', async () => {
+  const remote = new ScriptedRemote()
+  remote.defaultPresets = {
+    directory: {
+      status: 'available', defaultId: 'source', authorable: true,
+      presets: [
+        { id: 'source', trust: 'system', isDefault: true },
+        { id: 'user-one', trust: 'user', isDefault: false },
+      ],
+    },
+    profiles: {},
+  }
+  const { model, detach } = await attachAndReady(remote)
+  remote.removePreset = async () => {
+    remote.calls.nativePresetWrite += 1
+    // Another native actor removed the ID, but this operation was refused.
+    const directory = remote.defaultPresets.directory
+    if (directory.status !== 'available') throw new Error('test requires available directory')
+    remote.defaultPresets = {
+      ...remote.defaultPresets,
+      directory: { ...directory, presets: directory.presets.filter(row => row.id !== 'user-one') },
+    }
+    remote.defaultChanges = {
+      ...remote.defaultChanges, generation: remote.defaultChanges.generation + 1,
+      presets: remote.defaultChanges.presets + 1,
+    }
+    return ok(businessFail<{ id: string }>('preset-authoring-unavailable', 'refused by this writer'))
+  }
+  const beforeRead = remote.calls.presets
+  const result = await model.presetMutations.removePreset('user-one')
+  const state = model.state.getSnapshot()
+  const writes = remote.calls.nativePresetWrite
+  const reads = remote.calls.presets - beforeRead
+  detach()
+  model.dispose()
+  assert.equal(writes, 1)
+  assert.ok(reads >= 1)
+  assert.equal(state.presets.status, 'ready')
+  assert.equal(state.presets.stale, false)
+  assert.equal(state.presets.data?.directory.presets.some(row => row.id === 'user-one'), false)
+  assert.deepEqual(result, {
+    status: 'rejected', refresh: 'fresh',
+    error: { kind: 'business', code: 'preset-authoring-unavailable', message: 'refused by this writer' },
+  }, 'matching roster absence caused elsewhere is not proof this refused Remove succeeded')
+})

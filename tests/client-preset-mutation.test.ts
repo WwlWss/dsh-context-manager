@@ -141,3 +141,30 @@ test('M8C P02 no authoritative roster fails closed without native write', async 
   assert.equal(result.status, 'rejected')
   assert.equal(f.calls.length, 0)
 })
+
+
+test('M8C P2-2 C1 control: known refused Copy preserves business receipt with fresh recovery', async () => {
+  const f = fixture()
+  f.setCopy(async () => refused())
+  const result = await f.controller.controller.copyPreset('source', 'refused-copy', null)
+  assert.deepEqual(result, {
+    status: 'rejected', refresh: 'fresh',
+    error: { kind: 'business', code: 'preset-authoring-unavailable', message: 'native refused' },
+  })
+  assert.equal(f.calls.length, 1, 'read-back may not retry a refused native write')
+  const operation = f.controller.controller.state.getSnapshot().preset
+  assert.equal(operation.status, 'settled')
+  if (operation.status === 'settled') assert.deepEqual(operation.result, result)
+})
+
+test('M8C P2-2 C2 control: known refused Remove with failed recovery stays rejected/degraded', async () => {
+  const f = fixture()
+  f.setRemove(async () => refused())
+  f.setFresh(false)
+  const result = await f.controller.controller.removePreset('user-preset')
+  assert.deepEqual(result, {
+    status: 'rejected', refresh: 'degraded',
+    error: { kind: 'business', code: 'preset-authoring-unavailable', message: 'native refused' },
+  })
+  assert.equal(f.calls.length, 1, 'degraded recovery may not replay a refused native write')
+})
