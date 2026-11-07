@@ -142,7 +142,10 @@ function createFixture() {
         instanceId: snap.instanceId, changes: snap.changes, presets: snap.presets }
     },
     async refreshNativePresets() { lazyReads.push('presets-refresh'); return refreshResult },
-    beginNativePresetView(id) { lazyReads.push('view:' + id); return { leaseId: 11, result: Promise.resolve({ status: 'completed' as const }) } },
+    beginNativePresetView(id) { lazyReads.push('view:' + id); return {
+      leaseId: 11, isCurrent: () => true,
+      result: Promise.resolve({ status: 'completed' as const }),
+    } },
     releaseNativePresetView(leaseId) { lazyReads.push('release:' + leaseId) },
     async loadPromptResourceList() { lazyReads.push('list'); return { status: 'completed' } },
     async loadPromptResource(id) { lazyReads.push(id); return { status: 'completed' } },
@@ -399,6 +402,7 @@ test('M8C B3-A Frozen Native Preset Business Face forwards exact copy/remove and
   const f = createFixture()
   const face = createContextManagerClientBusinessFace(f.source)
   const view = face.beginNativePresetView('source')
+  assert.equal(view.isCurrent(), true)
   assert.equal((await view.result).status, 'completed')
   face.releaseNativePresetView(view.leaseId)
   assert.deepEqual(await face.refreshNativePresets(), f.refreshResult)

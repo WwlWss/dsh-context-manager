@@ -3404,3 +3404,39 @@ test('M8C P2-2 M4 control: external Remove target disappearance cannot turn know
     error: { kind: 'business', code: 'preset-authoring-unavailable', message: 'refused by this writer' },
   }, 'matching roster absence caused elsewhere is not proof this refused Remove succeeded')
 })
+
+
+test('M8C Fix A completed native View claim reflects Model authority, never revives on old release', async () => {
+  const remote = new ScriptedRemote()
+  remote.defaultPresets = {
+    directory: {
+      status: 'available', defaultId: 'source', authorable: true,
+      presets: [{ id: 'source', trust: 'system', isDefault: true }],
+    },
+    profiles: {},
+  }
+  const { model, detach } = await attachAndReady(remote)
+  const a = model.beginNativePresetView('source')
+  assert.equal(a.isCurrent(), true, 'a successfully claimed View owns the current Model lease')
+  assert.equal((await a.result).status, 'completed')
+  assert.equal(a.isCurrent(), true, 'completed View remains current until explicit revocation')
+  const b = model.beginNativePresetView('source')
+  assert.equal(a.isCurrent(), false, 'new explicit View permanently revokes earlier lease')
+  assert.equal(b.isCurrent(), true)
+  assert.notEqual(b.leaseId, a.leaseId)
+  assert.equal((await b.result).status, 'completed')
+  model.releaseNativePresetView(a.leaseId)
+  assert.equal(b.isCurrent(), true, 'late release of old claim cannot cancel current View')
+  model.releaseNativePresetView(b.leaseId)
+  assert.equal(b.isCurrent(), false)
+  assert.equal(model.state.getSnapshot().nativePresetDocuments?.size, 0,
+    'release evicts sensitive native bytes')
+  const c = model.beginNativePresetView('source')
+  assert.equal((await c.result).status, 'completed')
+  detach()
+  assert.equal(c.isCurrent(), false, 'Host detach revokes existing completed claims')
+  model.dispose()
+  assert.equal(a.isCurrent(), false)
+  assert.equal(b.isCurrent(), false)
+  assert.equal(c.isCurrent(), false)
+})

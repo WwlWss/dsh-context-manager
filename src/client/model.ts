@@ -100,7 +100,11 @@ export interface ContextManagerClientModel {
   loadPromptResourceList(): Promise<ContextManagerClientLazyReadResult>
   loadPromptResource(id: string): Promise<ContextManagerClientLazyReadResult>
   loadNativePresetDocument(id: string): Promise<ContextManagerClientLazyReadResult>
-  beginNativePresetView(id: string): { readonly leaseId: number; readonly result: Promise<ContextManagerClientLazyReadResult> }
+  beginNativePresetView(id: string): {
+    readonly leaseId: number
+    readonly isCurrent: () => boolean
+    readonly result: Promise<ContextManagerClientLazyReadResult>
+  }
   releaseNativePresetView(leaseId: number): void
   loadSessionPreset(id: string): Promise<ContextManagerClientLazyReadResult>
   loadAgentPromptRuntime(id: string): Promise<ContextManagerClientLazyReadResult>
@@ -1389,6 +1393,7 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
 
   const beginNativePresetView = (id: string): {
     readonly leaseId: number
+    readonly isCurrent: () => boolean
     readonly result: Promise<ContextManagerClientLazyReadResult>
   } => {
     // A View action owns one exact composition: never preserve another body's cache.
@@ -1403,9 +1408,16 @@ export function createContextManagerClientModel(): ContextManagerClientModel {
       && current.presets.status === 'ready' && !current.presets.stale
       && directory?.status === 'available'
       && directory.presets.some(row => row.id === id && row.broken === undefined)
-    if (!allowed) return Object.freeze({ leaseId, result: Promise.resolve(lazyResult('superseded')) })
+    // Read-only claim over the existing Model authority. It never extends a
+    // revoked lease, retains composition bytes, or delegates native IO.
+    const isCurrent = (): boolean => !disposed
+      && activeNativePresetView?.leaseId === leaseId
+      && activeNativePresetView.id === id
+    if (!allowed) return Object.freeze({
+      leaseId, isCurrent, result: Promise.resolve(lazyResult('superseded')),
+    })
     activeNativePresetView = { id, leaseId }
-    return Object.freeze({ leaseId, result: runLazy('nativePreset', id) })
+    return Object.freeze({ leaseId, isCurrent, result: runLazy('nativePreset', id) })
   }
   const releaseNativePresetView = (leaseId: number): void => {
     if (activeNativePresetView?.leaseId !== leaseId) return

@@ -58,7 +58,12 @@ export function ContextManagerPresetDrawerContent(props: ContextManagerDrawerPro
   const mounted = useRef(false)
   const latestEffectiveId = useRef(selectedId)
   const committing = useRef<number | null>(null)
-  const viewLease = useRef<{ readonly id: string; readonly leaseId: number } | null>(null)
+  const viewLease = useRef<{
+    readonly id: string
+    readonly leaseId: number
+    readonly isCurrent: () => boolean
+    completed: boolean
+  } | null>(null)
   const [shownLease, setShownLease] = useState<number | null>(null)
   latestEffectiveId.current = selectedId
 
@@ -84,6 +89,19 @@ export function ContextManagerPresetDrawerContent(props: ContextManagerDrawerPro
 
   const ownsOpening = () => mounted.current
     && mayApplyCurrentNavigationEvent(actions, renderedOpenSessionEpoch, 'presets')
+  // A completed View has no pending Promise left to report Model-side lease
+  // revocation. Observe the same authoritative snapshot that cleared its body.
+  // Pending views are still settled by their own superseded result (R27).
+  useEffect(() => {
+    const held = viewLease.current
+    if (held === null || !held.completed || held.isCurrent()) return
+    releaseView()
+    if (!mounted.current) return
+    setShownLease(null)
+    if (ownsOpening()) {
+      actions.setPresetNotice({ code: 'presetNoticeUnavailable', kind: 'warning' })
+    }
+  }, [snapshot, shownLease])
   const ownsSelection = () => {
     const live = readLivePresentationForActions(actions)
     const actual = props.readCurrentPresetState()
@@ -147,7 +165,8 @@ export function ContextManagerPresetDrawerContent(props: ContextManagerDrawerPro
     if (!ownsSelection() || !view.canViewComposition || selectedId === undefined) return
     releaseView()
     const claim = props.beginNativePresetView(selectedId)
-    viewLease.current = { id: selectedId, leaseId: claim.leaseId }
+    viewLease.current = { id: selectedId, leaseId: claim.leaseId, isCurrent: claim.isCurrent,
+      completed: false }
     setShownLease(claim.leaseId)
     // A revoked read normally resolves with superseded/detached/disposed;
     // catching only rejected promises would leave this View loading forever.
@@ -160,7 +179,12 @@ export function ContextManagerPresetDrawerContent(props: ContextManagerDrawerPro
       if (ownsOpening()) actions.setPresetNotice({ code, kind: 'warning' })
     }
     void claim.result.then(outcome => {
-      if (outcome.status !== 'completed') {
+      if (outcome.status === 'completed') {
+        // The new claim might have replaced this one while the promise settled.
+        if (viewLease.current?.leaseId === claim.leaseId) {
+          viewLease.current.completed = true
+        }
+      } else {
         retireView(outcome.status === 'superseded'
           ? 'presetNoticeReadFailed' : 'presetNoticeUnavailable')
       }
@@ -341,8 +365,10 @@ export function ContextManagerPresetDrawerContent(props: ContextManagerDrawerPro
     ) : null
 
   const body = selectedId === undefined ? undefined : snapshot.nativePresetDocuments?.get(selectedId)
-  const leased = selectedId !== undefined && viewLease.current?.id === selectedId
-    && viewLease.current?.leaseId === shownLease
+  const heldView = viewLease.current
+  const leased = selectedId !== undefined && heldView?.id === selectedId
+    && heldView.leaseId === shownLease
+    && (!heldView.completed || heldView.isCurrent())
   const visibleBody = leased && view.directoryFresh && body?.status === 'ready' && !body.stale
     && body.data?.id === selectedId ? body.data.content : undefined
 
