@@ -1201,8 +1201,9 @@ if (process.env.M8C_PRESET_PROBE) {
       break
     }
     case 'R27': {
-      // P2-1 Tests-only RED: a resolved superseded View must leave Loading,
-      // even when the new Host rehydrates the same selected native ID.
+      // P2-1 Tests-only RED: a same-Host native roster cursor invalidation
+      // makes a pending View resolve superseded while the selected ID stays
+      // rendered. The user must see a terminal state, not infinite Loading.
       await goPresets()
       const originalInstance = cm().instanceId
       const releaseOld = remoteFixture.holdNextNativeBodyRead('native')
@@ -1215,16 +1216,16 @@ if (process.env.M8C_PRESET_PROBE) {
       assert.equal(loading().length, 1,
         'positive control: actual Renderer has a pending explicit composition read')
 
-      remoteFixture.externalRotateHostInstance()
+      remoteFixture.externalPresetDefault('native')
       await act(async () => { await injectedBusiness?.()?.refresh() })
       await settleUI()
       const recovered = cm()
-      assert.notEqual(recovered.instanceId, originalInstance,
-        'must exercise real in-place Host authority change, not a fake UI override')
+      assert.equal(recovered.instanceId, originalInstance,
+        'same Host must retain its instance identity after a real preset cursor change')
       assert.equal(recovered.presets.status, 'ready')
       assert.equal(recovered.presets.stale, false)
       assert.ok(recovered.presets.data.directory.presets.some(item => item.id === 'native'),
-        'Host B retains the exact selected ID and an authoritative fresh roster')
+        'refreshed native catalog retains the selected ID and a fresh roster')
       assert.equal(live()?.selectedPresetId, null,
         'the effective native ID stays the same without a new raw selection')
       assert.equal(loading().length, 1,
@@ -1245,7 +1246,7 @@ if (process.env.M8C_PRESET_PROBE) {
         'terminal stale View should show a bounded read/unavailable notice')
       await click('data-context-manager-preset-view')
       assert.equal(remoteFixture.readCalls.nativeBodies, 2,
-        'the recovered Host must still permit a new explicit View')
+        'the refreshed Host must still permit a new explicit View')
       assert.equal(renderedText(tree.root.findByProps({
         'data-context-manager-preset-body': '',
       })), remoteFixture.nativePresets.get('native').content)
