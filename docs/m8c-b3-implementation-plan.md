@@ -1,6 +1,7 @@
 # M8C-B3 — Native Presets Pane implementation contract V1.0
 
-**Status:** PLANNED; no B3 production/UI code or B3 RED tests have been committed by this document.
+**Implementation status (2026-11-07):** B3 third-pane UX is implemented and scoped-qualified on Draft PR #43, including all four retained Published Renderer generations (R01–R31) and the separate authenticated Browser→Gateway→Native test. Fix A completed-lease R29 is GREEN on [#42384532116](https://github.com/WwlWss/dsh-context-manager/actions/runs/42384532116), 31/31 per version. Protected B4 Ready 86-job Full, fresh independent Final Strict Review, merge and post-merge Full remain **HOLD**.
+**Historical design status:** At the frozen Reviewed Code HEAD below, B3 was PLANNED and no B3 implementation had been committed; the following implementation inventory describes *that* design-time baseline, not the current code.
 **Reviewed code HEAD:** `3c52f1af650c546f2ac1754aca1035249f858b0a`; `main` baseline `39b46b2603ed749b8fda80f4748bff4a84c4d14f`; Draft PR #43.
 **Parent contract:** [M8C capability contract](m8c-plan.md). This document refines only B3, and does not supersede B0 published-package evidence gates or B4 Full Qualification.
 **Scope:** one third Presets pane in the established retained DSH Renderer; exact native roster + explicit read-only View + confirmed Copy/Remove.
@@ -166,4 +167,4 @@ Existing CSS classes and accessible focus behavior should be reused; any new `pl
 
 `P0 B2 runtime test-entry repair → B3-A Business Face RED/GREEN → B3-B Presentation RED/GREEN → B3-C read lease RED/GREEN → B3-D real Renderer RED/GREEN → B3-E full provenance/Strict Review.`
 
-No new production M8C code or test modifications have been made in this planning document.
+This document was originally a planning-only contract at its historical reviewed HEAD. Implementation and targeted RED→GREEN evidence were subsequently committed to Draft PR #43; retaining the original start-order text above preserves provenance and does not claim current work is still unstarted.

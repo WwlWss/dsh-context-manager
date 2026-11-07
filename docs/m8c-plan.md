@@ -1,6 +1,6 @@
 # M8C — Native AgentPreset UX (Capability & Implementation Contract)
 
-**Status:** B2 Client Controller/Model integrated and Draft Quick GREEN on `3c52f1af`; B3 detailed design is in [m8c-b3-implementation-plan.md](m8c-b3-implementation-plan.md). Published-package M8C-specific preflight and B4 Full remain pending. (Sections below retain original B0 provenance and design intent.)
+**Current status (2026-11-07):** M8C B0–B3 code and scoped RED→GREEN implemented on Draft [PR #43](https://github.com/WwlWss/dsh-context-manager/pull/43). Host ownership P1, pending View P2-1, refused Copy/Remove roster P2-2, and completed View revocation Fix A have targeted evidence. At pre-document HEAD `26598d9286b6b740c8d8a42aed7f9de984c0f91b`, [Quick #42384834579](https://github.com/WwlWss/dsh-context-manager/actions/runs/42384834579) and [four-version AUTH #42384834563](https://github.com/WwlWss/dsh-context-manager/actions/runs/42384834563) passed; the pre-Fix-D Renderer evidence is [#42384532116](https://github.com/WwlWss/dsh-context-manager/actions/runs/42384532116). AUTH is wired into the existing protected Full Linux Packed Web matrix without adding jobs, but **B4 Ready 86-job Full, new independent exact-HEAD Final Strict Review, merge and post-merge main Full remain pending: Draft/HOLD**. Sections 2–5 below retain their original B0/B1 source audit and planned mapping, not today's unimplemented feature inventory.
 **Immutable baseline:** merged `main` `39b46b2603ed749b8fda80f4748bff4a84c4d14f` (PR #42); independent Post-Merge Full #41237721472, 86/86 successful, **baseline only**.
 **Branch:** `feat/m8c-native-preset-ux`; one Draft PR per implementation slice.
 **Scope:** a third, additive Presets pane inside the existing Drawer for exact native roster browsing, on-demand read-only composition inspection, explicit copy and explicit remove.
@@ -88,4 +88,4 @@ CI is **fail-closed**: no past M8B 86/86 can qualify M8C. Temporary preflight ev
 4. Does the native `authorable` flag gate copy capability while explicit remove remains a native decision? Never use `trust` as a client-side authorization oracle.
 5. Validate the generated Remote method shapes on all retained published versions rather than guessing from Host TypeScript.
 
-**No M8C GREEN is claimed until these gates have recorded execution evidence.**
+**Current qualification boundary:** the scoped B0–B3/Renderer/AUTH evidence is recorded for the implementation HEADs linked above. This is **not** the B4 Ready 86-job Full or the independent post-merge main Full; no release/merge authorization is implied.
